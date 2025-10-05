@@ -1,0 +1,42 @@
+name: Publish Python distribution to PyPI
+
+on:
+  release:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  publish-pypi-package:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+
+    environment:
+      name: release
+      url: https://pypi.org/project/pyrmute/
+
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: |
+          pip install -U pip
+          pip install build
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

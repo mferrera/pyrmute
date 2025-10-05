@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  release:
+    types:
+      - created
+  schedule:
+    # Run nightly to check that tests are working with latest dependencies
+    - cron: "0 0 * * *"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Set up Python
+        run: uv sync --python ${{ matrix.python-version }} --all-extras --frozen
+
+      - name: Ruff check
+        if: ${{ always() }}
+        run: uv run ruff check
+
+      - name: Ruff format
+        if: ${{ always() }}
+        run: uv run ruff format --check
+
+      - name: Check typing with mypy
+        if: ${{ always() }}
+        run: uv run mypy src tests
+
+      - name: Run tests
+        if: ${{ always() }}
+        run: uv run pytest
