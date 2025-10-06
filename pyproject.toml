@@ -31,6 +31,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "hypothesis",
     "mypy",
     "pytest",
     "pytest-cov",
@@ -87,14 +88,6 @@ pretty = true
 
 [tool.pytest.ini_options]
 addopts = "-n auto --cov src/ --cov-report term-missing"
-norecursedirs = [
-    ".git",
-    ".tox",
-    ".env",
-    ".venv",
-    "dist",
-    "build",
-]
 testpaths = ["tests"]
 
 [tool.ruff]
