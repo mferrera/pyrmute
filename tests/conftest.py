@@ -1,7 +1,7 @@
 """pytest fixtures."""
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from pyrmute import MigrationData, ModelManager
 from pyrmute._migration_manager import MigrationManager
@@ -33,7 +33,16 @@ class UserV3(BaseModel):
 
     name: str
     email: str
-    age: int
+    age: int = 0
+
+
+class UserV4(BaseModel):
+    """UserV4 model."""
+
+    name: str
+    email: str
+    age: int = 0
+    aliases: list[str] = Field(default_factory=list)
 
 
 @pytest.fixture
@@ -52,6 +61,12 @@ def user_v2() -> type[UserV2]:
 def user_v3() -> type[BaseModel]:
     """Create User model version 3."""
     return UserV3
+
+
+@pytest.fixture
+def user_v4() -> type[BaseModel]:
+    """Create User model version 4."""
+    return UserV4
 
 
 class AddressV1(BaseModel):
@@ -95,11 +110,13 @@ def populated_registry(
     user_v1: type[BaseModel],
     user_v2: type[BaseModel],
     user_v3: type[BaseModel],
+    user_v4: type[BaseModel],
 ) -> Registry:
     """Create a registry with multiple registered models."""
     registry.register("User", "1.0.0")(user_v1)
     registry.register("User", "2.0.0")(user_v2)
-    registry.register("User", "3.0.0")(user_v3)
+    registry.register("User", "3.0.0", auto_migrate=True)(user_v3)
+    registry.register("User", "4.0.0", auto_migrate=True)(user_v4)
     return registry
 
 
@@ -115,11 +132,13 @@ def populated_migration_manager(
     user_v1: type[BaseModel],
     user_v2: type[BaseModel],
     user_v3: type[BaseModel],
+    user_v4: type[BaseModel],
 ) -> MigrationManager:
     """Create a manager with registered models."""
     registry.register("User", "1.0.0")(user_v1)
     registry.register("User", "2.0.0")(user_v2)
-    registry.register("User", "3.0.0")(user_v3)
+    registry.register("User", "3.0.0", auto_migrate=True)(user_v3)
+    registry.register("User", "4.0.0", auto_migrate=True)(user_v4)
     return MigrationManager(registry)
 
 

@@ -3,10 +3,10 @@
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic.fields import FieldInfo
 
-from pyrmute import MigrationData, ModelVersion
+from pyrmute import MigrationData, ModelManager, ModelVersion
 from pyrmute._migration_manager import MigrationManager
 from pyrmute._registry import Registry
 
@@ -195,35 +195,142 @@ def test_migrate_preserves_extra_fields(
     assert result["custom_field"] == "value"
 
 
-# Auto-migration tests
-def test_auto_migrate_copies_common_fields(
+def test_migration_fails_if_no_direct_path(
     populated_migration_manager: MigrationManager,
 ) -> None:
-    """Test auto-migration copies fields present in both versions."""
+    """Test migration fails if no direct migration path is found."""
     data: MigrationData = {"name": "Grace"}
-    result = populated_migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
-    assert result == {"name": "Grace"}
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"Unable to find migration path for User: "
+            r"1.0.0 → 2.0.0"
+        ),
+    ):
+        populated_migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
 
 
-def test_auto_migrate_skips_missing_fields(
+def test_migration_fails_if_no_transient_path(
     populated_migration_manager: MigrationManager,
 ) -> None:
-    """Test auto-migration skips fields not in source data."""
-    data: MigrationData = {"name": "Henry"}
-    result = populated_migration_manager.migrate(data, "User", "1.0.0", "3.0.0")
-    # Should only have name, as email and age are not in source data
-    assert "name" in result
-    assert "email" not in result
-    assert "age" not in result
+    """Test migration fails if no transient migration path is found."""
+    data: MigrationData = {"name": "Grace"}
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"Unable to find migration path for User: "
+            r"1.0.0 → 2.0.0"
+        ),
+    ):
+        populated_migration_manager.migrate(data, "User", "1.0.0", "3.0.0")
+
+
+# Auto-migration tests
+def test_auto_migrate_adds_default_fields(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test auto-migration adds new, required fields with defaults."""
+    data: MigrationData = {"name": "Grace", "email": "foo@bar.com"}
+    result = populated_migration_manager.migrate(data, "User", "2.0.0", "3.0.0")
+    assert result == {**data, "age": 0}
+
+
+def test_auto_migrate_adds_default_fields_and_uses_migration_func(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test auto-migration with default field uses migration func first."""
+    data: MigrationData = {"name": "Grace", "email": "foo@bar.com"}
+
+    @populated_migration_manager.register_migration("User", "2.0.0", "3.0.0")
+    def migrate_user_age(data: MigrationData) -> MigrationData:
+        return {**data, "age": 5}
+
+    result = populated_migration_manager.migrate(data, "User", "2.0.0", "3.0.0")
+    assert result == {**data, "age": 5}
+
+
+def test_auto_migrate_adds_default_factory_fields(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test auto-migration adds new, required fields with a default factory."""
+    data: MigrationData = {"name": "Grace", "email": "foo@bar.com"}
+    result = populated_migration_manager.migrate(data, "User", "2.0.0", "4.0.0")
+    assert result == {**data, "age": 0, "aliases": []}
+
+
+def test_auto_migrate_adds_default_factory_fields_uses_migration_func(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test auto-migration with default factory uses migration func first."""
+    data: MigrationData = {"name": "Grace", "email": "foo@bar.com"}
+
+    @populated_migration_manager.register_migration("User", "2.0.0", "3.0.0")
+    def migrate_user_age(data: MigrationData) -> MigrationData:
+        return {**data, "age": 5}
+
+    @populated_migration_manager.register_migration("User", "3.0.0", "4.0.0")
+    def migrate_user_aliases(data: MigrationData) -> MigrationData:
+        return {**data, "aliases": ["Bob"]}
+
+    result = populated_migration_manager.migrate(data, "User", "2.0.0", "4.0.0")
+    assert result == {**data, "age": 5, "aliases": ["Bob"]}
+
+
+def test_migration_with_default_factory(manager: ModelManager) -> None:
+    """Test that default_factory is called for missing fields."""
+
+    @manager.model("Optional", "1.0.0", auto_migrate=True)
+    class OptionalV1(BaseModel):
+        field1: str = "default1"
+
+    @manager.model("Optional", "2.0.0", auto_migrate=True)
+    class OptionalV2(BaseModel):
+        field1: str = "default1"
+        field3: list[str] = Field(default_factory=list)
+
+    # When field is missing, default_factory should be called
+    result = manager.migration_manager.migrate(
+        {"field1": "test"}, "Optional", "1.0.0", "2.0.0"
+    )
+    assert result["field3"] == []
+
+
+def test_migration_preserves_explicit_none(manager: ModelManager) -> None:
+    """Test that explicit None values are preserved."""
+
+    @manager.model("Optional", "1.0.0", auto_migrate=True)
+    class OptionalV1(BaseModel):
+        field1: str = "default1"
+        field3: list[str] | None = None
+
+    @manager.model("Optional", "2.0.0", auto_migrate=True)
+    class OptionalV2(BaseModel):
+        field1: str = "default1"
+        field3: list[str] | None = Field(default_factory=list)
+
+    # When field is explicitly None, it should be preserved
+    result = manager.migration_manager.migrate(
+        {"field1": "test", "field3": None}, "Optional", "1.0.0", "2.0.0"
+    )
+    assert result["field3"] is None  # Preserved, not replaced with []
 
 
 def test_auto_migrate_handles_none_values(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test auto-migration handles None values correctly."""
-    data: MigrationData = {"name": None}
-    result = populated_migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+    data: MigrationData = {"name": None, "email": "foo@bar.com"}
+    result = populated_migration_manager.migrate(data, "User", "2.0.0", "3.0.0")
     assert result["name"] is None
+
+
+def test_auto_migrate_preserves_extra_fields(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test auto-migration handles None values correctly."""
+    data: MigrationData = {"name": "Grace", "email": "foo@bar.com", "foo": "bar"}
+    result = populated_migration_manager.migrate(data, "User", "2.0.0", "3.0.0")
+    assert result == {"name": "Grace", "email": "foo@bar.com", "foo": "bar", "age": 0}
 
 
 # Nested model migration tests
@@ -248,12 +355,12 @@ def test_migrate_nested_model(registry: Registry) -> None:
     registry.register("Address", "1.0.0")(AddressV1)
     registry.register("Address", "2.0.0")(AddressV2)
     registry.register("Person", "1.0.0")(PersonV1)
-    registry.register("Person", "2.0.0")(PersonV2)
+    registry.register("Person", "2.0.0", auto_migrate=True)(PersonV2)
 
     manager = MigrationManager(registry)
 
     @manager.register_migration("Address", "1.0.0", "2.0.0")
-    def migrate_address(data: dict[str, Any]) -> dict[str, Any]:
+    def migrate_address(data: MigrationData) -> MigrationData:
         return {**data, "city": "Unknown"}
 
     data: MigrationData = {"name": "Iris", "address": {"street": "123 Main St"}}
@@ -282,7 +389,7 @@ def test_migrate_list_of_nested_models(registry: Registry) -> None:
     registry.register("Item", "1.0.0")(ItemV1)
     registry.register("Item", "2.0.0")(ItemV2)
     registry.register("Order", "1.0.0")(OrderV1)
-    registry.register("Order", "2.0.0")(OrderV2)
+    registry.register("Order", "2.0.0", auto_migrate=True)(OrderV2)
 
     manager = MigrationManager(registry)
 
@@ -311,19 +418,6 @@ def test_migrate_dict_values(populated_migration_manager: MigrationManager) -> N
     }
     result = populated_migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
     assert result["metadata"] == {"key1": "value1", "key2": "value2"}
-
-
-def test_auto_migrate_only_copies_model_fields(
-    populated_migration_manager: MigrationManager,
-) -> None:
-    """Test auto-migration only copies fields defined in models."""
-    data: MigrationData = {
-        "name": "Jack",
-        "metadata": {"key1": "value1", "key2": "value2"},  # Extra field
-    }
-    result = populated_migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
-    assert result == {"name": "Jack"}  # metadata is dropped
-    assert "metadata" not in result
 
 
 # Migration path tests

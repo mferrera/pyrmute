@@ -227,11 +227,11 @@ def test_get_latest_single_version(
 
 def test_get_latest_multiple_versions(
     populated_registry: Registry,
-    user_v3: type[BaseModel],
+    user_v4: type[BaseModel],
 ) -> None:
     """Test getting latest with multiple versions."""
     latest = populated_registry.get_latest("User")
-    assert latest == user_v3
+    assert latest == user_v4
 
 
 def test_get_latest_unordered_registration(registry: Registry) -> None:
@@ -278,10 +278,11 @@ def test_get_versions_multiple(
 ) -> None:
     """Test getting versions list with multiple versions."""
     versions = populated_registry.get_versions("User")
-    assert len(versions) == 3  # noqa: PLR2004
+    assert len(versions) == 4  # noqa: PLR2004
     assert ModelVersion(1, 0, 0) in versions
     assert ModelVersion(2, 0, 0) in versions
     assert ModelVersion(3, 0, 0) in versions
+    assert ModelVersion(4, 0, 0) in versions
 
 
 def test_get_versions_sorted(registry: Registry) -> None:

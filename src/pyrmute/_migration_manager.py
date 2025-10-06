@@ -1,10 +1,12 @@
 """Migrations manager."""
 
+import contextlib
 from collections.abc import Callable
 from typing import Any, Self, get_args, get_origin
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
+from pydantic_core import PydanticUndefined
 
 from ._registry import Registry
 from .model_version import ModelVersion
@@ -112,9 +114,14 @@ class MigrationManager:
             if migration_key in self.registry._migrations[name]:
                 migration_func = self.registry._migrations[name][migration_key]
                 current_data = migration_func(current_data)
-            else:
+            elif path[i + 1] in self.registry._auto_migrate_enabled[name]:
                 current_data = self._auto_migrate(
                     current_data, name, path[i], path[i + 1]
+                )
+            else:
+                raise ValueError(
+                    f"Unable to find migration path for {name}: "
+                    f"{path[i]} → {path[i + 1]}"
                 )
 
         return current_data
@@ -177,18 +184,25 @@ class MigrationManager:
         result: MigrationData = {}
 
         for field_name, to_field_info in to_fields.items():
-            if field_name not in data:
-                continue
+            # Field exists in data, migrate it
+            if field_name in data:
+                value = data[field_name]
+                from_field_info = from_fields.get(field_name)
+                result[field_name] = self._migrate_field_value(
+                    value, from_field_info, to_field_info
+                )
 
-            value = data[field_name]
+            # Field missing from data, use default if available
+            elif to_field_info.default is not PydanticUndefined:
+                result[field_name] = to_field_info.default
+            elif to_field_info.default_factory is not None:
+                with contextlib.suppress(Exception):
+                    result[field_name] = to_field_info.default_factory()  # type: ignore
 
-            # Get corresponding from_field if it exists
-            from_field_info = from_fields.get(field_name)
-
-            # Migrate the field value (handles nested models)
-            result[field_name] = self._migrate_field_value(
-                value, from_field_info, to_field_info
-            )
+        # Migrate all extra data not in the field, too
+        for field_name, value in data.items():
+            if field_name not in to_fields:
+                result[field_name] = value
 
         return result
 

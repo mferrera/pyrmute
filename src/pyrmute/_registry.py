@@ -39,6 +39,9 @@ class Registry:
         self._schema_generators: dict[ModelName, SchemaGenerators] = defaultdict(dict)
         self._model_metadata: dict[type[BaseModel], ModelMetadata] = {}
         self._ref_enabled: dict[ModelName, set[ModelVersion]] = defaultdict(set)
+        self._auto_migrate_enabled: dict[ModelName, set[ModelVersion]] = defaultdict(
+            set
+        )
 
     def register(
         self: Self,
@@ -46,6 +49,7 @@ class Registry:
         version: str | ModelVersion,
         schema_generator: JsonSchemaGenerator | None = None,
         enable_ref: bool = False,
+        auto_migrate: bool = False,
     ) -> Callable[[type[DecoratedBaseModel]], type[DecoratedBaseModel]]:
         """Register a versioned model.
 
@@ -55,6 +59,9 @@ class Registry:
             schema_generator: Optional custom schema generator function.
             enable_ref: If True, this model can be referenced via $ref in
                 separate schema files. If False, it will always be inlined.
+            auto_migrate: If True, this model does not need a migration function to
+                migrate to the next version. If a migration function is defined it will
+                use it.
 
         Returns:
             Decorator function for model class.
@@ -74,6 +81,8 @@ class Registry:
                 self._schema_generators[name][ver] = schema_generator
             if enable_ref:
                 self._ref_enabled[name].add(ver)
+            if auto_migrate:
+                self._auto_migrate_enabled[name].add(ver)
             return cls
 
         return decorator
