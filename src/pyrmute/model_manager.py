@@ -166,7 +166,7 @@ class ModelManager:
             to_version: Target version.
 
         Returns:
-            Raw Migrated dictionary.
+            Raw migrated dictionary.
         """
         return self.migration_manager.migrate(data, name, from_version, to_version)
 
