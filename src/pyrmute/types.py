@@ -1,7 +1,9 @@
 """Type aliases needed in the package."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
-from typing import Any, TypeAlias, TypeVar
+from typing import Any, TypeAlias, TypedDict, TypeVar
 
 from pydantic import BaseModel
 
@@ -9,14 +11,17 @@ from .model_version import ModelVersion
 
 DecoratedBaseModel = TypeVar("DecoratedBaseModel", bound=BaseModel)
 
-JsonValue: TypeAlias = dict[str, Any] | list[Any] | str | int | float | bool | None
+JsonValue: TypeAlias = (
+    int | float | str | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
+)
 JsonSchema: TypeAlias = dict[str, JsonValue]
-JsonSchemaDefinitions: TypeAlias = dict[str, JsonSchema]
+JsonSchemaDefinitions: TypeAlias = dict[str, JsonValue]
 JsonSchemaGenerator: TypeAlias = Callable[[type[BaseModel]], JsonSchema]
 SchemaGenerators: TypeAlias = dict[ModelVersion, JsonSchemaGenerator]
 
 MigrationData: TypeAlias = dict[str, Any]
 MigrationFunc: TypeAlias = Callable[[MigrationData], MigrationData]
+
 
 MigrationKey: TypeAlias = tuple[ModelVersion, ModelVersion]
 MigrationMap: TypeAlias = dict[MigrationKey, MigrationFunc]
@@ -24,3 +29,12 @@ MigrationMap: TypeAlias = dict[MigrationKey, MigrationFunc]
 ModelName: TypeAlias = str
 ModelMetadata: TypeAlias = tuple[ModelName, ModelVersion]
 VersionedModels: TypeAlias = dict[ModelVersion, type[BaseModel]]
+
+
+class ModelDiff(TypedDict):
+    """Contains the difference between two models."""
+
+    added_fields: list[str]
+    removed_fields: list[str]
+    modified_fields: dict[str, Any]
+    unchanged_fields: list[str]

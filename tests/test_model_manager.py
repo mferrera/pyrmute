@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from pyrmute import MigrationData, ModelManager, ModelVersion
 
@@ -551,3 +551,266 @@ def test_get_nested_models_returns_tuples(manager: ModelManager) -> None:
         assert len(item) == 2  # noqa: PLR2004
         assert isinstance(item[0], str)
         assert isinstance(item[1], ModelVersion)
+
+
+# Diff tests
+def test_diff_added_fields(manager: ModelManager) -> None:
+    """Test detection of newly added fields."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+        age: int
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+
+    assert set(diff["added_fields"]) == {"email", "age"}
+    assert diff["removed_fields"] == []
+    assert diff["unchanged_fields"] == ["name"]
+    assert diff["modified_fields"] == {}
+
+
+def test_diff_removed_fields(manager: ModelManager) -> None:
+    """Test detection of removed fields."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        username: str
+        age: int
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+
+    assert diff["added_fields"] == []
+    assert set(diff["removed_fields"]) == {"username", "age"}
+    assert diff["unchanged_fields"] == ["name"]
+    assert diff["modified_fields"] == {}
+
+
+def test_diff_type_changed(manager: ModelManager) -> None:
+    """Test detection of field type changes."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        age: int
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        age: str
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+
+    assert diff["added_fields"] == []
+    assert diff["removed_fields"] == []
+    assert diff["unchanged_fields"] == []
+    assert "age" in diff["modified_fields"]
+    assert "type_changed" in diff["modified_fields"]["age"]
+    assert "from" in diff["modified_fields"]["age"]["type_changed"]
+    assert "to" in diff["modified_fields"]["age"]["type_changed"]
+
+
+def test_diff_required_to_optional(manager: ModelManager) -> None:
+    """Test detection of required field becoming optional."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        email: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        email: str | None = None
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+
+    assert "email" in diff["modified_fields"]
+    assert "required_changed" in diff["modified_fields"]["email"]
+    assert diff["modified_fields"]["email"]["required_changed"]["from"] is True
+    assert diff["modified_fields"]["email"]["required_changed"]["to"] is False
+
+
+def test_diff_optional_to_required(manager: ModelManager) -> None:
+    """Test detection of optional field becoming required."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        email: str | None = None
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        email: str
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+
+    assert "email" in diff["modified_fields"]
+    assert "required_changed" in diff["modified_fields"]["email"]
+    assert diff["modified_fields"]["email"]["required_changed"]["from"] is False
+    assert diff["modified_fields"]["email"]["required_changed"]["to"] is True
+
+
+def test_diff_default_value_changed(manager: ModelManager) -> None:
+    """Test detection of default value changes."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        status: str = "active"
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        status: str = "pending"
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+
+    assert "status" in diff["modified_fields"]
+    assert "default_changed" in diff["modified_fields"]["status"]
+    assert diff["modified_fields"]["status"]["default_changed"]["from"] == "active"
+    assert diff["modified_fields"]["status"]["default_changed"]["to"] == "pending"
+
+
+def test_diff_default_value_added(manager: ModelManager) -> None:
+    """Test detection of default value being added."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        status: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        status: str = "pending"
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+
+    assert "status" in diff["modified_fields"]
+    assert "default_added" in diff["modified_fields"]["status"]
+    assert diff["modified_fields"]["status"]["default_added"] == "pending"
+
+
+def test_diff_default_value_removed(manager: ModelManager) -> None:
+    """Test detection of default value being removed."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        status: str = "active"
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        status: str
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+
+    assert "status" in diff["modified_fields"]
+    assert "default_removed" in diff["modified_fields"]["status"]
+    assert diff["modified_fields"]["status"]["default_removed"] == "active"
+
+
+def test_diff_multiple_changes_same_field(manager: ModelManager) -> None:
+    """Test detection of multiple changes to the same field."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        age: int
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        age: str | None = "0"
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+
+    assert "age" in diff["modified_fields"]
+    assert "type_changed" in diff["modified_fields"]["age"]
+    assert "required_changed" in diff["modified_fields"]["age"]
+    assert "default_added" in diff["modified_fields"]["age"]
+
+
+def test_diff_no_changes(manager: ModelManager) -> None:
+    """Test diff when models are identical."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        email: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+
+    assert diff["added_fields"] == []
+    assert diff["removed_fields"] == []
+    assert set(diff["unchanged_fields"]) == {"name", "email"}
+    assert diff["modified_fields"] == {}
+
+
+def test_diff_with_model_version_objects(manager: ModelManager) -> None:
+    """Test diff with ModelVersion objects instead of strings."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    diff = manager.diff("User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0))
+
+    assert "email" in diff["added_fields"]
+    assert diff["unchanged_fields"] == ["name"]
+
+
+def test_diff_complex_scenario(manager: ModelManager) -> None:
+    """Test diff with a complex mix of changes."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        username: str
+        age: int
+        status: str = "active"
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+        age: str | None = None
+        role: str = "user"
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+
+    assert set(diff["added_fields"]) == {"email", "role"}
+
+    assert set(diff["removed_fields"]) == {"username", "status"}
+
+    assert diff["unchanged_fields"] == ["name"]
+
+    assert "age" in diff["modified_fields"]
+    assert "type_changed" in diff["modified_fields"]["age"]
+    assert "required_changed" in diff["modified_fields"]["age"]
+    assert "default_added" in diff["modified_fields"]["age"]
+
+
+def test_diff_with_field_validator(manager: ModelManager) -> None:
+    """Test diff works correctly with Pydantic Field validators."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        age: int = Field(ge=0)
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        age: int = Field(ge=0, le=120)
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+
+    assert diff["unchanged_fields"] == ["age"]
