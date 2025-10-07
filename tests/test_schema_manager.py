@@ -289,6 +289,8 @@ def test_replace_refs_with_external_nested_dict(
 
     properties = result["properties"]
     assert isinstance(properties, dict)
+    assert isinstance(properties["data"], dict)
+    assert isinstance(properties["data"]["properties"], dict)
     address = properties["data"]["properties"]["address"]
     assert isinstance(address, dict)
     assert "$ref" in address

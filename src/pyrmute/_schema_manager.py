@@ -136,7 +136,9 @@ class SchemaManager:
                 if "$ref" in value:
                     # Extract the definition name from the ref
                     ref = value["$ref"]
-                    if ref.startswith(("#/$defs/", "#/definitions/")):
+                    if isinstance(ref, str) and ref.startswith(
+                        ("#/$defs/", "#/definitions/")
+                    ):
                         def_name = ref.split("/")[-1]
 
                         # Try to find the model info for this definition

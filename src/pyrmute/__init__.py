@@ -7,12 +7,19 @@ and schema management.
 from ._version import __version__
 from .model_manager import ModelManager
 from .model_version import ModelVersion
-from .types import JsonSchema, MigrationData, MigrationFunc, ModelMetadata
+from .types import (
+    JsonSchema,
+    MigrationData,
+    MigrationFunc,
+    ModelDiff,
+    ModelMetadata,
+)
 
 __all__ = [
     "JsonSchema",
     "MigrationData",
     "MigrationFunc",
+    "ModelDiff",
     "ModelManager",
     "ModelMetadata",
     "ModelVersion",

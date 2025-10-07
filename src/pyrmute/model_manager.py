@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Self
 
 from pydantic import BaseModel
+from pydantic_core import PydanticUndefined
 
 from ._migration_manager import MigrationManager
 from ._registry import Registry
@@ -16,6 +17,7 @@ from .types import (
     JsonSchemaGenerator,
     MigrationData,
     MigrationFunc,
+    ModelDiff,
     ModelMetadata,
 )
 
@@ -149,6 +151,103 @@ class ModelManager:
         )
         target_model = self.get(name, to_version)
         return target_model.model_validate(migrated_data)
+
+    def diff(
+        self: Self,
+        name: str,
+        from_version: str | ModelVersion,
+        to_version: str | ModelVersion,
+    ) -> ModelDiff:
+        """Get a detailed diff between two model versions.
+
+        Compares field names, types, requirements, and default values to provide
+        a comprehensive view of what changed between versions.
+
+        Args:
+            name: Name of the model.
+            from_version: Source version.
+            to_version: Target version.
+
+        Returns:
+            ModelDiff with detailed change information.
+
+        Example:
+            >>> diff = manager.diff("User", "1.0.0", "2.0.0")
+            >>> print(f"Added: {diff['added_fields']}")
+            >>> print(f"Removed: {diff['removed_fields']}")
+            >>> for field, changes in diff['modified_fields'].items():
+            ...     print(f"{field}: {changes}")
+        """
+        from_model = self.get(name, from_version)
+        to_model = self.get(name, to_version)
+
+        from_fields = from_model.model_fields
+        to_fields = to_model.model_fields
+
+        from_keys = set(from_fields.keys())
+        to_keys = set(to_fields.keys())
+
+        added = list(to_keys - from_keys)
+        removed = list(from_keys - to_keys)
+        common = from_keys & to_keys
+
+        modified = {}
+        unchanged = []
+
+        for field_name in common:
+            from_field = from_fields[field_name]
+            to_field = to_fields[field_name]
+
+            changes: dict[str, Any] = {}
+
+            # Check type changes
+            if from_field.annotation != to_field.annotation:
+                changes["type_changed"] = {
+                    "from": from_field.annotation,
+                    "to": to_field.annotation,
+                }
+
+            # Check if required/optional status changed
+            from_required = from_field.is_required()
+            to_required = to_field.is_required()
+            if from_required != to_required:
+                changes["required_changed"] = {
+                    "from": from_required,
+                    "to": to_required,
+                }
+
+            # Check default value changes
+            from_default = from_field.default
+            to_default = to_field.default
+
+            # Only compare if both have defaults or both don't
+            if from_default != to_default and not (
+                from_default is PydanticUndefined and to_default is PydanticUndefined
+            ):
+                if (
+                    from_default is not PydanticUndefined
+                    and to_default is not PydanticUndefined
+                ):
+                    changes["default_changed"] = {
+                        "from": from_default,
+                        "to": to_default,
+                    }
+                elif from_default is PydanticUndefined:
+                    changes["default_added"] = to_default
+                else:
+                    changes["default_removed"] = from_default
+
+            if changes:
+                modified[field_name] = changes
+            else:
+                unchanged.append(field_name)
+
+        return {
+            "added_fields": added,
+            "removed_fields": removed,
+            "modified_fields": modified,
+            "unchanged_fields": unchanged,
+        }
 
     def get_schema(
         self: Self,

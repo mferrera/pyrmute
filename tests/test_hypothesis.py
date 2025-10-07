@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from pyrmute import ModelManager, ModelVersion
 
 
-# Strategy Definitions
+# Strategies
 @st.composite
 def semantic_version(draw: st.DrawFn) -> str:
     """Generate valid semantic versions."""
@@ -24,14 +24,12 @@ def semantic_version(draw: st.DrawFn) -> str:
 @st.composite
 def model_name(draw: st.DrawFn) -> str:
     """Generate valid model names."""
-    # Simpler strategy - just use pre-defined names
     return draw(st.sampled_from(["User", "Product", "Order", "Address", "Item"]))
 
 
 @st.composite
 def field_name(draw: st.DrawFn) -> str:
     """Generate valid Python field names."""
-    # Use pre-defined field names instead of generating them
     return draw(
         st.sampled_from(
             [
@@ -86,7 +84,7 @@ def field_value(draw: st.DrawFn) -> Any:
     )
 
 
-# Simple Property Tests
+# Simple property tests
 @given(
     name=model_name(),
     version=semantic_version(),
@@ -103,10 +101,7 @@ def test_migrate_to_same_version_is_identity(
     """Migrating to the same version should return identical data."""
     manager = ModelManager()
 
-    # Create model class name
     class_name = f"{name}V1"
-
-    # Build annotations and defaults separately
     annotations: dict[str, Any] = {}
     defaults: dict[str, Any] = {}
 
@@ -118,15 +113,13 @@ def test_migrate_to_same_version_is_identity(
             annotations[k] = type(v)
             defaults[k] = v
 
-    # Create the model class
     DynamicModel = type(
         class_name, (BaseModel,), {"__annotations__": annotations, **defaults}
     )
 
     manager.model(name, version, auto_migrate=True)(DynamicModel)
-
-    # Migration to same version should be identity
     result = manager.migration_manager.migrate(data, name, version, version)
+
     assert result == data
 
 
@@ -143,16 +136,13 @@ def test_migrate_to_same_version_is_identity(
 )
 def test_migration_transitivity(name: str, v1: str, v2: str, v3: str) -> None:
     """Migration should be transitive: v1→v2→v3 == v1→v3."""
-    # Ensure versions are distinct and ordered
     versions = sorted([ModelVersion.parse(v) for v in [v1, v2, v3]])
-    # All different
     assume(len(set(versions)) == 3)  # noqa: PLR2004
 
     v1, v2, v3 = [str(v) for v in versions]
 
     manager = ModelManager()
 
-    # Define three versions with progressively more fields
     @manager.model(name, v1, auto_migrate=True)
     class ModelV1(BaseModel):
         field1: str = "default1"
@@ -204,8 +194,6 @@ def test_extra_fields_preserved(
     assume(not set(data.keys()).intersection(set(extra_fields.keys())))
 
     manager = ModelManager()
-
-    # Create annotations and defaults
     annotations: dict[str, Any] = {}
     defaults: dict[str, Any] = {}
 
@@ -223,13 +211,9 @@ def test_extra_fields_preserved(
 
     manager.model(name, version, auto_migrate=True)(DynamicModel)
 
-    # Add extra fields to data
     full_data = {**data, **extra_fields}
-
-    # Migrate
     result = manager.migration_manager.migrate(full_data, name, version, version)
 
-    # Extra fields should be preserved
     for key, value in extra_fields.items():
         assert key in result
         assert result[key] == value
@@ -259,13 +243,11 @@ def test_version_ordering_independence(name: str, v1: str, v2: str) -> None:
         field1: str = "default1"
         field2: str = "default2"
 
-    # Forward migration
     data = {"field1": "test"}
     forward = manager.migration_manager.migrate(data, name, v1, v2)
     assert "field1" in forward
     assert "field2" in forward
 
-    # Backward migration (should drop field2)
     backward = manager.migration_manager.migrate(forward, name, v2, v1)
     assert "field1" in backward
 
@@ -281,21 +263,17 @@ def test_version_ordering_independence(name: str, v1: str, v2: str) -> None:
 )
 def test_migration_chain_consistency(name: str, versions: list[str]) -> None:
     """Migrating through a chain should be consistent."""
-    # Sort versions
     sorted_versions = sorted([ModelVersion.parse(v) for v in versions])
     version_strs = [str(v) for v in sorted_versions]
 
     manager = ModelManager()
 
-    # Register all versions - keep it simple
     for i, version in enumerate(version_strs):
-        # Create a simple model class
         fields_dict: dict[str, Any] = {
             "__annotations__": {"field1": str},
             "field1": "default1",
         }
 
-        # Add more fields for later versions
         for j in range(i):
             field_name = f"field{j + 2}"
             fields_dict["__annotations__"][field_name] = str
@@ -304,13 +282,11 @@ def test_migration_chain_consistency(name: str, versions: list[str]) -> None:
         ModelClass = type(f"{name}V{i}", (BaseModel,), fields_dict)
         manager.model(name, version, auto_migrate=True)(ModelClass)
 
-    # Migrate from first to last
     data = {"field1": "test"}
     result = manager.migration_manager.migrate(
         data, name, version_strs[0], version_strs[-1]
     )
 
-    # Should have field1
     assert "field1" in result
     assert result["field1"] == "test"
 
@@ -337,7 +313,6 @@ def test_data_types_preserved(data: dict[str, Any]) -> None:
     name = "TypeTest"
     version = "1.0.0"
 
-    # Create model with appropriate types
     annotations = {}
     defaults = {}
 
@@ -353,7 +328,6 @@ def test_data_types_preserved(data: dict[str, Any]) -> None:
 
     result = manager.migration_manager.migrate(data, name, version, version)
 
-    # Check types are preserved
     for key, value in data.items():
         assert key in result
         assert type(result[key]) is type(value)
@@ -374,7 +348,6 @@ def test_many_fields_handled_correctly(num_fields: int, version: str) -> None:
     manager = ModelManager()
     name = "ManyFields"
 
-    # Create model with many fields
     annotations = {f"field_{i}": str for i in range(num_fields)}
     defaults = {f"field_{i}": f"default_{i}" for i in range(num_fields)}
 
@@ -384,7 +357,6 @@ def test_many_fields_handled_correctly(num_fields: int, version: str) -> None:
 
     manager.model(name, version, auto_migrate=True)(ManyFieldsModel)
 
-    # Create data with all fields
     data = {f"field_{i}": f"value_{i}" for i in range(num_fields)}
 
     result = manager.migration_manager.migrate(data, name, version, version)
@@ -423,12 +395,10 @@ def test_field_addition_with_defaults(
 
     manager = ModelManager()
 
-    # V1 with base field
     @manager.model(name, v1, auto_migrate=True)
     class ModelV1(BaseModel):
         base_field: str = "base"
 
-    # V2 with additional fields
     v2_annotations = {"base_field": str}
     v2_defaults = {"base_field": "base"}
     for fname in field_names:
@@ -440,14 +410,10 @@ def test_field_addition_with_defaults(
     )
     manager.model(name, v2, auto_migrate=True)(ModelV2)
 
-    # Migrate from v1 to v2
     data = {"base_field": "test"}
     result = manager.migration_manager.migrate(data, name, v1, v2)
 
-    # Original field preserved
     assert result["base_field"] == "test"
-
-    # New fields have defaults
     for fname in field_names:
         assert fname in result
 
@@ -471,7 +437,6 @@ def test_null_values_handled(name: str, version: str, null_fields: list[str]) ->
     """Null values should be handled correctly."""
     manager = ModelManager()
 
-    # Create model with optional fields
     annotations = dict.fromkeys(null_fields, str | None)
     defaults = dict.fromkeys(null_fields)
 
@@ -481,18 +446,16 @@ def test_null_values_handled(name: str, version: str, null_fields: list[str]) ->
 
     manager.model(name, version, auto_migrate=True)(NullableModel)
 
-    # Create data with nulls
     data = dict.fromkeys(null_fields)
 
     result = manager.migration_manager.migrate(data, name, version, version)
 
-    # Nulls should be preserved
     for fname in null_fields:
         assert fname in result
         assert result[fname] is None
 
 
-# Edge Case Tests (Simplified)
+# Edge cases
 @given(depth=st.integers(min_value=2, max_value=4))
 @settings(
     max_examples=10,
@@ -503,7 +466,6 @@ def test_deeply_nested_models(depth: int) -> None:
     """Test migration with deeply nested model structures."""
     manager = ModelManager()
 
-    # Create nested model hierarchy - simplified
     models = []
     for i in range(depth):
         if i == 0:
@@ -516,7 +478,6 @@ def test_deeply_nested_models(depth: int) -> None:
         else:
             prev_model_class = models[-1]
 
-            # Use a closure to capture prev_model_class correctly
             def make_next_level(prev_cls: type) -> Any:
                 @manager.model(f"Level{i}", "1.0.0", auto_migrate=True)  # noqa: B023
                 class NextLevel(BaseModel):
@@ -529,12 +490,10 @@ def test_deeply_nested_models(depth: int) -> None:
 
             models.append(make_next_level(prev_model_class))
 
-    # Create nested data
     nested_data: dict[str, Any] = {"value": "test"}
     for i in range(1, depth):
         nested_data = {"value": f"level{i}", "nested": nested_data}
 
-    # Migration should handle nested structures
     result = manager.migration_manager.migrate(
         nested_data, f"Level{depth - 1}", "1.0.0", "1.0.0"
     )
@@ -554,7 +513,6 @@ def test_long_migration_chains(num_versions: int) -> None:
     manager = ModelManager()
     name = "ChainModel"
 
-    # Register many versions
     for i in range(num_versions):
         version = f"1.0.{i}"
 
@@ -564,10 +522,8 @@ def test_long_migration_chains(num_versions: int) -> None:
             version_num: int = i
 
         if i > 0:
-            # Register migration
             prev_version = f"1.0.{i - 1}"
 
-            # Use closure to capture i correctly
             def make_migration(
                 version_number: int,
             ) -> Callable[[dict[str, Any]], dict[str, Any]]:
@@ -578,7 +534,6 @@ def test_long_migration_chains(num_versions: int) -> None:
 
             manager.migration(name, prev_version, version)(make_migration(i))
 
-    # Migrate from first to last
     data = {"field1": "value"}
     result = manager.migration_manager.migrate(
         data, name, "1.0.0", f"1.0.{num_versions - 1}"
@@ -606,7 +561,6 @@ def test_migration_with_all_optional_fields(data: dict[str, Any]) -> None:
         field2: int = 0
         field3: list[str] = Field(default_factory=list)
 
-    # Data (possibly empty) should migrate successfully
     result = manager.migration_manager.migrate(data, "Optional", "1.0.0", "2.0.0")
     assert "field3" in result
     assert result["field3"] == []
@@ -622,14 +576,12 @@ def test_many_extra_fields_preserved(num_extra_fields: int) -> None:
     class ManyFieldsModel(BaseModel):
         required_field: str = "required"
 
-    # Create data with many extra fields
     data = {"required_field": "test"}
     for i in range(num_extra_fields):
         data[f"extra_{i}"] = f"value_{i}"
 
     result = manager.migration_manager.migrate(data, "ManyFields", "1.0.0", "1.0.0")
 
-    # All extra fields should be preserved
     for i in range(num_extra_fields):
         assert f"extra_{i}" in result
         assert result[f"extra_{i}"] == f"value_{i}"
@@ -649,7 +601,6 @@ def test_empty_data_migration(name: str, version: str) -> None:
 
     result = manager.migration_manager.migrate({}, name, version, version)
 
-    # Should have all defaults
     assert isinstance(result, dict)
 
 
@@ -664,7 +615,6 @@ def test_migration_with_no_changes(name: str, v1: str, v2: str) -> None:
 
     manager = ModelManager()
 
-    # Two versions with identical schemas
     @manager.model(name, v1, auto_migrate=True)
     class ModelV1(BaseModel):
         field1: str = "default"
@@ -678,7 +628,6 @@ def test_migration_with_no_changes(name: str, v1: str, v2: str) -> None:
     data = {"field1": "test", "field2": 42}
     result = manager.migration_manager.migrate(data, name, v1, v2)
 
-    # Data should be unchanged
     assert result == data
 
 
@@ -726,7 +675,7 @@ def test_dict_fields_preserved(name: str, version: str, dict_size: int) -> None:
     assert len(result["metadata"]) == dict_size
 
 
-# Stateful Testing
+# Stateful
 class ModelManagerStateMachine(RuleBasedStateMachine):
     """Stateful testing for ModelManager to find complex interaction bugs."""
 
@@ -750,10 +699,8 @@ class ModelManagerStateMachine(RuleBasedStateMachine):
         self: Self, name: str, version: str, auto_migrate: bool
     ) -> tuple[str, str]:
         """Register a new model version."""
-        # Avoid duplicate registrations
         assume((name, version) not in self.model_classes)
 
-        # Create a simple model
         @self.manager.model(name, version, auto_migrate=auto_migrate)
         class DynamicModel(BaseModel):
             name: str = "default"
@@ -799,7 +746,6 @@ class ModelManagerStateMachine(RuleBasedStateMachine):
 
         result = self.manager.migration_manager.migrate(data, name, version, version)
 
-        # Should be identical or superset (due to defaults)
         for key, value in data.items():
             if key in result:
                 assert result[key] == value
@@ -812,7 +758,6 @@ class ModelManagerStateMachine(RuleBasedStateMachine):
         name1, v1 = model1
         name2, v2 = model2
 
-        # Only test within same model
         assume(name1 == name2)
         assume(v1 != v2)
 
@@ -820,10 +765,8 @@ class ModelManagerStateMachine(RuleBasedStateMachine):
 
         try:
             result = self.manager.migration_manager.migrate(data, name1, v1, v2)
-            # If it succeeds, result should be a dict
             assert isinstance(result, dict)
         except ValueError as e:
-            # If it fails, should be due to missing migration path
             assert "migration path" in str(e).lower() or "not found" in str(e).lower()
 
     @invariant()
@@ -840,7 +783,7 @@ class ModelManagerStateMachine(RuleBasedStateMachine):
         """Latest version should be the maximum version."""
         for name, versions in self.registered_models.items():
             if versions:
-                latest = self.manager.get(name, None)  # Get latest
+                latest = self.manager.get(name, None)
                 version_objects = sorted([ModelVersion.parse(v) for v in versions])
                 expected_latest = self.manager.get(name, str(version_objects[-1]))
                 assert latest == expected_latest
