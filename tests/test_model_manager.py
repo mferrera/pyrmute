@@ -649,10 +649,17 @@ def test_diff_added_fields(manager: ModelManager) -> None:
 
     diff = manager.diff("User", "1.0.0", "2.0.0")
 
-    assert set(diff["added_fields"]) == {"email", "age"}
-    assert diff["removed_fields"] == []
-    assert diff["unchanged_fields"] == ["name"]
-    assert diff["modified_fields"] == {}
+    assert diff.model_name == "User"
+    assert diff.from_version == "1.0.0"
+    assert diff.to_version == "2.0.0"
+    assert set(diff.added_fields) == {"email", "age"}
+    assert diff.removed_fields == []
+    assert diff.unchanged_fields == ["name"]
+    assert diff.modified_fields == {}
+    assert diff.added_field_info == {
+        "age": {"default": None, "required": True, "type": int},
+        "email": {"default": None, "required": True, "type": str},
+    }
 
 
 def test_diff_removed_fields(manager: ModelManager) -> None:
@@ -670,10 +677,10 @@ def test_diff_removed_fields(manager: ModelManager) -> None:
 
     diff = manager.diff("User", "1.0.0", "2.0.0")
 
-    assert diff["added_fields"] == []
-    assert set(diff["removed_fields"]) == {"username", "age"}
-    assert diff["unchanged_fields"] == ["name"]
-    assert diff["modified_fields"] == {}
+    assert diff.added_fields == []
+    assert set(diff.removed_fields) == {"username", "age"}
+    assert diff.unchanged_fields == ["name"]
+    assert diff.modified_fields == {}
 
 
 def test_diff_type_changed(manager: ModelManager) -> None:
@@ -689,13 +696,13 @@ def test_diff_type_changed(manager: ModelManager) -> None:
 
     diff = manager.diff("User", "1.0.0", "2.0.0")
 
-    assert diff["added_fields"] == []
-    assert diff["removed_fields"] == []
-    assert diff["unchanged_fields"] == []
-    assert "age" in diff["modified_fields"]
-    assert "type_changed" in diff["modified_fields"]["age"]
-    assert "from" in diff["modified_fields"]["age"]["type_changed"]
-    assert "to" in diff["modified_fields"]["age"]["type_changed"]
+    assert diff.added_fields == []
+    assert diff.removed_fields == []
+    assert diff.unchanged_fields == []
+    assert "age" in diff.modified_fields
+    assert "type_changed" in diff.modified_fields["age"]
+    assert "from" in diff.modified_fields["age"]["type_changed"]
+    assert "to" in diff.modified_fields["age"]["type_changed"]
 
 
 def test_diff_required_to_optional(manager: ModelManager) -> None:
@@ -711,10 +718,10 @@ def test_diff_required_to_optional(manager: ModelManager) -> None:
 
     diff = manager.diff("User", "1.0.0", "2.0.0")
 
-    assert "email" in diff["modified_fields"]
-    assert "required_changed" in diff["modified_fields"]["email"]
-    assert diff["modified_fields"]["email"]["required_changed"]["from"] is True
-    assert diff["modified_fields"]["email"]["required_changed"]["to"] is False
+    assert "email" in diff.modified_fields
+    assert "required_changed" in diff.modified_fields["email"]
+    assert diff.modified_fields["email"]["required_changed"]["from"] is True
+    assert diff.modified_fields["email"]["required_changed"]["to"] is False
 
 
 def test_diff_optional_to_required(manager: ModelManager) -> None:
@@ -730,10 +737,10 @@ def test_diff_optional_to_required(manager: ModelManager) -> None:
 
     diff = manager.diff("User", "1.0.0", "2.0.0")
 
-    assert "email" in diff["modified_fields"]
-    assert "required_changed" in diff["modified_fields"]["email"]
-    assert diff["modified_fields"]["email"]["required_changed"]["from"] is False
-    assert diff["modified_fields"]["email"]["required_changed"]["to"] is True
+    assert "email" in diff.modified_fields
+    assert "required_changed" in diff.modified_fields["email"]
+    assert diff.modified_fields["email"]["required_changed"]["from"] is False
+    assert diff.modified_fields["email"]["required_changed"]["to"] is True
 
 
 def test_diff_default_value_changed(manager: ModelManager) -> None:
@@ -749,10 +756,10 @@ def test_diff_default_value_changed(manager: ModelManager) -> None:
 
     diff = manager.diff("User", "1.0.0", "2.0.0")
 
-    assert "status" in diff["modified_fields"]
-    assert "default_changed" in diff["modified_fields"]["status"]
-    assert diff["modified_fields"]["status"]["default_changed"]["from"] == "active"
-    assert diff["modified_fields"]["status"]["default_changed"]["to"] == "pending"
+    assert "status" in diff.modified_fields
+    assert "default_changed" in diff.modified_fields["status"]
+    assert diff.modified_fields["status"]["default_changed"]["from"] == "active"
+    assert diff.modified_fields["status"]["default_changed"]["to"] == "pending"
 
 
 def test_diff_default_value_added(manager: ModelManager) -> None:
@@ -768,9 +775,9 @@ def test_diff_default_value_added(manager: ModelManager) -> None:
 
     diff = manager.diff("User", "1.0.0", "2.0.0")
 
-    assert "status" in diff["modified_fields"]
-    assert "default_added" in diff["modified_fields"]["status"]
-    assert diff["modified_fields"]["status"]["default_added"] == "pending"
+    assert "status" in diff.modified_fields
+    assert "default_added" in diff.modified_fields["status"]
+    assert diff.modified_fields["status"]["default_added"] == "pending"
 
 
 def test_diff_default_value_removed(manager: ModelManager) -> None:
@@ -786,9 +793,9 @@ def test_diff_default_value_removed(manager: ModelManager) -> None:
 
     diff = manager.diff("User", "1.0.0", "2.0.0")
 
-    assert "status" in diff["modified_fields"]
-    assert "default_removed" in diff["modified_fields"]["status"]
-    assert diff["modified_fields"]["status"]["default_removed"] == "active"
+    assert "status" in diff.modified_fields
+    assert "default_removed" in diff.modified_fields["status"]
+    assert diff.modified_fields["status"]["default_removed"] == "active"
 
 
 def test_diff_multiple_changes_same_field(manager: ModelManager) -> None:
@@ -804,10 +811,10 @@ def test_diff_multiple_changes_same_field(manager: ModelManager) -> None:
 
     diff = manager.diff("User", "1.0.0", "2.0.0")
 
-    assert "age" in diff["modified_fields"]
-    assert "type_changed" in diff["modified_fields"]["age"]
-    assert "required_changed" in diff["modified_fields"]["age"]
-    assert "default_added" in diff["modified_fields"]["age"]
+    assert "age" in diff.modified_fields
+    assert "type_changed" in diff.modified_fields["age"]
+    assert "required_changed" in diff.modified_fields["age"]
+    assert "default_added" in diff.modified_fields["age"]
 
 
 def test_diff_no_changes(manager: ModelManager) -> None:
@@ -825,10 +832,10 @@ def test_diff_no_changes(manager: ModelManager) -> None:
 
     diff = manager.diff("User", "1.0.0", "2.0.0")
 
-    assert diff["added_fields"] == []
-    assert diff["removed_fields"] == []
-    assert set(diff["unchanged_fields"]) == {"name", "email"}
-    assert diff["modified_fields"] == {}
+    assert diff.added_fields == []
+    assert diff.removed_fields == []
+    assert set(diff.unchanged_fields) == {"name", "email"}
+    assert diff.modified_fields == {}
 
 
 def test_diff_with_model_version_objects(manager: ModelManager) -> None:
@@ -845,8 +852,8 @@ def test_diff_with_model_version_objects(manager: ModelManager) -> None:
 
     diff = manager.diff("User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0))
 
-    assert "email" in diff["added_fields"]
-    assert diff["unchanged_fields"] == ["name"]
+    assert "email" in diff.added_fields
+    assert diff.unchanged_fields == ["name"]
 
 
 def test_diff_complex_scenario(manager: ModelManager) -> None:
@@ -868,16 +875,13 @@ def test_diff_complex_scenario(manager: ModelManager) -> None:
 
     diff = manager.diff("User", "1.0.0", "2.0.0")
 
-    assert set(diff["added_fields"]) == {"email", "role"}
-
-    assert set(diff["removed_fields"]) == {"username", "status"}
-
-    assert diff["unchanged_fields"] == ["name"]
-
-    assert "age" in diff["modified_fields"]
-    assert "type_changed" in diff["modified_fields"]["age"]
-    assert "required_changed" in diff["modified_fields"]["age"]
-    assert "default_added" in diff["modified_fields"]["age"]
+    assert set(diff.added_fields) == {"email", "role"}
+    assert set(diff.removed_fields) == {"username", "status"}
+    assert diff.unchanged_fields == ["name"]
+    assert "age" in diff.modified_fields
+    assert "type_changed" in diff.modified_fields["age"]
+    assert "required_changed" in diff.modified_fields["age"]
+    assert "default_added" in diff.modified_fields["age"]
 
 
 def test_diff_with_field_validator(manager: ModelManager) -> None:
@@ -893,4 +897,4 @@ def test_diff_with_field_validator(manager: ModelManager) -> None:
 
     diff = manager.diff("User", "1.0.0", "2.0.0")
 
-    assert diff["unchanged_fields"] == ["age"]
+    assert diff.unchanged_fields == ["age"]

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, TypeAlias, TypedDict, TypeVar
+from typing import Any, TypeAlias, TypeVar
 
 from pydantic import BaseModel
 
@@ -29,12 +29,3 @@ MigrationMap: TypeAlias = dict[MigrationKey, MigrationFunc]
 ModelName: TypeAlias = str
 ModelMetadata: TypeAlias = tuple[ModelName, ModelVersion]
 VersionedModels: TypeAlias = dict[ModelVersion, type[BaseModel]]
-
-
-class ModelDiff(TypedDict):
-    """Contains the difference between two models."""
-
-    added_fields: list[str]
-    removed_fields: list[str]
-    modified_fields: dict[str, Any]
-    unchanged_fields: list[str]
