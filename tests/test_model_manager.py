@@ -181,6 +181,86 @@ def test_get_latest_model_without_version_arg(
     assert model == user_v2
 
 
+# Migration data tests
+def test_migrate_data_returns_dict(
+    registered_manager: ModelManager,
+) -> None:
+    """Test migrate_data returns raw dictionary."""
+    result = registered_manager.migrate_data(
+        {"name": "Alice"}, "User", "1.0.0", "2.0.0"
+    )
+    assert isinstance(result, dict)
+    assert result == {"name": "Alice", "email": "unknown@example.com"}
+
+
+def test_migrate_data_with_model_versions(
+    registered_manager: ModelManager,
+) -> None:
+    """Test migrate_data with ModelVersion objects."""
+    result = registered_manager.migrate_data(
+        {"name": "Bob"},
+        "User",
+        ModelVersion(1, 0, 0),
+        ModelVersion(2, 0, 0),
+    )
+    assert isinstance(result, dict)
+    assert result == {"name": "Bob", "email": "unknown@example.com"}
+
+
+def test_migrate_data_preserves_existing_data(
+    registered_manager: ModelManager,
+) -> None:
+    """Test migrate_data preserves all existing fields."""
+    result = registered_manager.migrate_data(
+        {"name": "Charlie", "extra": "data"},
+        "User",
+        "1.0.0",
+        "2.0.0",
+    )
+    assert result["name"] == "Charlie"
+    assert result["email"] == "unknown@example.com"
+
+
+def test_migrate_data_does_not_validate(
+    registered_manager: ModelManager,
+) -> None:
+    """Test migrate_data returns dict even if data would fail validation."""
+
+    @registered_manager.migration("User", "1.0.0", "2.0.0")
+    def bad_migration(data: MigrationData) -> MigrationData:
+        return {"name": data["name"]}  # Missing required 'email'
+
+    result = registered_manager.migrate_data(
+        {"name": "Invalid"}, "User", "1.0.0", "2.0.0"
+    )
+    assert isinstance(result, dict)
+    assert result == {"name": "Invalid"}
+
+
+def test_migrate_returns_model_instance(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate returns validated BaseModel instance."""
+    result = registered_manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+    assert isinstance(result, BaseModel)
+    assert isinstance(result, user_v2)
+    assert result == user_v2(name="Alice", email="unknown@example.com")
+
+
+def test_migrate_and_migrate_data_consistency(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test that migrate and migrate_data produce consistent results."""
+    data = {"name": "Consistency"}
+
+    dict_result = registered_manager.migrate_data(data, "User", "1.0.0", "2.0.0")
+    model_result = registered_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert model_result.model_dump() == dict_result
+
+
 # Migration tests
 def test_migrate_adds_field(
     registered_manager: ModelManager,

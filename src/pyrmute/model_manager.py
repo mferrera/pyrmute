@@ -146,11 +146,29 @@ class ModelManager:
         Returns:
             Migrated BaseModel.
         """
-        migrated_data = self.migration_manager.migrate(
-            data, name, from_version, to_version
-        )
+        migrated_data = self.migrate_data(data, name, from_version, to_version)
         target_model = self.get(name, to_version)
         return target_model.model_validate(migrated_data)
+
+    def migrate_data(
+        self: Self,
+        data: MigrationData,
+        name: str,
+        from_version: str | ModelVersion,
+        to_version: str | ModelVersion,
+    ) -> MigrationData:
+        """Migrate data between versions.
+
+        Args:
+            data: Data dictionary or BaseModel to migrate.
+            name: Name of the model.
+            from_version: Source version.
+            to_version: Target version.
+
+        Returns:
+            Raw Migrated dictionary.
+        """
+        return self.migration_manager.migrate(data, name, from_version, to_version)
 
     def diff(
         self: Self,
