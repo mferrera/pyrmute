@@ -21,8 +21,8 @@ from .types import (
 class Registry:
     """Registry for versioned Pydantic models.
 
-    Manages the registration and retrieval of versioned models and their
-    associated metadata.
+    Manages the registration and retrieval of versioned models and their associated
+    metadata.
 
     Attributes:
         _models: Dictionary mapping model names to version-model mappings.
@@ -57,8 +57,8 @@ class Registry:
             name: Name of the model.
             version: Semantic version string or ModelVersion instance.
             schema_generator: Optional custom schema generator function.
-            enable_ref: If True, this model can be referenced via $ref in
-                separate schema files. If False, it will always be inlined.
+            enable_ref: If True, this model can be referenced via $ref in separate
+                schema files. If False, it will always be inlined.
             auto_migrate: If True, this model does not need a migration function to
                 migrate to the next version. If a migration function is defined it will
                 use it.

@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
-from pyrmute import MigrationData, ModelManager, ModelVersion
+from pyrmute import MigrationData, MigrationTestCase, ModelManager, ModelVersion
 
 
 # Initialization tests
@@ -1867,3 +1867,707 @@ def test_validate_data_before_migration(
             registered_manager.validate_data(migrated.model_dump(), "User", "2.0.0")
             is True
         )
+
+
+# Basic test_migration tests
+def test_test_migration_with_tuples(registered_manager: ModelManager) -> None:
+    """Test test_migration with tuple format."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "unknown@example.com"}),
+            ({"name": "Bob"}, {"name": "Bob", "email": "unknown@example.com"}),
+        ],
+    )
+
+    assert len(results) == 2  # noqa: PLR2004
+    assert results.all_passed is True
+
+
+def test_test_migration_with_test_case_objects(
+    registered_manager: ModelManager,
+) -> None:
+    """Test test_migration with MigrationTestCase objects."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            MigrationTestCase(
+                source={"name": "Alice"},
+                target={"name": "Alice", "email": "unknown@example.com"},
+                description="Alice migration",
+            ),
+        ],
+    )
+
+    assert len(results) == 1
+    assert results.all_passed is True
+
+
+def test_test_migration_mixed_formats(registered_manager: ModelManager) -> None:
+    """Test test_migration with mixed tuple and object formats."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "unknown@example.com"}),
+            MigrationTestCase(
+                source={"name": "Bob"},
+                target={"name": "Bob", "email": "unknown@example.com"},
+            ),
+        ],
+    )
+
+    assert len(results) == 2  # noqa: PLR2004
+    assert results.all_passed is True
+
+
+def test_test_migration_single_test_case(registered_manager: ModelManager) -> None:
+    """Test test_migration with single test case."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "unknown@example.com"}),
+        ],
+    )
+
+    assert len(results) == 1
+    assert results.all_passed is True
+
+
+def test_test_migration_empty_test_cases(registered_manager: ModelManager) -> None:
+    """Test test_migration with empty test cases list."""
+    results = registered_manager.test_migration("User", "1.0.0", "2.0.0", test_cases=[])
+
+    assert len(results) == 0
+    assert results.all_passed is True
+
+
+# Version parameter tests
+def test_test_migration_with_string_versions(
+    registered_manager: ModelManager,
+) -> None:
+    """Test test_migration with string version parameters."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "unknown@example.com"}),
+        ],
+    )
+
+    assert results.all_passed is True
+
+
+def test_test_migration_with_model_versions(
+    registered_manager: ModelManager,
+) -> None:
+    """Test test_migration with ModelVersion objects."""
+    results = registered_manager.test_migration(
+        "User",
+        ModelVersion(1, 0, 0),
+        ModelVersion(2, 0, 0),
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "unknown@example.com"}),
+        ],
+    )
+
+    assert results.all_passed is True
+
+
+def test_test_migration_with_mixed_version_types(
+    registered_manager: ModelManager,
+) -> None:
+    """Test test_migration with mixed version types."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        ModelVersion(2, 0, 0),
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "unknown@example.com"}),
+        ],
+    )
+
+    assert results.all_passed is True
+
+
+# Validation tests
+def test_test_migration_detects_mismatch(registered_manager: ModelManager) -> None:
+    """Test test_migration detects output mismatch."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "wrong@example.com"}),
+        ],
+    )
+
+    assert len(results) == 1
+    assert results.all_passed is False
+    assert len(results.failures) == 1
+    assert results.failures[0].error == "Output mismatch"
+
+
+def test_test_migration_detects_missing_field(
+    registered_manager: ModelManager,
+) -> None:
+    """Test test_migration detects missing field in output."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice"}),
+        ],
+    )
+
+    assert results.all_passed is False
+
+
+def test_test_migration_detects_extra_field(
+    registered_manager: ModelManager,
+) -> None:
+    """Test test_migration detects extra field in output."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            (
+                {"name": "Alice"},
+                {"name": "Alice", "email": "unknown@example.com", "extra": "field"},
+            ),
+        ],
+    )
+
+    assert results.all_passed is False
+
+
+def test_test_migration_detects_wrong_value(
+    registered_manager: ModelManager,
+) -> None:
+    """Test test_migration detects wrong field value."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Bob", "email": "unknown@example.com"}),
+        ],
+    )
+
+    assert results.all_passed is False
+
+
+# Smoke testing (no expected output)
+def test_test_migration_without_expected(registered_manager: ModelManager) -> None:
+    """Test test_migration without expected output (smoke test)."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            MigrationTestCase(source={"name": "Alice"}, target=None),
+        ],
+    )
+
+    assert len(results) == 1
+    assert results.all_passed is True
+
+
+def test_test_migration_multiple_smoke_tests(
+    registered_manager: ModelManager,
+) -> None:
+    """Test test_migration with multiple smoke tests."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            MigrationTestCase(source={"name": "Alice"}, target=None),
+            MigrationTestCase(source={"name": "Bob"}, target=None),
+            MigrationTestCase(source={"name": "Charlie"}, target=None),
+        ],
+    )
+
+    assert len(results) == 3  # noqa: PLR2004
+    assert results.all_passed is True
+
+
+def test_test_migration_mixed_smoke_and_validation(
+    registered_manager: ModelManager,
+) -> None:
+    """Test test_migration with mix of smoke and validation tests."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            MigrationTestCase(source={"name": "Alice"}, target=None),
+            ({"name": "Bob"}, {"name": "Bob", "email": "unknown@example.com"}),
+        ],
+    )
+
+    assert len(results) == 2  # noqa: PLR2004
+    assert results.all_passed is True
+
+
+# Exception handling tests
+def test_test_migration_catches_migration_exception(manager: ModelManager) -> None:
+    """Test test_migration catches and reports migration exceptions."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def bad_migration(data: MigrationData) -> MigrationData:
+        raise ValueError("Migration failed")
+
+    results = manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "alice@example.com"}),
+        ],
+    )
+
+    assert len(results) == 1
+    assert results.all_passed is False
+    assert results.failures[0].error
+    assert "Migration failed" in results.failures[0].error
+
+
+def test_test_migration_catches_key_error(manager: ModelManager) -> None:
+    """Test test_migration catches KeyError in migration."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def bad_migration(data: MigrationData) -> MigrationData:
+        return {**data, "email": data["nonexistent"]}
+
+    results = manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "alice@example.com"}),
+        ],
+    )
+
+    assert results.all_passed is False
+    assert results.failures[0].error
+    assert "nonexistent" in results.failures[0].error
+
+
+def test_test_migration_continues_after_exception(manager: ModelManager) -> None:
+    """Test test_migration continues testing after exception."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def conditional_migration(data: MigrationData) -> MigrationData:
+        if data["name"] == "Alice":
+            raise ValueError("Alice not allowed")
+        return {**data, "email": "unknown@example.com"}
+
+    results = manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "unknown@example.com"}),
+            ({"name": "Bob"}, {"name": "Bob", "email": "unknown@example.com"}),
+        ],
+    )
+
+    assert len(results) == 2  # noqa: PLR2004
+    assert results.all_passed is False
+    assert len(results.failures) == 1
+
+
+# Description preservation tests
+def test_test_migration_preserves_descriptions(
+    registered_manager: ModelManager,
+) -> None:
+    """Test test_migration preserves test case descriptions."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            MigrationTestCase(
+                source={"name": "Alice"},
+                target={"name": "Alice", "email": "unknown@example.com"},
+                description="Test Alice",
+            ),
+        ],
+    )
+
+    assert results.results[0].test_case.description == "Test Alice"
+
+
+def test_test_migration_tuple_has_empty_description(
+    registered_manager: ModelManager,
+) -> None:
+    """Test that tuple format results in empty description."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "unknown@example.com"}),
+        ],
+    )
+
+    assert results.results[0].test_case.description == ""
+
+
+# Multiple test cases tests
+def test_test_migration_multiple_passing(registered_manager: ModelManager) -> None:
+    """Test test_migration with multiple passing tests."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "unknown@example.com"}),
+            ({"name": "Bob"}, {"name": "Bob", "email": "unknown@example.com"}),
+            ({"name": "Charlie"}, {"name": "Charlie", "email": "unknown@example.com"}),
+        ],
+    )
+
+    assert len(results) == 3  # noqa: PLR2004
+    assert results.all_passed is True
+    assert len(results.failures) == 0
+
+
+def test_test_migration_multiple_failures(manager: ModelManager) -> None:
+    """Test test_migration with multiple failures."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate(data: MigrationData) -> MigrationData:
+        return {**data, "email": "default@example.com"}
+
+    results = manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "alice@example.com"}),
+            ({"name": "Bob"}, {"name": "Bob", "email": "bob@example.com"}),
+            ({"name": "Charlie"}, {"name": "Charlie", "email": "default@example.com"}),
+        ],
+    )
+
+    assert len(results) == 3  # noqa: PLR2004
+    assert results.all_passed is False
+    assert len(results.failures) == 2  # noqa: PLR2004
+
+
+def test_test_migration_mixed_pass_fail(manager: ModelManager) -> None:
+    """Test test_migration with mix of passing and failing tests."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate(data: MigrationData) -> MigrationData:
+        return {**data, "email": f"{data['name'].lower()}@example.com"}
+
+    results = manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "alice@example.com"}),
+            ({"name": "Bob"}, {"name": "Bob", "email": "wrong@example.com"}),
+            ({"name": "Charlie"}, {"name": "Charlie", "email": "charlie@example.com"}),
+        ],
+    )
+
+    assert len(results) == 3  # noqa: PLR2004
+    assert results.all_passed is False
+    assert len(results.failures) == 1
+
+
+# Chained migration tests
+def test_test_migration_chain_through_versions(manager: ModelManager) -> None:
+    """Test test_migration works with chained migrations."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.model("User", "3.0.0")
+    class UserV3(BaseModel):
+        name: str
+        email: str
+        age: int
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate_1_to_2(data: MigrationData) -> MigrationData:
+        return {**data, "email": "default@example.com"}
+
+    @manager.migration("User", "2.0.0", "3.0.0")
+    def migrate_2_to_3(data: MigrationData) -> MigrationData:
+        return {**data, "age": 25}
+
+    results = manager.test_migration(
+        "User",
+        "1.0.0",
+        "3.0.0",
+        test_cases=[
+            (
+                {"name": "Alice"},
+                {"name": "Alice", "email": "default@example.com", "age": 25},
+            ),
+        ],
+    )
+
+    assert len(results) == 1
+    assert results.all_passed is True
+
+
+def test_test_migration_multi_hop_chain(manager: ModelManager) -> None:
+    """Test test_migration with longer migration chain."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.model("User", "3.0.0")
+    class UserV3(BaseModel):
+        name: str
+        email: str
+        age: int
+
+    @manager.model("User", "4.0.0")
+    class UserV4(BaseModel):
+        name: str
+        email: str
+        age: int
+        active: bool
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate_1_to_2(data: MigrationData) -> MigrationData:
+        return {**data, "email": "default@example.com"}
+
+    @manager.migration("User", "2.0.0", "3.0.0")
+    def migrate_2_to_3(data: MigrationData) -> MigrationData:
+        return {**data, "age": 0}
+
+    @manager.migration("User", "3.0.0", "4.0.0")
+    def migrate_3_to_4(data: MigrationData) -> MigrationData:
+        return {**data, "active": True}
+
+    results = manager.test_migration(
+        "User",
+        "1.0.0",
+        "4.0.0",
+        test_cases=[
+            (
+                {"name": "Alice"},
+                {
+                    "name": "Alice",
+                    "email": "default@example.com",
+                    "age": 0,
+                    "active": True,
+                },
+            ),
+        ],
+    )
+
+    assert results.all_passed is True
+
+
+# Actual output preservation tests
+def test_test_migration_preserves_actual_on_failure(
+    registered_manager: ModelManager,
+) -> None:
+    """Test that actual output is preserved even on failure."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "wrong@example.com"}),
+        ],
+    )
+
+    assert results.failures[0].actual == {
+        "name": "Alice",
+        "email": "unknown@example.com",
+    }
+
+
+def test_test_migration_preserves_actual_on_success(
+    registered_manager: ModelManager,
+) -> None:
+    """Test that actual output is preserved on success."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "unknown@example.com"}),
+        ],
+    )
+
+    assert results.results[0].actual == {
+        "name": "Alice",
+        "email": "unknown@example.com",
+    }
+
+
+def test_test_migration_preserves_actual_on_exception(
+    manager: ModelManager,
+) -> None:
+    """Test that actual is empty dict on exception."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def bad_migration(data: MigrationData) -> MigrationData:
+        raise ValueError("Failed")
+
+    results = manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice", "email": "alice@example.com"}),
+        ],
+    )
+
+    assert results.failures[0].actual == {}
+
+
+# Edge case tests
+def test_test_migration_with_complex_data(registered_manager: ModelManager) -> None:
+    """Test test_migration with complex nested data."""
+    results = registered_manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            (
+                {"name": "Alice", "metadata": {"key": "value"}},
+                {
+                    "name": "Alice",
+                    "email": "unknown@example.com",
+                    "metadata": {"key": "value"},
+                },
+            ),
+        ],
+    )
+
+    assert results.all_passed is True
+
+
+def test_test_migration_with_none_values(manager: ModelManager) -> None:
+    """Test test_migration handles None values correctly."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str | None
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str | None
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate(data: MigrationData) -> MigrationData:
+        return {**data, "email": "default@example.com"}
+
+    results = manager.test_migration(
+        "User",
+        "1.0.0",
+        "2.0.0",
+        test_cases=[
+            ({"name": None}, {"name": None, "email": "default@example.com"}),
+        ],
+    )
+
+    assert results.all_passed is True
+
+
+def test_test_migration_same_version(manager: ModelManager) -> None:
+    """Test test_migration with same source and target version."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    results = manager.test_migration(
+        "User",
+        "1.0.0",
+        "1.0.0",
+        test_cases=[
+            ({"name": "Alice"}, {"name": "Alice"}),
+        ],
+    )
+
+    assert results.all_passed is True
