@@ -1,6 +1,7 @@
 """Model manager."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Self
 
@@ -24,8 +25,7 @@ from .types import (
 class ModelManager:
     """High-level interface for versioned model management.
 
-    Provides a unified API for model registration, migration, and schema
-    management.
+    Provides a unified API for model registration, migration, and schema management.
 
     Attributes:
         registry: Registry instance.
@@ -137,7 +137,7 @@ class ModelManager:
         """Migrate data between versions.
 
         Args:
-            data: Data dictionary or BaseModel to migrate.
+            data: Data dictionary to migrate.
             name: Name of the model.
             from_version: Source version.
             to_version: Target version.
@@ -159,7 +159,7 @@ class ModelManager:
         """Migrate data between versions.
 
         Args:
-            data: Data dictionary or BaseModel to migrate.
+            data: Data dictionary to migrate.
             name: Name of the model.
             from_version: Source version.
             to_version: Target version.
@@ -169,6 +169,210 @@ class ModelManager:
         """
         return self.migration_manager.migrate(data, name, from_version, to_version)
 
+    def migrate_batch(  # noqa: PLR0913
+        self: Self,
+        data_list: Iterable[MigrationData],
+        name: str,
+        from_version: str | ModelVersion,
+        to_version: str | ModelVersion,
+        parallel: bool = False,
+        max_workers: int | None = None,
+        use_processes: bool = False,
+    ) -> list[BaseModel]:
+        """Migrate multiple data items between versions.
+
+        Args:
+            data_list: Iterable of data dictionaries to migrate.
+            name: Name of the model.
+            from_version: Source version.
+            to_version: Target version.
+            parallel: If True, use parallel processing.
+            max_workers: Maximum number of workers for parallel processing.  Defaults to
+                None (uses executor default).
+            use_processes: If True, use ProcessPoolExecutor instead of
+                ThreadPoolExecutor. Useful for CPU-intensive migrations.
+
+        Returns:
+            List of migrated BaseModel instances.
+
+        Example:
+            >>> legacy_users = [
+            ...     {"name": "Alice"},
+            ...     {"name": "Bob"},
+            ...     {"name": "Charlie"}
+            ... ]
+            >>> users = manager.migrate_batch(
+            ...     legacy_users,
+            ...     "User",
+            ...     from_version="1.0.0",
+            ...     to_version="3.0.0",
+            ...     parallel=True
+            ... )
+        """
+        data_list = list(data_list)
+
+        if not data_list:
+            return []
+
+        if not parallel:
+            return [
+                self.migrate(item, name, from_version, to_version) for item in data_list
+            ]
+
+        executor_class = ProcessPoolExecutor if use_processes else ThreadPoolExecutor
+        with executor_class(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(self.migrate, item, name, from_version, to_version)
+                for item in data_list
+            ]
+            return [future.result() for future in futures]
+
+    def migrate_batch_data(  # noqa: PLR0913
+        self: Self,
+        data_list: Iterable[MigrationData],
+        name: str,
+        from_version: str | ModelVersion,
+        to_version: str | ModelVersion,
+        parallel: bool = False,
+        max_workers: int | None = None,
+        use_processes: bool = False,
+    ) -> list[MigrationData]:
+        """Migrate multiple data items between versions, returning raw dictionaries.
+
+        Args:
+            data_list: Iterable of data dictionaries to migrate.
+            name: Name of the model.
+            from_version: Source version.
+            to_version: Target version.
+            parallel: If True, use parallel processing.
+            max_workers: Maximum number of workers for parallel processing.
+            use_processes: If True, use ProcessPoolExecutor.
+
+        Returns:
+            List of raw migrated dictionaries.
+
+        Example:
+            >>> legacy_data = [{"name": "Alice"}, {"name": "Bob"}]
+            >>> migrated_data = manager.migrate_batch_data(
+            ...     legacy_data,
+            ...     "User",
+            ...     from_version="1.0.0",
+            ...     to_version="2.0.0"
+            ... )
+        """
+        data_list = list(data_list)
+
+        if not data_list:
+            return []
+
+        if not parallel:
+            return [
+                self.migrate_data(item, name, from_version, to_version)
+                for item in data_list
+            ]
+
+        executor_class = ProcessPoolExecutor if use_processes else ThreadPoolExecutor
+        with executor_class(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(self.migrate_data, item, name, from_version, to_version)
+                for item in data_list
+            ]
+            return [future.result() for future in futures]
+
+    def migrate_batch_streaming(
+        self: Self,
+        data_list: Iterable[MigrationData],
+        name: str,
+        from_version: str | ModelVersion,
+        to_version: str | ModelVersion,
+        chunk_size: int = 100,
+    ) -> Iterable[BaseModel]:
+        """Migrate data in chunks, yielding results as they complete.
+
+        Useful for large datasets where you want to start processing results before all
+        migrations complete.
+
+        Args:
+            data_list: Iterable of data dictionaries to migrate.
+            name: Name of the model.
+            from_version: Source version.
+            to_version: Target version.
+            chunk_size: Number of items to process in each chunk.
+
+        Yields:
+            Migrated BaseModel instances.
+
+        Example:
+            >>> legacy_users = load_large_dataset()
+            >>> for user in manager.migrate_batch_streaming(
+            ...     legacy_users,
+            ...     "User",
+            ...     from_version="1.0.0",
+            ...     to_version="3.0.0"
+            ... ):
+            ...     # Process each user as it's migrated
+            ...     save_to_database(user)
+        """
+        chunk = []
+
+        for item in data_list:
+            chunk.append(item)
+
+            if len(chunk) >= chunk_size:
+                yield from self.migrate_batch(chunk, name, from_version, to_version)
+                chunk = []
+
+        if chunk:
+            yield from self.migrate_batch(chunk, name, from_version, to_version)
+
+    def migrate_batch_data_streaming(
+        self: Self,
+        data_list: Iterable[MigrationData],
+        name: str,
+        from_version: str | ModelVersion,
+        to_version: str | ModelVersion,
+        chunk_size: int = 100,
+    ) -> Iterable[MigrationData]:
+        """Migrate data in chunks, yielding raw dictionaries as they complete.
+
+        Useful for large datasets where you want to start processing results before all
+        migrations complete, without the validation overhead.
+
+        Args:
+            data_list: Iterable of data dictionaries to migrate.
+            name: Name of the model.
+            from_version: Source version.
+            to_version: Target version.
+            chunk_size: Number of items to process in each chunk.
+
+        Yields:
+            Raw migrated dictionaries.
+
+        Example:
+            >>> legacy_data = load_large_dataset()
+            >>> for data in manager.migrate_batch_data_streaming(
+            ...     legacy_data,
+            ...     "User",
+            ...     from_version="1.0.0",
+            ...     to_version="3.0.0"
+            ... ):
+            ...     # Process raw data as it's migrated
+            ...     bulk_insert_to_database(data)
+        """
+        chunk = []
+
+        for item in data_list:
+            chunk.append(item)
+
+            if len(chunk) >= chunk_size:
+                yield from self.migrate_batch_data(
+                    chunk, name, from_version, to_version
+                )
+                chunk = []
+
+        if chunk:
+            yield from self.migrate_batch_data(chunk, name, from_version, to_version)
+
     def diff(
         self: Self,
         name: str,
@@ -177,8 +381,8 @@ class ModelManager:
     ) -> ModelDiff:
         """Get a detailed diff between two model versions.
 
-        Compares field names, types, requirements, and default values to provide
-        a comprehensive view of what changed between versions.
+        Compares field names, types, requirements, and default values to provide a
+        comprehensive view of what changed between versions.
 
         Args:
             name: Name of the model.
@@ -265,8 +469,8 @@ class ModelManager:
         Args:
             output_dir: Directory path for output.
             indent: JSON indentation level.
-            separate_definitions: If True, create separate schema files for
-                nested models and use $ref to reference them.
+            separate_definitions: If True, create separate schema files for nested
+                models and use $ref to reference them.
             ref_template: Template for $ref URLs when separate_definitions=True.
                 Defaults to relative file references if not provided.
 
@@ -301,8 +505,8 @@ class ModelManager:
 
         Args:
             output_dir: Directory path for output.
-            ref_template: Template for $ref URLs. Supports {model} and
-                {version} placeholders. Defaults to relative file refs.
+            ref_template: Template for $ref URLs. Supports {model} and {version}
+                placeholders. Defaults to relative file refs.
             indent: JSON indentation level.
 
         Example:
