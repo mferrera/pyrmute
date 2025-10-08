@@ -106,6 +106,7 @@ select = [
     "I",  # isort
     "LOG",  # logging
     "NPY",  # numpy
+    "PERF",  # perflint
     "PIE",  # flake8-pie
     "PL",  # pylint
     "Q",  # flake8-quotes
