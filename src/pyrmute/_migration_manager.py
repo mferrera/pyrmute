@@ -105,7 +105,7 @@ class MigrationManager:
         if from_ver == to_ver:
             return data
 
-        path = self._find_migration_path(name, from_ver, to_ver)
+        path = self.find_migration_path(name, from_ver, to_ver)
 
         current_data = data
         for i in range(len(path) - 1):
@@ -126,7 +126,7 @@ class MigrationManager:
 
         return current_data
 
-    def _find_migration_path(
+    def find_migration_path(
         self: Self,
         name: ModelName,
         from_ver: ModelVersion,
@@ -153,6 +153,37 @@ class MigrationManager:
         if from_idx < to_idx:
             return versions[from_idx : to_idx + 1]
         return versions[to_idx : from_idx + 1][::-1]
+
+    def validate_migration_path(
+        self: Self,
+        name: ModelName,
+        from_ver: ModelVersion,
+        to_ver: ModelVersion,
+    ) -> None:
+        """Validate that a migration path exists and all steps are valid.
+
+        Args:
+            name: Name of the model.
+            from_ver: Source version.
+            to_ver: Target version.
+
+        Raises:
+            ValueError: If any step in the migration path is invalid.
+        """
+        path = self.find_migration_path(name, from_ver, to_ver)
+
+        for i in range(len(path) - 1):
+            current_ver = path[i]
+            next_ver = path[i + 1]
+            migration_key = (current_ver, next_ver)
+
+            has_explicit = migration_key in self.registry._migrations.get(name, {})
+            has_auto = next_ver in self.registry._auto_migrate_enabled.get(name, set())
+
+            if not has_explicit and not has_auto:
+                raise ValueError(
+                    f"No migration found for {name}: {current_ver} → {next_ver}"
+                )
 
     def _auto_migrate(
         self: Self,
