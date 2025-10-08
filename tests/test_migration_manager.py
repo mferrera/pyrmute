@@ -425,7 +425,7 @@ def test_find_migration_path_forward(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test finding migration path from lower to higher version."""
-    path = populated_migration_manager._find_migration_path(
+    path = populated_migration_manager.find_migration_path(
         "User",
         ModelVersion(1, 0, 0),
         ModelVersion(3, 0, 0),
@@ -441,7 +441,7 @@ def test_find_migration_path_backward(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test finding migration path from higher to lower version."""
-    path = populated_migration_manager._find_migration_path(
+    path = populated_migration_manager.find_migration_path(
         "User",
         ModelVersion(3, 0, 0),
         ModelVersion(1, 0, 0),
@@ -457,7 +457,7 @@ def test_find_migration_path_adjacent(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test finding migration path for adjacent versions."""
-    path = populated_migration_manager._find_migration_path(
+    path = populated_migration_manager.find_migration_path(
         "User",
         ModelVersion(1, 0, 0),
         ModelVersion(2, 0, 0),
@@ -469,7 +469,7 @@ def test_find_migration_path_same_version(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test finding migration path for same version."""
-    path = populated_migration_manager._find_migration_path(
+    path = populated_migration_manager.find_migration_path(
         "User",
         ModelVersion(2, 0, 0),
         ModelVersion(2, 0, 0),
@@ -482,7 +482,7 @@ def test_find_migration_path_invalid_from_version(
 ) -> None:
     """Test finding migration path with invalid from version."""
     with pytest.raises(ValueError, match="Invalid version range"):
-        populated_migration_manager._find_migration_path(
+        populated_migration_manager.find_migration_path(
             "User",
             ModelVersion(0, 0, 1),
             ModelVersion(2, 0, 0),
@@ -494,7 +494,7 @@ def test_find_migration_path_invalid_to_version(
 ) -> None:
     """Test finding migration path with invalid to version."""
     with pytest.raises(ValueError, match="Invalid version range"):
-        populated_migration_manager._find_migration_path(
+        populated_migration_manager.find_migration_path(
             "User",
             ModelVersion(1, 0, 0),
             ModelVersion(9, 0, 0),
@@ -680,3 +680,418 @@ def test_extract_nested_model_info_no_from_field(registry: Registry) -> None:
     # Should default to same version when from_field is None
     assert info[1] == ModelVersion(1, 0, 0)
     assert info[2] == ModelVersion(1, 0, 0)
+
+
+def test_validate_migration_path_direct_migration(
+    registered_manager: ModelManager,
+) -> None:
+    """Test validate_migration_path with direct migration."""
+    # Should not raise
+    registered_manager.migration_manager.validate_migration_path(
+        "User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
+    )
+
+
+def test_validate_migration_path_no_migration_raises(
+    manager: ModelManager,
+    user_v1: type[BaseModel],
+    user_v2: type[BaseModel],
+) -> None:
+    """Test validate_migration_path raises when no migration exists."""
+    manager.model("User", "1.0.0")(user_v1)
+    manager.model("User", "2.0.0")(user_v2)
+
+    with pytest.raises(
+        ValueError, match=r"No migration found for User: 1\.0\.0 → 2\.0\.0"
+    ):
+        manager.migration_manager.validate_migration_path(
+            "User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
+        )
+
+
+def test_validate_migration_path_auto_migrate_enabled(
+    manager: ModelManager,
+) -> None:
+    """Test validate_migration_path succeeds with auto_migrate."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0", auto_migrate=True)
+    class UserV2(BaseModel):
+        name: str
+        email: str = "default@example.com"
+
+    # Should not raise
+    manager.migration_manager.validate_migration_path(
+        "User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
+    )
+
+
+def test_validate_migration_path_multi_hop_complete(
+    manager: ModelManager,
+) -> None:
+    """Test validate_migration_path with complete multi-hop chain."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.model("User", "3.0.0")
+    class UserV3(BaseModel):
+        name: str
+        email: str
+        age: int
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate_1_to_2(data: MigrationData) -> MigrationData:
+        return {**data, "email": "test@example.com"}
+
+    @manager.migration("User", "2.0.0", "3.0.0")
+    def migrate_2_to_3(data: MigrationData) -> MigrationData:
+        return {**data, "age": 0}
+
+    # Should not raise
+    manager.migration_manager.validate_migration_path(
+        "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
+    )
+
+
+def test_validate_migration_path_multi_hop_broken_chain(
+    manager: ModelManager,
+) -> None:
+    """Test validate_migration_path raises with broken chain."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.model("User", "3.0.0")
+    class UserV3(BaseModel):
+        name: str
+        email: str
+        age: int
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate_1_to_2(data: MigrationData) -> MigrationData:
+        return {**data, "email": "test@example.com"}
+
+    with pytest.raises(
+        ValueError, match=r"No migration found for User: 2\.0\.0 → 3\.0\.0"
+    ):
+        manager.migration_manager.validate_migration_path(
+            "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
+        )
+
+
+def test_validate_migration_path_multi_hop_first_step_missing(
+    manager: ModelManager,
+) -> None:
+    """Test validate_migration_path raises when first step is missing."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.model("User", "3.0.0")
+    class UserV3(BaseModel):
+        name: str
+        email: str
+        age: int
+
+    @manager.migration("User", "2.0.0", "3.0.0")
+    def migrate_2_to_3(data: MigrationData) -> MigrationData:
+        return {**data, "age": 0}
+
+    with pytest.raises(
+        ValueError, match=r"No migration found for User: 1\.0\.0 → 2\.0\.0"
+    ):
+        manager.migration_manager.validate_migration_path(
+            "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
+        )
+
+
+def test_validate_migration_path_complex_chain(
+    manager: ModelManager,
+) -> None:
+    """Test validate_migration_path with complex multi-hop chain."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "1.5.0")
+    class UserV15(BaseModel):
+        name: str
+        middle_name: str = ""
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        middle_name: str
+        email: str
+
+    @manager.model("User", "3.0.0")
+    class UserV3(BaseModel):
+        name: str
+        middle_name: str
+        email: str
+        age: int
+
+    @manager.migration("User", "1.0.0", "1.5.0")
+    def migrate_1_to_15(data: MigrationData) -> MigrationData:
+        return {**data, "middle_name": ""}
+
+    @manager.migration("User", "1.5.0", "2.0.0")
+    def migrate_15_to_2(data: MigrationData) -> MigrationData:
+        return {**data, "email": "test@example.com"}
+
+    @manager.migration("User", "2.0.0", "3.0.0")
+    def migrate_2_to_3(data: MigrationData) -> MigrationData:
+        return {**data, "age": 0}
+
+    # Should not raise for any valid path
+    manager.migration_manager.validate_migration_path(
+        "User", ModelVersion(1, 0, 0), ModelVersion(1, 5, 0)
+    )
+    manager.migration_manager.validate_migration_path(
+        "User", ModelVersion(1, 5, 0), ModelVersion(2, 0, 0)
+    )
+    manager.migration_manager.validate_migration_path(
+        "User", ModelVersion(2, 0, 0), ModelVersion(3, 0, 0)
+    )
+    manager.migration_manager.validate_migration_path(
+        "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
+    )
+
+
+def test_validate_migration_path_nonexistent_model(
+    manager: ModelManager,
+) -> None:
+    """Test validate_migration_path with nonexistent model."""
+    with pytest.raises(ValueError, match="Model NonExistent not found"):
+        manager.migration_manager.validate_migration_path(
+            "NonExistent", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
+        )
+
+
+def test_validate_migration_path_nonexistent_from_version(
+    manager: ModelManager,
+    user_v1: type[BaseModel],
+) -> None:
+    """Test validate_migration_path with nonexistent source version."""
+    manager.model("User", "1.0.0")(user_v1)
+
+    with pytest.raises(ValueError, match="Invalid version range"):
+        manager.migration_manager.validate_migration_path(
+            "User", ModelVersion(2, 0, 0), ModelVersion(1, 0, 0)
+        )
+
+
+def test_validate_migration_path_nonexistent_to_version(
+    manager: ModelManager,
+    user_v1: type[BaseModel],
+) -> None:
+    """Test validate_migration_path with nonexistent target version."""
+    manager.model("User", "1.0.0")(user_v1)
+
+    with pytest.raises(ValueError, match="Invalid version range"):
+        manager.migration_manager.validate_migration_path(
+            "User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
+        )
+
+
+def test_validate_migration_path_same_version(
+    manager: ModelManager,
+    user_v1: type[BaseModel],
+) -> None:
+    """Test validate_migration_path with same source and target."""
+    manager.model("User", "1.0.0")(user_v1)
+
+    # Should not raise
+    manager.migration_manager.validate_migration_path(
+        "User", ModelVersion(1, 0, 0), ModelVersion(1, 0, 0)
+    )
+
+
+# Backward migration tests
+def test_validate_migration_path_backward_no_migration(
+    manager: ModelManager,
+) -> None:
+    """Test validate_migration_path for backward migration without migration."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    # Forward migration only
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate_forward(data: MigrationData) -> MigrationData:
+        return {**data, "email": "test@example.com"}
+
+    with pytest.raises(
+        ValueError, match=r"No migration found for User: 2\.0\.0 → 1\.0\.0"
+    ):
+        manager.migration_manager.validate_migration_path(
+            "User", ModelVersion(2, 0, 0), ModelVersion(1, 0, 0)
+        )
+
+
+def test_validate_migration_path_bidirectional(
+    manager: ModelManager,
+) -> None:
+    """Test validate_migration_path with bidirectional migrations."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate_forward(data: MigrationData) -> MigrationData:
+        return {**data, "email": "test@example.com"}
+
+    @manager.migration("User", "2.0.0", "1.0.0")
+    def migrate_backward(data: MigrationData) -> MigrationData:
+        result = dict(data)
+        result.pop("email", None)
+        return result
+
+    # Both directions should not raise
+    manager.migration_manager.validate_migration_path(
+        "User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
+    )
+    manager.migration_manager.validate_migration_path(
+        "User", ModelVersion(2, 0, 0), ModelVersion(1, 0, 0)
+    )
+
+
+def test_validate_migration_path_mixed_auto_explicit(
+    manager: ModelManager,
+) -> None:
+    """Test validate_migration_path with mix of auto and explicit migrations."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0", auto_migrate=True)
+    class UserV2(BaseModel):
+        name: str
+        email: str = "default@example.com"
+
+    @manager.model("User", "3.0.0")
+    class UserV3(BaseModel):
+        name: str
+        email: str
+        age: int
+
+    @manager.migration("User", "2.0.0", "3.0.0")
+    def migrate_2_to_3(data: MigrationData) -> MigrationData:
+        return {**data, "age": 0}
+
+    manager.migration_manager.validate_migration_path(
+        "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
+    )
+
+
+def test_validate_migration_path_all_auto_migrate(
+    manager: ModelManager,
+) -> None:
+    """Test validate_migration_path with all auto-migrations."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0", auto_migrate=True)
+    class UserV2(BaseModel):
+        name: str
+        email: str = "default@example.com"
+
+    @manager.model("User", "3.0.0", auto_migrate=True)
+    class UserV3(BaseModel):
+        name: str
+        email: str
+        age: int = 0
+
+    manager.migration_manager.validate_migration_path(
+        "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
+    )
+
+
+def test_validate_migration_path_explicit_overrides_auto(
+    manager: ModelManager,
+) -> None:
+    """Test that explicit migrations take precedence over auto-migrate."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0", auto_migrate=True)
+    class UserV2(BaseModel):
+        name: str
+        email: str = "auto@example.com"
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def explicit_migration(data: MigrationData) -> MigrationData:
+        return {**data, "email": "explicit@example.com"}
+
+    # Should not raise
+    manager.migration_manager.validate_migration_path(
+        "User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
+    )
+
+
+def test_validate_migration_path_middle_version_auto_migrate_disabled(
+    manager: ModelManager,
+) -> None:
+    """Test validate_migration_path fails when middle version has no migration."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0", auto_migrate=False)
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.model("User", "3.0.0", auto_migrate=True)
+    class UserV3(BaseModel):
+        name: str
+        email: str
+        age: int = 0
+
+    with pytest.raises(
+        ValueError, match=r"No migration found for User: 1\.0\.0 → 2\.0\.0"
+    ):
+        manager.migration_manager.validate_migration_path(
+            "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
+        )

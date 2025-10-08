@@ -127,6 +127,44 @@ class ModelManager:
             return self.registry.get_latest(name)
         return self.registry.get_model(name, version)
 
+    def has_migration_path(
+        self: Self,
+        name: str,
+        from_version: str | ModelVersion,
+        to_version: str | ModelVersion,
+    ) -> bool:
+        """Check if a migration path exists between two versions.
+
+        Args:
+            name: Name of the model.
+            from_version: Source version.
+            to_version: Target version.
+
+        Returns:
+            True if a migration path exists, False otherwise.
+
+        Example:
+            >>> if manager.has_migration_path("User", "1.0.0", "3.0.0"):
+            ...     users = manager.migrate_batch(old_users, "User", "1.0.0", "3.0.0")
+            ... else:
+            ...     logger.error("Cannot migrate users to v3.0.0")
+        """
+        from_ver = (
+            ModelVersion.parse(from_version)
+            if isinstance(from_version, str)
+            else from_version
+        )
+        to_ver = (
+            ModelVersion.parse(to_version)
+            if isinstance(to_version, str)
+            else to_version
+        )
+        try:
+            self.migration_manager.validate_migration_path(name, from_ver, to_ver)
+            return True
+        except (KeyError, ValueError):
+            return False
+
     def migrate(
         self: Self,
         data: MigrationData,

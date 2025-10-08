@@ -1542,3 +1542,48 @@ def test_diff_with_field_validator(manager: ModelManager) -> None:
     diff = manager.diff("User", "1.0.0", "2.0.0")
 
     assert diff.unchanged_fields == ["age"]
+
+
+def test_has_migration_path_returns_true_when_valid(
+    registered_manager: ModelManager,
+) -> None:
+    """Test has_migration_path returns True for valid paths."""
+    assert registered_manager.has_migration_path("User", "1.0.0", "2.0.0") is True
+
+
+def test_has_migration_path_returns_false_when_invalid(
+    manager: ModelManager,
+    user_v1: type[BaseModel],
+    user_v2: type[BaseModel],
+) -> None:
+    """Test has_migration_path returns False for invalid paths."""
+    manager.model("User", "1.0.0")(user_v1)
+    manager.model("User", "2.0.0")(user_v2)
+
+    assert manager.has_migration_path("User", "1.0.0", "2.0.0") is False
+
+
+def test_has_migration_path_returns_false_for_nonexistent_model(
+    manager: ModelManager,
+) -> None:
+    """Test has_migration_path returns False for nonexistent models."""
+    assert manager.has_migration_path("NonExistent", "1.0.0", "2.0.0") is False
+
+
+def test_has_migration_path_accepts_string_versions(
+    registered_manager: ModelManager,
+) -> None:
+    """Test has_migration_path accepts string versions."""
+    assert registered_manager.has_migration_path("User", "1.0.0", "2.0.0") is True
+
+
+def test_has_migration_path_accepts_model_versions(
+    registered_manager: ModelManager,
+) -> None:
+    """Test has_migration_path accepts ModelVersion objects."""
+    result = registered_manager.has_migration_path(
+        "User",
+        ModelVersion(1, 0, 0),
+        ModelVersion(2, 0, 0),
+    )
+    assert result is True
