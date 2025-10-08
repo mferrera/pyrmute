@@ -20,7 +20,7 @@ class MigrationManager:
     support for nested Pydantic models.
 
     Attributes:
-        registry: Reference to the VersionedModelRegistry.
+        registry: Reference to the Registry.
     """
 
     def __init__(self: Self, registry: Registry) -> None:
@@ -225,20 +225,17 @@ class MigrationManager:
         if value is None:
             return None
 
-        # Check if this is a nested Pydantic model
         if isinstance(value, dict):
             nested_info = self._extract_nested_model_info(value, from_field, to_field)
             if nested_info:
                 nested_name, nested_from_ver, nested_to_ver = nested_info
                 return self.migrate(value, nested_name, nested_from_ver, nested_to_ver)
 
-            # Try to recursively migrate dict values
             return {
                 k: self._migrate_field_value(v, from_field, to_field)
                 for k, v in value.items()
             }
 
-        # Handle lists
         if isinstance(value, list):
             return [
                 self._migrate_field_value(item, from_field, to_field) for item in value
@@ -263,12 +260,10 @@ class MigrationManager:
             Tuple of (model_name, from_version, to_version) if this is a
             versioned nested model, None otherwise.
         """
-        # Get the target model type
         to_model_type = self._get_model_type_from_field(to_field)
         if not to_model_type or not issubclass(to_model_type, BaseModel):
             return None
 
-        # Check if target model is registered
         to_info = self.registry.get_model_info(to_model_type)
         if not to_info:
             return None
@@ -305,11 +300,9 @@ class MigrationManager:
         if annotation is None:
             return None
 
-        # Handle direct model types
         if isinstance(annotation, type) and issubclass(annotation, BaseModel):
             return annotation
 
-        # Handle Optional, List, etc.
         origin = get_origin(annotation)
         if origin is not None:
             args = get_args(annotation)

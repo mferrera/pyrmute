@@ -21,8 +21,8 @@ from .types import (
 class SchemaManager:
     """Manager for JSON schema generation and export.
 
-    Handles schema generation from Pydantic models with support for
-    custom schema generators and sub-schema references.
+    Handles schema generation from Pydantic models with support for custom schema
+    generators and sub-schema references.
 
     Attributes:
         registry: Reference to the Registry.
@@ -73,14 +73,14 @@ class SchemaManager:
     ) -> JsonSchema:
         """Get JSON schema with separate definition files for nested models.
 
-        This creates a schema where nested Pydantic models are referenced
-        as external JSON schema files rather than inline definitions.
+        This creates a schema where nested Pydantic models are referenced as external
+        JSON schema files rather than inline definitions.
 
         Args:
             name: Name of the model.
             version: Semantic version.
-            ref_template: Template for generating $ref URLs. Supports {model}
-                and {version} placeholders.
+            ref_template: Template for generating $ref URLs. Supports {model} and
+                {version} placeholders.
             **schema_kwargs: Additional arguments for schema generation.
 
         Returns:
@@ -93,8 +93,6 @@ class SchemaManager:
             ... )
         """
         ver = ModelVersion.parse(version) if isinstance(version, str) else version
-
-        # Get the base schema with definitions
         schema = self.get_schema(name, ver, **schema_kwargs)
 
         # Extract and replace definitions with external references
@@ -141,13 +139,10 @@ class SchemaManager:
                     ):
                         def_name = ref.split("/")[-1]
 
-                        # Try to find the model info for this definition
                         model_info = self._find_model_for_definition(def_name)
-
                         if model_info:
                             model_name, model_version = model_info
 
-                            # Check if this model is enabled for $ref
                             if self.registry.is_ref_enabled(model_name, model_version):
                                 # Replace with external reference
                                 return {
@@ -158,7 +153,6 @@ class SchemaManager:
                             # Keep as internal reference (will be inlined)
                             return value
 
-                # Recursively process nested dictionaries
                 return {k: process_value(v) for k, v in value.items()}
             if isinstance(value, list):
                 return [process_value(item) for item in value]
@@ -180,7 +174,6 @@ class SchemaManager:
         Returns:
             Dictionary of definitions that weren't converted to external refs.
         """
-        # Find all internal refs still in the schema
         internal_refs: set[str] = set()
 
         def find_internal_refs(value: dict[str, Any] | list[Any]) -> None:
@@ -197,8 +190,6 @@ class SchemaManager:
                     find_internal_refs(item)
 
         find_internal_refs(schema)
-
-        # Return only definitions that are still referenced internally
         return {k: v for k, v in original_defs.items() if k in internal_refs}
 
     def _find_model_for_definition(self: Self, def_name: str) -> ModelMetadata | None:
@@ -210,7 +201,6 @@ class SchemaManager:
         Returns:
             Tuple of (model_name, version) if found, None otherwise.
         """
-        # Search through all registered models to find matching class name
         for name, versions in self.registry._models.items():
             for version, model_class in versions.items():
                 if model_class.__name__ == def_name:
@@ -249,8 +239,8 @@ class SchemaManager:
         Args:
             output_dir: Directory path for output files.
             indent: JSON indentation level.
-            separate_definitions: If True, create separate schema files for
-                nested models that have enable_ref=True.
+            separate_definitions: If True, create separate schema files for nested
+                models that have enable_ref=True.
             ref_template: Template for $ref URLs when separate_definitions=True.
                 Defaults to relative file references if not provided.
 
@@ -272,19 +262,15 @@ class SchemaManager:
         output_path.mkdir(parents=True, exist_ok=True)
 
         if not separate_definitions:
-            # Original behavior: inline definitions
             for name in self.registry._models:
                 for version, schema in self.get_all_schemas(name).items():
                     file_path = output_path / f"{name}_v{version}.json"
                     with open(file_path, "w", encoding="utf-8") as f:
                         json.dump(schema, f, indent=indent)
         else:
-            # New behavior: separate definition files for enable_ref=True models
-            # Default to relative file references
             if ref_template is None:
                 ref_template = "{model}_v{version}.json"
 
-            # First pass: write all schemas
             for name in self.registry._models:
                 for version in self.registry._models[name]:
                     schema = self.get_schema_with_separate_defs(
@@ -337,11 +323,9 @@ class SchemaManager:
         if annotation is None:
             return None
 
-        # Handle direct model types
         if isinstance(annotation, type) and issubclass(annotation, BaseModel):
             return annotation
 
-        # Handle Optional, List, etc.
         origin = get_origin(annotation)
         if origin is not None:
             args = get_args(annotation)

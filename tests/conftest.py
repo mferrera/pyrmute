@@ -81,6 +81,14 @@ def address_v1() -> type[BaseModel]:
     return AddressV1
 
 
+def _migrate_user_v1_to_v2(data: MigrationData) -> MigrationData:
+    """Migration function for User 1.0.0 -> 2.0.0.
+
+    This is separated out so it can be pickled.
+    """
+    return {**data, "email": "unknown@example.com"}
+
+
 @pytest.fixture
 def registered_manager(
     manager: ModelManager,
@@ -90,10 +98,7 @@ def registered_manager(
     """Create a manager with pre-registered models and migrations."""
     manager.model("User", "1.0.0")(user_v1)
     manager.model("User", "2.0.0")(user_v2)
-
-    @manager.migration("User", "1.0.0", "2.0.0")
-    def migrate_user(data: MigrationData) -> MigrationData:
-        return {**data, "email": "unknown@example.com"}
+    manager.migration("User", "1.0.0", "2.0.0")(_migrate_user_v1_to_v2)
 
     return manager
 
