@@ -5,6 +5,11 @@ and schema management.
 """
 
 from ._version import __version__
+from .migration_testing import (
+    MigrationTestCase,
+    MigrationTestResult,
+    MigrationTestResults,
+)
 from .model_diff import ModelDiff
 from .model_manager import ModelManager
 from .model_version import ModelVersion
@@ -19,6 +24,9 @@ __all__ = [
     "JsonSchema",
     "MigrationData",
     "MigrationFunc",
+    "MigrationTestCase",
+    "MigrationTestResult",
+    "MigrationTestResults",
     "ModelDiff",
     "ModelManager",
     "ModelMetadata",

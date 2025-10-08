@@ -16,8 +16,8 @@ from .types import MigrationData, MigrationFunc, ModelName
 class MigrationManager:
     """Manager for data migrations between model versions.
 
-    Handles registration and execution of migration functions, including
-    support for nested Pydantic models.
+    Handles registration and execution of migration functions, including support for
+    nested Pydantic models.
 
     Attributes:
         registry: Reference to the Registry.
@@ -194,8 +194,8 @@ class MigrationManager:
     ) -> MigrationData:
         """Automatically migrate data when no explicit migration exists.
 
-        This method handles nested Pydantic models recursively, migrating
-        them to their corresponding versions.
+        This method handles nested Pydantic models recursively, migrating them to their
+        corresponding versions.
 
         Args:
             data: Data dictionary to migrate.

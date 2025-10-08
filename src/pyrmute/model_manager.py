@@ -10,6 +10,11 @@ from pydantic import BaseModel
 from ._migration_manager import MigrationManager
 from ._registry import Registry
 from ._schema_manager import SchemaManager
+from .migration_testing import (
+    MigrationTestCase,
+    MigrationTestResult,
+    MigrationTestResults,
+)
 from .model_diff import ModelDiff
 from .model_version import ModelVersion
 from .types import (
@@ -25,16 +30,19 @@ from .types import (
 class ModelManager:
     """High-level interface for versioned model management.
 
-    Provides a unified API for model registration, migration, and schema management.
+    ModelManager provides a unified API for managing schema evolution across different
+    versions of Pydantic models. It handles model registration, automatic migration
+    between versions, schema generation, and batch processing operations.
 
     Attributes:
-        registry: Registry instance.
-        migration_manager: MigrationManager instance.
-        schema_manager: SchemaManager instance.
+        registry: Registry instance managing all registered model versions.
+        migration_manager: MigrationManager instance handling migration logic and paths.
+        schema_manager: SchemaManager instance for JSON schema generation and export.
 
-    Example:
+    Basic Usage:
         >>> manager = ModelManager()
         >>>
+        >>> # Register model versions
         >>> @manager.model("User", "1.0.0")
         ... class UserV1(BaseModel):
         ...     name: str
@@ -44,10 +52,41 @@ class ModelManager:
         ...     name: str
         ...     email: str
         >>>
+        >>> # Define migration between versions
         >>> @manager.migration("User", "1.0.0", "2.0.0")
         ... def migrate(data: MigrationData) -> MigrationData:
         ...     return {**data, "email": "unknown@example.com"}
-    """
+        >>>
+        >>> # Migrate legacy data
+        >>> old_data = {"name": "Alice"}
+        >>> user = manager.migrate(old_data, "User", "1.0.0", "2.0.0")
+        >>> # Result: UserV2(name="Alice", email="unknown@example.com")
+
+    Advanced Features:
+        >>> # Batch migration with parallel processing
+        >>> users = manager.migrate_batch(
+        ...     legacy_users, "User", "1.0.0", "2.0.0",
+        ...     parallel=True, max_workers=4
+        ... )
+        >>>
+        >>> # Stream large datasets efficiently
+        >>> for user in manager.migrate_batch_streaming(large_dataset, "User", "1.0.0", "2.0.0"):
+        ...     save_to_database(user)
+        >>>
+        >>> # Compare versions and export schemas
+        >>> diff = manager.diff("User", "1.0.0", "2.0.0")
+        >>> print(diff.to_markdown())
+        >>> manager.dump_schemas("schemas/", separate_definitions=True)
+        >>>
+        >>> # Test migrations with validation
+        >>> results = manager.test_migration(
+        ...     "User", "1.0.0", "2.0.0",
+        ...     test_cases=[
+        ...         ({"name": "Alice"}, {"name": "Alice", "email": "unknown@example.com"})
+        ...     ]
+        ... )
+        >>> results.assert_all_passed()
+    """  # noqa: E501
 
     def __init__(self: Self) -> None:
         """Initialize the versioned model manager."""
@@ -610,3 +649,97 @@ class ModelManager:
             List of (model_name, version) tuples for nested models.
         """
         return self.schema_manager.get_nested_models(name, version)
+
+    def test_migration(
+        self: Self,
+        name: str,
+        from_version: str | ModelVersion,
+        to_version: str | ModelVersion,
+        test_cases: list[tuple[MigrationData, MigrationData] | MigrationTestCase],
+    ) -> MigrationTestResults:
+        """Test a migration with multiple test cases.
+
+        Executes a migration on multiple test inputs and validates the outputs match
+        expected values. Useful for regression testing and validating migration logic.
+
+        Args:
+            name: Name of the model.
+            from_version: Source version to migrate from.
+            to_version: Target version to migrate to.
+            test_cases: List of test cases, either as (source, target) tuples or
+                MigrationTestCase objects. If target is None, only verifies the
+                migration completes without errors.
+
+        Returns:
+            MigrationTestResults containing individual results for each test case.
+
+        Example:
+            >>> # Using tuples (source, target)
+            >>> results = manager.test_migration(
+            ...     "User", "1.0.0", "2.0.0",
+            ...     test_cases=[
+            ...         ({"name": "Alice"}, {"name": "Alice", "email": "alice@example.com"}),
+            ...         ({"name": "Bob"}, {"name": "Bob", "email": "bob@example.com"})
+            ...     ]
+            ... )
+            >>> assert results.all_passed
+            >>>
+            >>> # Using MigrationTestCase objects
+            >>> results = manager.test_migration(
+            ...     "User", "1.0.0", "2.0.0",
+            ...     test_cases=[
+            ...         MigrationTestCase(
+            ...             source={"name": "Alice"},
+            ...             target={"name": "Alice", "email": "alice@example.com"},
+            ...             description="Standard user migration"
+            ...         )
+            ...     ]
+            ... )
+            >>>
+            >>> # Use in pytest
+            >>> def test_user_migration():
+            ...     results = manager.test_migration("User", "1.0.0", "2.0.0", test_cases)
+            ...     results.assert_all_passed()  # Raises AssertionError with details if failed
+            >>>
+            >>> # Inspect failures
+            >>> if not results.all_passed:
+            ...     for failure in results.failures:
+            ...         print(f"Failed: {failure.test_case.description}")
+            ...         print(f"  Error: {failure.error}")
+        """  # noqa: E501
+        results = []
+
+        for test_case_input in test_cases:
+            if isinstance(test_case_input, tuple):
+                test_case = MigrationTestCase(
+                    source=test_case_input[0], target=test_case_input[1]
+                )
+            else:
+                test_case = test_case_input
+
+            try:
+                actual = self.migrate_data(
+                    test_case.source, name, from_version, to_version
+                )
+
+                if test_case.target is not None:
+                    passed = actual == test_case.target
+                    error = None if passed else "Output mismatch"
+                else:
+                    # Just verify it doesn't crash
+                    passed = True
+                    error = None
+
+                results.append(
+                    MigrationTestResult(
+                        test_case=test_case, actual=actual, passed=passed, error=error
+                    )
+                )
+            except Exception as e:
+                results.append(
+                    MigrationTestResult(
+                        test_case=test_case, actual={}, passed=False, error=str(e)
+                    )
+                )
+
+        return MigrationTestResults(results)
