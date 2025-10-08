@@ -165,6 +165,40 @@ class ModelManager:
         except (KeyError, ValueError):
             return False
 
+    def validate_data(
+        self: Self,
+        data: MigrationData,
+        name: str,
+        version: str | ModelVersion,
+    ) -> bool:
+        """Check if data is valid for a specific model version.
+
+        Validates whether the provided data conforms to the schema of the specified
+        model version without raising an exception.
+
+        Args:
+            data: Data dictionary to validate.
+            name: Name of the model.
+            version: Semantic version to validate against.
+
+        Returns:
+            True if data is valid for the model version, False otherwise.
+
+        Example:
+            >>> data = {"name": "Alice"}
+            >>> is_valid = manager.validate_data(data, "User", "1.0.0")
+            >>> # Returns: True
+            >>>
+            >>> is_valid = manager.validate_data(data, "User", "2.0.0")
+            >>> # Returns: False, missing required field 'email'
+        """
+        try:
+            model = self.get(name, version)
+            model.model_validate(data)
+            return True
+        except Exception:
+            return False
+
     def migrate(
         self: Self,
         data: MigrationData,

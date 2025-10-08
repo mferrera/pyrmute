@@ -1587,3 +1587,283 @@ def test_has_migration_path_accepts_model_versions(
         ModelVersion(2, 0, 0),
     )
     assert result is True
+
+
+# Tests for validate_data
+def test_validate_data_returns_true_for_valid_data(
+    registered_manager: ModelManager,
+) -> None:
+    """Test validate_data returns True for valid data."""
+    data = {"name": "Alice"}
+    assert registered_manager.validate_data(data, "User", "1.0.0") is True
+
+
+def test_validate_data_returns_false_for_missing_required_field(
+    registered_manager: ModelManager,
+) -> None:
+    """Test validate_data returns False when required field is missing."""
+    data = {"name": "Alice"}
+    assert registered_manager.validate_data(data, "User", "2.0.0") is False
+
+
+def test_validate_data_returns_false_for_wrong_type(
+    registered_manager: ModelManager,
+) -> None:
+    """Test validate_data returns False when field has wrong type."""
+    data = {"name": 123}  # Should be string
+    assert registered_manager.validate_data(data, "User", "1.0.0") is False
+
+
+def test_validate_data_returns_true_with_optional_field(
+    manager: ModelManager,
+) -> None:
+    """Test validate_data returns True when optional field is omitted."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        email: str | None = None
+
+    data = {"name": "Alice"}
+    assert manager.validate_data(data, "User", "1.0.0") is True
+
+
+def test_validate_data_returns_true_with_optional_field_present(
+    manager: ModelManager,
+) -> None:
+    """Test validate_data returns True when optional field is provided."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        email: str | None = None
+
+    data = {"name": "Alice", "email": "alice@example.com"}
+    assert manager.validate_data(data, "User", "1.0.0") is True
+
+
+def test_validate_data_returns_true_with_default_value(
+    manager: ModelManager,
+) -> None:
+    """Test validate_data returns True when field with default is omitted."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        status: str = "active"
+
+    data = {"name": "Alice"}
+    assert manager.validate_data(data, "User", "1.0.0") is True
+
+
+def test_validate_data_returns_false_for_empty_dict(
+    registered_manager: ModelManager,
+) -> None:
+    """Test validate_data returns False for empty dict when fields required."""
+    assert registered_manager.validate_data({}, "User", "1.0.0") is False
+
+
+def test_validate_data_returns_true_for_all_fields_optional(
+    manager: ModelManager,
+) -> None:
+    """Test validate_data returns True for empty dict when all fields optional."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str | None = None
+        email: str | None = None
+
+    assert manager.validate_data({}, "User", "1.0.0") is True
+
+
+def test_validate_data_with_string_version(
+    registered_manager: ModelManager,
+) -> None:
+    """Test validate_data with string version parameter."""
+    data = {"name": "Alice"}
+    assert registered_manager.validate_data(data, "User", "1.0.0") is True
+
+
+def test_validate_data_with_model_version(
+    registered_manager: ModelManager,
+) -> None:
+    """Test validate_data with ModelVersion object."""
+    data = {"name": "Alice"}
+    assert registered_manager.validate_data(data, "User", ModelVersion(1, 0, 0)) is True
+
+
+def test_validate_data_different_versions(
+    registered_manager: ModelManager,
+) -> None:
+    """Test validate_data with different versions of same model."""
+    data_v1 = {"name": "Alice"}
+    data_v2 = {"name": "Alice", "email": "alice@example.com"}
+
+    assert registered_manager.validate_data(data_v1, "User", "1.0.0") is True
+    assert registered_manager.validate_data(data_v1, "User", "2.0.0") is False
+    assert registered_manager.validate_data(data_v2, "User", "2.0.0") is True
+
+
+def test_validate_data_with_field_constraints(
+    manager: ModelManager,
+) -> None:
+    """Test validate_data respects Field constraints."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        age: int = Field(ge=0, le=120)
+
+    assert manager.validate_data({"age": 25}, "User", "1.0.0") is True
+    assert manager.validate_data({"age": -5}, "User", "1.0.0") is False
+    assert manager.validate_data({"age": 150}, "User", "1.0.0") is False
+
+
+def test_validate_data_with_string_constraints(
+    manager: ModelManager,
+) -> None:
+    """Test validate_data respects string Field constraints."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str = Field(min_length=1, max_length=50)
+
+    assert manager.validate_data({"name": "Alice"}, "User", "1.0.0") is True
+    assert manager.validate_data({"name": ""}, "User", "1.0.0") is False
+    assert manager.validate_data({"name": "x" * 100}, "User", "1.0.0") is False
+
+
+def test_validate_data_with_nested_dict(
+    manager: ModelManager,
+) -> None:
+    """Test validate_data with nested dictionary."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        address: dict[str, str]
+
+    data = {"name": "Alice", "address": {"city": "NYC", "state": "NY"}}
+    assert manager.validate_data(data, "User", "1.0.0") is True
+
+
+def test_validate_data_with_list(
+    manager: ModelManager,
+) -> None:
+    """Test validate_data with list field."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        tags: list[str]
+
+    data = {"name": "Alice", "tags": ["admin", "user"]}
+    assert manager.validate_data(data, "User", "1.0.0") is True
+
+
+def test_validate_data_with_wrong_list_type(
+    manager: ModelManager,
+) -> None:
+    """Test validate_data returns False for wrong list element type."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        tags: list[str]
+
+    data = {"name": "Alice", "tags": [1, 2, 3]}  # Should be strings
+    assert manager.validate_data(data, "User", "1.0.0") is False
+
+
+def test_validate_data_with_extra_fields(
+    manager: ModelManager,
+) -> None:
+    """Test validate_data with extra fields (default: ignore)."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    data = {"name": "Alice", "extra": "data"}
+    assert manager.validate_data(data, "User", "1.0.0") is True
+
+
+def test_validate_data_returns_false_for_nonexistent_model(
+    manager: ModelManager,
+) -> None:
+    """Test validate_data returns False for nonexistent model."""
+    data = {"name": "Alice"}
+    assert manager.validate_data(data, "NonExistent", "1.0.0") is False
+
+
+def test_validate_data_returns_false_for_nonexistent_version(
+    manager: ModelManager,
+    user_v1: type[BaseModel],
+) -> None:
+    """Test validate_data returns False for nonexistent version."""
+    manager.model("User", "1.0.0")(user_v1)
+    data = {"name": "Alice"}
+    assert manager.validate_data(data, "User", "9.9.9") is False
+
+
+def test_validate_data_returns_false_for_none_data(
+    registered_manager: ModelManager,
+) -> None:
+    """Test validate_data returns False for None data."""
+    assert registered_manager.validate_data(None, "User", "1.0.0") is False  # type: ignore
+
+
+def test_validate_data_returns_false_for_non_dict_data(
+    registered_manager: ModelManager,
+) -> None:
+    """Test validate_data returns False for non-dict data."""
+    assert registered_manager.validate_data("invalid", "User", "1.0.0") is False  # type: ignore
+    assert registered_manager.validate_data(123, "User", "1.0.0") is False  # type: ignore
+    assert registered_manager.validate_data(["list"], "User", "1.0.0") is False  # type: ignore
+
+
+def test_validate_data_with_different_models(
+    manager: ModelManager,
+) -> None:
+    """Test validate_data works correctly with different models."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("Product", "1.0.0")
+    class ProductV1(BaseModel):
+        title: str
+        price: float
+
+    assert manager.validate_data({"name": "Alice"}, "User", "1.0.0") is True
+    assert manager.validate_data({"name": "Alice"}, "Product", "1.0.0") is False
+    assert (
+        manager.validate_data({"title": "Widget", "price": 9.99}, "Product", "1.0.0")
+        is True
+    )
+
+
+def test_validate_data_after_migration(
+    registered_manager: ModelManager,
+) -> None:
+    """Test validate_data works with migrated data."""
+    old_data = {"name": "Alice"}
+    migrated_data = registered_manager.migrate_data(old_data, "User", "1.0.0", "2.0.0")
+
+    assert registered_manager.validate_data(old_data, "User", "1.0.0") is True
+    assert registered_manager.validate_data(old_data, "User", "2.0.0") is False
+    assert registered_manager.validate_data(migrated_data, "User", "2.0.0") is True
+
+
+def test_validate_data_before_migration(
+    registered_manager: ModelManager,
+) -> None:
+    """Test validate_data to check if migration is needed."""
+    data = {"name": "Alice"}
+
+    if not registered_manager.validate_data(data, "User", "2.0.0"):
+        migrated = registered_manager.migrate(data, "User", "1.0.0", "2.0.0")
+        assert (
+            registered_manager.validate_data(migrated.model_dump(), "User", "2.0.0")
+            is True
+        )
