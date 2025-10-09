@@ -153,9 +153,7 @@ class ModelManager:
             name, from_version, to_version
         )
 
-    def get(
-        self: Self, name: str, version: str | ModelVersion | None = None
-    ) -> type[BaseModel]:
+    def get(self: Self, name: str, version: str | ModelVersion) -> type[BaseModel]:
         """Get a model by name and version.
 
         Args:
@@ -165,9 +163,18 @@ class ModelManager:
         Returns:
             Model class.
         """
-        if version is None:
-            return self._registry.get_latest(name)
         return self._registry.get_model(name, version)
+
+    def get_latest(self: Self, name: str) -> type[BaseModel]:
+        """Get the latest version of a model by name.
+
+        Args:
+            name: Name of the model.
+
+        Returns:
+            Model class.
+        """
+        return self._registry.get_latest(name)
 
     def has_migration_path(
         self: Self,

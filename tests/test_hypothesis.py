@@ -783,7 +783,7 @@ class ModelManagerStateMachine(RuleBasedStateMachine):
         """Latest version should be the maximum version."""
         for name, versions in self.registered_models.items():
             if versions:
-                latest = self.manager.get(name, None)
+                latest = self.manager.get_latest(name)
                 version_objects = sorted([ModelVersion.parse(v) for v in versions])
                 expected_latest = self.manager.get(name, str(version_objects[-1]))
                 assert latest == expected_latest
