@@ -37,21 +37,25 @@ jobs:
       - name: Set up Python
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Set up Python
-        run: uv sync --python ${{ matrix.python-version }} --all-extras --frozen
+      - name: Install dependencies
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            uv sync --all-extras --upgrade
+          else
+            uv sync --all-extras --frozen
+          fi
 
       - name: Ruff check
-        if: ${{ always() }}
         run: uv run ruff check
 
       - name: Ruff format
-        if: ${{ always() }}
+        if: always()
         run: uv run ruff format --check
 
       - name: Check typing with mypy
-        if: ${{ always() }}
+        if: always()
         run: uv run mypy src tests
 
       - name: Run tests
-        if: ${{ always() }}
+        if: always()
         run: uv run pytest
