@@ -80,7 +80,7 @@ class ModelDiff:
         if breaking_changes:
             lines.append(f"{h2} Breaking Changes")
             lines.append("")
-            lines.extend(f"⚠️ {warning}" for warning in breaking_changes)
+            lines.extend(f"-⚠️  {warning}" for warning in breaking_changes)
             lines.append("")
 
         return "\n".join(lines)
