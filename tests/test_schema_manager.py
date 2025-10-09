@@ -8,7 +8,7 @@ import pytest
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
-from pyrmute import ModelVersion
+from pyrmute import ModelNotFoundError, ModelVersion
 from pyrmute._registry import Registry
 from pyrmute._schema_manager import SchemaManager
 
@@ -462,7 +462,7 @@ def test_get_all_schemas_not_found(
     schema_manager: SchemaManager,
 ) -> None:
     """Test getting all schemas for non-existent model."""
-    with pytest.raises(ValueError, match="Model NonExistent not found"):
+    with pytest.raises(ModelNotFoundError, match="Model 'NonExistent' not found"):
         schema_manager.get_all_schemas("NonExistent")
 
 

@@ -9,6 +9,7 @@ from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
 from ._registry import Registry
+from .exceptions import MigrationError, ModelNotFoundError
 from .model_version import ModelVersion
 from .types import MigrationData, MigrationFunc, ModelName
 
@@ -89,7 +90,8 @@ class MigrationManager:
             Migrated data dictionary.
 
         Raises:
-            ValueError: If migration path cannot be found.
+            ModelNotFoundError: If model or versions don't exist.
+            MigrationError: If migration path cannot be found.
         """
         from_ver = (
             ModelVersion.parse(from_version)
@@ -113,15 +115,36 @@ class MigrationManager:
 
             if migration_key in self.registry._migrations[name]:
                 migration_func = self.registry._migrations[name][migration_key]
-                current_data = migration_func(current_data)
+                try:
+                    current_data = migration_func(current_data)
+                except Exception as e:
+                    raise MigrationError(
+                        name,
+                        str(path[i]),
+                        str(path[i + 1]),
+                        f"Migration function raised: {type(e).__name__}: {e}",
+                    ) from e
             elif path[i + 1] in self.registry._backward_compatible_enabled[name]:
-                current_data = self._auto_migrate(
-                    current_data, name, path[i], path[i + 1]
-                )
+                try:
+                    current_data = self._auto_migrate(
+                        current_data, name, path[i], path[i + 1]
+                    )
+                except Exception as e:
+                    raise MigrationError(
+                        name,
+                        str(path[i]),
+                        str(path[i + 1]),
+                        f"Auto-migration failed: {type(e).__name__}: {e}",
+                    ) from e
             else:
-                raise ValueError(
-                    f"Unable to find migration path for {name}: "
-                    f"{path[i]} → {path[i + 1]}"
+                raise MigrationError(
+                    name,
+                    str(path[i]),
+                    str(path[i + 1]),
+                    (
+                        "No migration path found. Define a migration function or mark "
+                        "the target version as backward_compatible."
+                    ),
                 )
 
         return current_data
@@ -141,11 +164,16 @@ class MigrationManager:
 
         Returns:
             List of versions forming the migration path.
+
+        Raises:
+            ModelNotFoundError: If the model or versions don't exist.
         """
         versions = sorted(self.registry.get_versions(name))
 
-        if from_ver not in versions or to_ver not in versions:
-            raise ValueError(f"Invalid version range for {name}")
+        if from_ver not in versions:
+            raise ModelNotFoundError(name, str(from_ver))
+        if to_ver not in versions:
+            raise ModelNotFoundError(name, str(to_ver))
 
         from_idx = versions.index(from_ver)
         to_idx = versions.index(to_ver)
@@ -168,7 +196,8 @@ class MigrationManager:
             to_ver: Target version.
 
         Raises:
-            ValueError: If any step in the migration path is invalid.
+            ModelNotFoundError: If the model or versions don't exist.
+            MigrationError: If any step in the migration path is invalid.
         """
         path = self.find_migration_path(name, from_ver, to_ver)
 
@@ -183,8 +212,14 @@ class MigrationManager:
             )
 
             if not has_explicit and not has_auto:
-                raise ValueError(
-                    f"No migration found for {name}: {current_ver} → {next_ver}"
+                raise MigrationError(
+                    name,
+                    str(current_ver),
+                    str(next_ver),
+                    (
+                        "No migration path found. Define a migration function or mark "
+                        "the target version as backward_compatible."
+                    ),
                 )
 
     def _auto_migrate(

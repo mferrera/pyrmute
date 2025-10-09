@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from ._migration_manager import MigrationManager
 from ._registry import Registry
 from ._schema_manager import SchemaManager
+from .exceptions import MigrationError, ModelNotFoundError
 from .migration_testing import (
     MigrationTestCase,
     MigrationTestResult,
@@ -201,7 +202,7 @@ class ModelManager:
         try:
             self.migration_manager.validate_migration_path(name, from_ver, to_ver)
             return True
-        except (KeyError, ValueError):
+        except (KeyError, ModelNotFoundError, MigrationError):
             return False
 
     def validate_data(

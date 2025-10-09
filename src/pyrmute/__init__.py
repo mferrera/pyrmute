@@ -5,6 +5,12 @@ and schema management.
 """
 
 from ._version import __version__
+from .exceptions import (
+    InvalidVersionError,
+    MigrationError,
+    ModelNotFoundError,
+    VersionedModelError,
+)
 from .migration_testing import (
     MigrationTestCase,
     MigrationTestResult,
@@ -15,14 +21,18 @@ from .model_manager import ModelManager
 from .model_version import ModelVersion
 from .types import (
     JsonSchema,
+    JsonValue,
     MigrationData,
     MigrationFunc,
     ModelMetadata,
 )
 
 __all__ = [
+    "InvalidVersionError",
     "JsonSchema",
+    "JsonValue",
     "MigrationData",
+    "MigrationError",
     "MigrationFunc",
     "MigrationTestCase",
     "MigrationTestResult",
@@ -30,6 +40,8 @@ __all__ = [
     "ModelDiff",
     "ModelManager",
     "ModelMetadata",
+    "ModelNotFoundError",
     "ModelVersion",
+    "VersionedModelError",
     "__version__",
 ]

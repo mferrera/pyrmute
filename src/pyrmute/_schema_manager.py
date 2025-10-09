@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from ._registry import Registry
+from .exceptions import ModelNotFoundError
 from .model_version import ModelVersion
 from .types import (
     JsonSchema,
@@ -217,10 +218,10 @@ class SchemaManager:
             Dictionary mapping versions to their schemas.
 
         Raises:
-            ValueError: If model not found.
+            ModelNotFoundError: If model not found.
         """
         if name not in self.registry._models:
-            raise ValueError(f"Model {name} not found")
+            raise ModelNotFoundError(name)
 
         return {
             version: self.get_schema(name, version)

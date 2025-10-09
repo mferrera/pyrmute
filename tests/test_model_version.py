@@ -4,7 +4,7 @@
 
 import pytest
 
-from pyrmute.model_version import ModelVersion
+from pyrmute import InvalidVersionError, ModelVersion
 
 
 def test_version_creation() -> None:
@@ -48,37 +48,37 @@ def test_parse_large_numbers() -> None:
 
 def test_parse_invalid_too_few_parts() -> None:
     """Test parsing fails with too few version parts."""
-    with pytest.raises(ValueError, match=r"Invalid version format: 1\.2"):
+    with pytest.raises(InvalidVersionError, match=r"Invalid version string: '1.2'"):
         ModelVersion.parse("1.2")
 
 
 def test_parse_invalid_too_many_parts() -> None:
     """Test parsing fails with too many version parts."""
-    with pytest.raises(ValueError, match=r"Invalid version format: 1\.2\.3\.4"):
+    with pytest.raises(InvalidVersionError, match=r"Invalid version string: '1.2.3.4'"):
         ModelVersion.parse("1.2.3.4")
 
 
 def test_parse_invalid_non_numeric() -> None:
     """Test parsing fails with non-numeric parts."""
-    with pytest.raises(ValueError, match=r"Invalid version format: 1\.2\.x"):
+    with pytest.raises(InvalidVersionError, match=r"Invalid version string: '1.2.x'"):
         ModelVersion.parse("1.2.x")
 
 
 def test_parse_invalid_negative_numbers() -> None:
     """Test parsing fails with negative numbers."""
-    with pytest.raises(ValueError, match=r"Invalid version format: 1\.-2\.3"):
+    with pytest.raises(InvalidVersionError, match=r"Invalid version string: '1\.-2.3'"):
         ModelVersion.parse("1.-2.3")
 
 
 def test_parse_invalid_empty_string() -> None:
     """Test parsing fails with empty string."""
-    with pytest.raises(ValueError, match="Invalid version format: "):
+    with pytest.raises(InvalidVersionError, match="Invalid version string: ''"):
         ModelVersion.parse("")
 
 
 def test_parse_invalid_float() -> None:
     """Test parsing fails with float values."""
-    with pytest.raises(ValueError, match=r"Invalid version format: 1\.2\.3\.5"):
+    with pytest.raises(InvalidVersionError, match=r"Invalid version string: '1.2.3.5'"):
         ModelVersion.parse("1.2.3.5")
 
 
@@ -198,5 +198,7 @@ def test_parse_multiple_valid_versions(
 )
 def test_parse_invalid_versions(invalid_version: str) -> None:
     """Test that invalid version strings raise ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        InvalidVersionError, match=f"Invalid version string: '{invalid_version}'"
+    ):
         ModelVersion.parse(invalid_version)
