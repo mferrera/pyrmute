@@ -170,15 +170,7 @@ def test_get_latest_model(
     registered_manager: ModelManager, user_v2: type[BaseModel]
 ) -> None:
     """Test getting the latest version when version is None."""
-    model = registered_manager.get("User", None)
-    assert model == user_v2
-
-
-def test_get_latest_model_without_version_arg(
-    registered_manager: ModelManager, user_v2: type[BaseModel]
-) -> None:
-    """Test getting latest version by omitting version argument."""
-    model = registered_manager.get("User")
+    model = registered_manager.get_latest("User")
     assert model == user_v2
 
 
