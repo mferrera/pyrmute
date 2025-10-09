@@ -100,7 +100,7 @@ class ModelManager:
         version: str | ModelVersion,
         schema_generator: JsonSchemaGenerator | None = None,
         enable_ref: bool = False,
-        auto_migrate: bool = False,
+        backward_compatible: bool = False,
     ) -> Callable[[type[DecoratedBaseModel]], type[DecoratedBaseModel]]:
         """Register a versioned model.
 
@@ -110,9 +110,9 @@ class ModelManager:
             schema_generator: Optional custom schema generator.
             enable_ref: If True, this model can be referenced via $ref in separate
                 schema files. If False, it will always be inlined.
-            auto_migrate: If True, this model does not need a migration function to
-                migrate to the next version. If a migration function is defined it will
-                use it.
+            backward_compatible: If True, this model does not need a migration function
+                to migrate to the next version. If a migration function is defined it
+                will use it.
 
         Returns:
             Decorator function for model class.
@@ -129,7 +129,7 @@ class ModelManager:
             ...     city: City
         """
         return self.registry.register(
-            name, version, schema_generator, enable_ref, auto_migrate
+            name, version, schema_generator, enable_ref, backward_compatible
         )
 
     def migration(

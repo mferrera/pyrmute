@@ -219,7 +219,7 @@ class ConfigV1(BaseModel):
     timeout: int = 30
 
 
-@manager.model("Config", "2.0.0", auto_migrate=True)
+@manager.model("Config", "2.0.0", backward_compatible=True)
 class ConfigV2(BaseModel):
     timeout: int = 30
     retries: int = 3  # New field with default
