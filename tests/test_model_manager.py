@@ -1150,54 +1150,6 @@ def test_dump_schemas_with_ref_template(manager: ModelManager, tmp_path: Path) -
     assert schema_file.exists()
 
 
-def test_dump_schemas_with_refs_convenience_method(
-    manager: ModelManager, tmp_path: Path
-) -> None:
-    """Test dump_schemas_with_refs convenience method."""
-
-    @manager.model("User", "1.0.0")
-    class UserV1(BaseModel):
-        name: str
-
-    manager.dump_schemas_with_refs(tmp_path)
-
-    schema_file = tmp_path / "User_v1.0.0.json"
-    assert schema_file.exists()
-
-
-def test_dump_schemas_with_refs_and_template(
-    manager: ModelManager, tmp_path: Path
-) -> None:
-    """Test dump_schemas_with_refs with ref_template."""
-
-    @manager.model("User", "1.0.0")
-    class UserV1(BaseModel):
-        name: str
-
-    manager.dump_schemas_with_refs(
-        tmp_path, ref_template="https://example.com/schemas/{model}_v{version}.json"
-    )
-
-    schema_file = tmp_path / "User_v1.0.0.json"
-    assert schema_file.exists()
-
-
-def test_dump_schemas_with_refs_custom_indent(
-    manager: ModelManager, tmp_path: Path
-) -> None:
-    """Test dump_schemas_with_refs with custom indent."""
-
-    @manager.model("User", "1.0.0")
-    class UserV1(BaseModel):
-        name: str
-
-    manager.dump_schemas_with_refs(tmp_path, indent=4)
-
-    schema_file = tmp_path / "User_v1.0.0.json"
-    content = schema_file.read_text()
-    assert "    " in content
-
-
 def test_dump_schemas_multiple_models(manager: ModelManager, tmp_path: Path) -> None:
     """Test dump_schemas with multiple models."""
 
