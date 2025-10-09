@@ -226,7 +226,7 @@ def test_migration_fails_if_no_transient_path(
 
 
 # Auto-migration tests
-def test_auto_migrate_adds_default_fields(
+def test_backward_compatible_adds_default_fields(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test auto-migration adds new, required fields with defaults."""
@@ -235,7 +235,7 @@ def test_auto_migrate_adds_default_fields(
     assert result == {**data, "age": 0}
 
 
-def test_auto_migrate_adds_default_fields_and_uses_migration_func(
+def test_backward_compatible_adds_default_fields_and_uses_migration_func(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test auto-migration with default field uses migration func first."""
@@ -249,7 +249,7 @@ def test_auto_migrate_adds_default_fields_and_uses_migration_func(
     assert result == {**data, "age": 5}
 
 
-def test_auto_migrate_adds_default_factory_fields(
+def test_backward_compatible_adds_default_factory_fields(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test auto-migration adds new, required fields with a default factory."""
@@ -258,7 +258,7 @@ def test_auto_migrate_adds_default_factory_fields(
     assert result == {**data, "age": 0, "aliases": []}
 
 
-def test_auto_migrate_adds_default_factory_fields_uses_migration_func(
+def test_backward_compatible_adds_default_factory_fields_uses_migration_func(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test auto-migration with default factory uses migration func first."""
@@ -279,11 +279,11 @@ def test_auto_migrate_adds_default_factory_fields_uses_migration_func(
 def test_migration_with_default_factory(manager: ModelManager) -> None:
     """Test that default_factory is called for missing fields."""
 
-    @manager.model("Optional", "1.0.0", auto_migrate=True)
+    @manager.model("Optional", "1.0.0", backward_compatible=True)
     class OptionalV1(BaseModel):
         field1: str = "default1"
 
-    @manager.model("Optional", "2.0.0", auto_migrate=True)
+    @manager.model("Optional", "2.0.0", backward_compatible=True)
     class OptionalV2(BaseModel):
         field1: str = "default1"
         field3: list[str] = Field(default_factory=list)
@@ -298,12 +298,12 @@ def test_migration_with_default_factory(manager: ModelManager) -> None:
 def test_migration_preserves_explicit_none(manager: ModelManager) -> None:
     """Test that explicit None values are preserved."""
 
-    @manager.model("Optional", "1.0.0", auto_migrate=True)
+    @manager.model("Optional", "1.0.0", backward_compatible=True)
     class OptionalV1(BaseModel):
         field1: str = "default1"
         field3: list[str] | None = None
 
-    @manager.model("Optional", "2.0.0", auto_migrate=True)
+    @manager.model("Optional", "2.0.0", backward_compatible=True)
     class OptionalV2(BaseModel):
         field1: str = "default1"
         field3: list[str] | None = Field(default_factory=list)
@@ -315,7 +315,7 @@ def test_migration_preserves_explicit_none(manager: ModelManager) -> None:
     assert result["field3"] is None  # Preserved, not replaced with []
 
 
-def test_auto_migrate_handles_none_values(
+def test_backward_compatible_handles_none_values(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test auto-migration handles None values correctly."""
@@ -324,7 +324,7 @@ def test_auto_migrate_handles_none_values(
     assert result["name"] is None
 
 
-def test_auto_migrate_preserves_extra_fields(
+def test_backward_compatible_preserves_extra_fields(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test auto-migration handles None values correctly."""
@@ -355,7 +355,7 @@ def test_migrate_nested_model(registry: Registry) -> None:
     registry.register("Address", "1.0.0")(AddressV1)
     registry.register("Address", "2.0.0")(AddressV2)
     registry.register("Person", "1.0.0")(PersonV1)
-    registry.register("Person", "2.0.0", auto_migrate=True)(PersonV2)
+    registry.register("Person", "2.0.0", backward_compatible=True)(PersonV2)
 
     manager = MigrationManager(registry)
 
@@ -389,7 +389,7 @@ def test_migrate_list_of_nested_models(registry: Registry) -> None:
     registry.register("Item", "1.0.0")(ItemV1)
     registry.register("Item", "2.0.0")(ItemV2)
     registry.register("Order", "1.0.0")(OrderV1)
-    registry.register("Order", "2.0.0", auto_migrate=True)(OrderV2)
+    registry.register("Order", "2.0.0", backward_compatible=True)(OrderV2)
 
     manager = MigrationManager(registry)
 
@@ -709,16 +709,16 @@ def test_validate_migration_path_no_migration_raises(
         )
 
 
-def test_validate_migration_path_auto_migrate_enabled(
+def test_validate_migration_path_backward_compatible_enabled(
     manager: ModelManager,
 ) -> None:
-    """Test validate_migration_path succeeds with auto_migrate."""
+    """Test validate_migration_path succeeds with backward_compatible."""
 
     @manager.model("User", "1.0.0")
     class UserV1(BaseModel):
         name: str
 
-    @manager.model("User", "2.0.0", auto_migrate=True)
+    @manager.model("User", "2.0.0", backward_compatible=True)
     class UserV2(BaseModel):
         name: str
         email: str = "default@example.com"
@@ -1000,7 +1000,7 @@ def test_validate_migration_path_mixed_auto_explicit(
     class UserV1(BaseModel):
         name: str
 
-    @manager.model("User", "2.0.0", auto_migrate=True)
+    @manager.model("User", "2.0.0", backward_compatible=True)
     class UserV2(BaseModel):
         name: str
         email: str = "default@example.com"
@@ -1020,7 +1020,7 @@ def test_validate_migration_path_mixed_auto_explicit(
     )
 
 
-def test_validate_migration_path_all_auto_migrate(
+def test_validate_migration_path_all_backward_compatible(
     manager: ModelManager,
 ) -> None:
     """Test validate_migration_path with all auto-migrations."""
@@ -1029,12 +1029,12 @@ def test_validate_migration_path_all_auto_migrate(
     class UserV1(BaseModel):
         name: str
 
-    @manager.model("User", "2.0.0", auto_migrate=True)
+    @manager.model("User", "2.0.0", backward_compatible=True)
     class UserV2(BaseModel):
         name: str
         email: str = "default@example.com"
 
-    @manager.model("User", "3.0.0", auto_migrate=True)
+    @manager.model("User", "3.0.0", backward_compatible=True)
     class UserV3(BaseModel):
         name: str
         email: str
@@ -1054,7 +1054,7 @@ def test_validate_migration_path_explicit_overrides_auto(
     class UserV1(BaseModel):
         name: str
 
-    @manager.model("User", "2.0.0", auto_migrate=True)
+    @manager.model("User", "2.0.0", backward_compatible=True)
     class UserV2(BaseModel):
         name: str
         email: str = "auto@example.com"
@@ -1069,7 +1069,7 @@ def test_validate_migration_path_explicit_overrides_auto(
     )
 
 
-def test_validate_migration_path_middle_version_auto_migrate_disabled(
+def test_validate_migration_path_middle_version_backward_compatible_disabled(
     manager: ModelManager,
 ) -> None:
     """Test validate_migration_path fails when middle version has no migration."""
@@ -1078,12 +1078,12 @@ def test_validate_migration_path_middle_version_auto_migrate_disabled(
     class UserV1(BaseModel):
         name: str
 
-    @manager.model("User", "2.0.0", auto_migrate=False)
+    @manager.model("User", "2.0.0", backward_compatible=False)
     class UserV2(BaseModel):
         name: str
         email: str
 
-    @manager.model("User", "3.0.0", auto_migrate=True)
+    @manager.model("User", "3.0.0", backward_compatible=True)
     class UserV3(BaseModel):
         name: str
         email: str

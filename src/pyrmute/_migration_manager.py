@@ -114,7 +114,7 @@ class MigrationManager:
             if migration_key in self.registry._migrations[name]:
                 migration_func = self.registry._migrations[name][migration_key]
                 current_data = migration_func(current_data)
-            elif path[i + 1] in self.registry._auto_migrate_enabled[name]:
+            elif path[i + 1] in self.registry._backward_compatible_enabled[name]:
                 current_data = self._auto_migrate(
                     current_data, name, path[i], path[i + 1]
                 )
@@ -178,7 +178,9 @@ class MigrationManager:
             migration_key = (current_ver, next_ver)
 
             has_explicit = migration_key in self.registry._migrations.get(name, {})
-            has_auto = next_ver in self.registry._auto_migrate_enabled.get(name, set())
+            has_auto = next_ver in self.registry._backward_compatible_enabled.get(
+                name, set()
+            )
 
             if not has_explicit and not has_auto:
                 raise ValueError(

@@ -117,7 +117,7 @@ def test_migrate_to_same_version_is_identity(
         class_name, (BaseModel,), {"__annotations__": annotations, **defaults}
     )
 
-    manager.model(name, version, auto_migrate=True)(DynamicModel)
+    manager.model(name, version, backward_compatible=True)(DynamicModel)
     result = manager.migration_manager.migrate(data, name, version, version)
 
     assert result == data
@@ -143,16 +143,16 @@ def test_migration_transitivity(name: str, v1: str, v2: str, v3: str) -> None:
 
     manager = ModelManager()
 
-    @manager.model(name, v1, auto_migrate=True)
+    @manager.model(name, v1, backward_compatible=True)
     class ModelV1(BaseModel):
         field1: str = "default1"
 
-    @manager.model(name, v2, auto_migrate=True)
+    @manager.model(name, v2, backward_compatible=True)
     class ModelV2(BaseModel):
         field1: str = "default1"
         field2: str = "default2"
 
-    @manager.model(name, v3, auto_migrate=True)
+    @manager.model(name, v3, backward_compatible=True)
     class ModelV3(BaseModel):
         field1: str = "default1"
         field2: str = "default2"
@@ -209,7 +209,7 @@ def test_extra_fields_preserved(
         f"{name}V1", (BaseModel,), {"__annotations__": annotations, **defaults}
     )
 
-    manager.model(name, version, auto_migrate=True)(DynamicModel)
+    manager.model(name, version, backward_compatible=True)(DynamicModel)
 
     full_data = {**data, **extra_fields}
     result = manager.migration_manager.migrate(full_data, name, version, version)
@@ -234,11 +234,11 @@ def test_version_ordering_independence(name: str, v1: str, v2: str) -> None:
 
     manager = ModelManager()
 
-    @manager.model(name, v1, auto_migrate=True)
+    @manager.model(name, v1, backward_compatible=True)
     class ModelV1(BaseModel):
         field1: str = "default1"
 
-    @manager.model(name, v2, auto_migrate=True)
+    @manager.model(name, v2, backward_compatible=True)
     class ModelV2(BaseModel):
         field1: str = "default1"
         field2: str = "default2"
@@ -280,7 +280,7 @@ def test_migration_chain_consistency(name: str, versions: list[str]) -> None:
             fields_dict[field_name] = f"default{j + 2}"
 
         ModelClass = type(f"{name}V{i}", (BaseModel,), fields_dict)
-        manager.model(name, version, auto_migrate=True)(ModelClass)
+        manager.model(name, version, backward_compatible=True)(ModelClass)
 
     data = {"field1": "test"}
     result = manager.migration_manager.migrate(
@@ -324,7 +324,7 @@ def test_data_types_preserved(data: dict[str, Any]) -> None:
         "TypeTestV1", (BaseModel,), {"__annotations__": annotations, **defaults}
     )
 
-    manager.model(name, version, auto_migrate=True)(DynamicModel)
+    manager.model(name, version, backward_compatible=True)(DynamicModel)
 
     result = manager.migration_manager.migrate(data, name, version, version)
 
@@ -355,7 +355,7 @@ def test_many_fields_handled_correctly(num_fields: int, version: str) -> None:
         "ManyFieldsV1", (BaseModel,), {"__annotations__": annotations, **defaults}
     )
 
-    manager.model(name, version, auto_migrate=True)(ManyFieldsModel)
+    manager.model(name, version, backward_compatible=True)(ManyFieldsModel)
 
     data = {f"field_{i}": f"value_{i}" for i in range(num_fields)}
 
@@ -395,7 +395,7 @@ def test_field_addition_with_defaults(
 
     manager = ModelManager()
 
-    @manager.model(name, v1, auto_migrate=True)
+    @manager.model(name, v1, backward_compatible=True)
     class ModelV1(BaseModel):
         base_field: str = "base"
 
@@ -408,7 +408,7 @@ def test_field_addition_with_defaults(
     ModelV2 = type(
         f"{name}V2", (BaseModel,), {"__annotations__": v2_annotations, **v2_defaults}
     )
-    manager.model(name, v2, auto_migrate=True)(ModelV2)
+    manager.model(name, v2, backward_compatible=True)(ModelV2)
 
     data = {"base_field": "test"}
     result = manager.migration_manager.migrate(data, name, v1, v2)
@@ -444,7 +444,7 @@ def test_null_values_handled(name: str, version: str, null_fields: list[str]) ->
         f"{name}V1", (BaseModel,), {"__annotations__": annotations, **defaults}
     )
 
-    manager.model(name, version, auto_migrate=True)(NullableModel)
+    manager.model(name, version, backward_compatible=True)(NullableModel)
 
     data = dict.fromkeys(null_fields)
 
@@ -470,7 +470,7 @@ def test_deeply_nested_models(depth: int) -> None:
     for i in range(depth):
         if i == 0:
 
-            @manager.model(f"Level{i}", "1.0.0", auto_migrate=True)
+            @manager.model(f"Level{i}", "1.0.0", backward_compatible=True)
             class BaseLevel(BaseModel):
                 value: str = "base"
 
@@ -479,7 +479,7 @@ def test_deeply_nested_models(depth: int) -> None:
             prev_model_class = models[-1]
 
             def make_next_level(prev_cls: type) -> Any:
-                @manager.model(f"Level{i}", "1.0.0", auto_migrate=True)  # noqa: B023
+                @manager.model(f"Level{i}", "1.0.0", backward_compatible=True)  # noqa: B023
                 class NextLevel(BaseModel):
                     value: str = "nested"
                     nested: prev_cls = Field(  # type: ignore
@@ -516,7 +516,7 @@ def test_long_migration_chains(num_versions: int) -> None:
     for i in range(num_versions):
         version = f"1.0.{i}"
 
-        @manager.model(name, version, auto_migrate=True)
+        @manager.model(name, version, backward_compatible=True)
         class ChainModel(BaseModel):
             field1: str = "default"
             version_num: int = i
@@ -550,12 +550,12 @@ def test_migration_with_all_optional_fields(data: dict[str, Any]) -> None:
 
     manager = ModelManager()
 
-    @manager.model("Optional", "1.0.0", auto_migrate=True)
+    @manager.model("Optional", "1.0.0", backward_compatible=True)
     class OptionalV1(BaseModel):
         field1: str = "default1"
         field2: int = 0
 
-    @manager.model("Optional", "2.0.0", auto_migrate=True)
+    @manager.model("Optional", "2.0.0", backward_compatible=True)
     class OptionalV2(BaseModel):
         field1: str = "default1"
         field2: int = 0
@@ -572,7 +572,7 @@ def test_many_extra_fields_preserved(num_extra_fields: int) -> None:
     """Test that large numbers of extra fields are preserved."""
     manager = ModelManager()
 
-    @manager.model("ManyFields", "1.0.0", auto_migrate=True)
+    @manager.model("ManyFields", "1.0.0", backward_compatible=True)
     class ManyFieldsModel(BaseModel):
         required_field: str = "required"
 
@@ -593,7 +593,7 @@ def test_empty_data_migration(name: str, version: str) -> None:
     """Empty data should migrate successfully with defaults."""
     manager = ModelManager()
 
-    @manager.model(name, version, auto_migrate=True)
+    @manager.model(name, version, backward_compatible=True)
     class EmptyModel(BaseModel):
         field1: str = "default1"
         field2: int = 0
@@ -615,12 +615,12 @@ def test_migration_with_no_changes(name: str, v1: str, v2: str) -> None:
 
     manager = ModelManager()
 
-    @manager.model(name, v1, auto_migrate=True)
+    @manager.model(name, v1, backward_compatible=True)
     class ModelV1(BaseModel):
         field1: str = "default"
         field2: int = 0
 
-    @manager.model(name, v2, auto_migrate=True)
+    @manager.model(name, v2, backward_compatible=True)
     class ModelV2(BaseModel):
         field1: str = "default"
         field2: int = 0
@@ -641,7 +641,7 @@ def test_list_fields_preserved(name: str, version: str, list_size: int) -> None:
     """List fields should be preserved correctly."""
     manager = ModelManager()
 
-    @manager.model(name, version, auto_migrate=True)
+    @manager.model(name, version, backward_compatible=True)
     class ListModel(BaseModel):
         items: list[int] = Field(default_factory=list)
 
@@ -663,7 +663,7 @@ def test_dict_fields_preserved(name: str, version: str, dict_size: int) -> None:
     """Dictionary fields should be preserved correctly."""
     manager = ModelManager()
 
-    @manager.model(name, version, auto_migrate=True)
+    @manager.model(name, version, backward_compatible=True)
     class DictModel(BaseModel):
         metadata: dict[str, int] = Field(default_factory=dict)
 
@@ -693,15 +693,15 @@ class ModelManagerStateMachine(RuleBasedStateMachine):
         target=models,
         name=model_name(),
         version=semantic_version(),
-        auto_migrate=st.booleans(),
+        backward_compatible=st.booleans(),
     )
     def register_model(
-        self: Self, name: str, version: str, auto_migrate: bool
+        self: Self, name: str, version: str, backward_compatible: bool
     ) -> tuple[str, str]:
         """Register a new model version."""
         assume((name, version) not in self.model_classes)
 
-        @self.manager.model(name, version, auto_migrate=auto_migrate)
+        @self.manager.model(name, version, backward_compatible=backward_compatible)
         class DynamicModel(BaseModel):
             name: str = "default"
             value: int = 0

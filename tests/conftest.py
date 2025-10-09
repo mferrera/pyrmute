@@ -120,8 +120,8 @@ def populated_registry(
     """Create a registry with multiple registered models."""
     registry.register("User", "1.0.0")(user_v1)
     registry.register("User", "2.0.0")(user_v2)
-    registry.register("User", "3.0.0", auto_migrate=True)(user_v3)
-    registry.register("User", "4.0.0", auto_migrate=True)(user_v4)
+    registry.register("User", "3.0.0", backward_compatible=True)(user_v3)
+    registry.register("User", "4.0.0", backward_compatible=True)(user_v4)
     return registry
 
 
@@ -142,8 +142,8 @@ def populated_migration_manager(
     """Create a manager with registered models."""
     registry.register("User", "1.0.0")(user_v1)
     registry.register("User", "2.0.0")(user_v2)
-    registry.register("User", "3.0.0", auto_migrate=True)(user_v3)
-    registry.register("User", "4.0.0", auto_migrate=True)(user_v4)
+    registry.register("User", "3.0.0", backward_compatible=True)(user_v3)
+    registry.register("User", "4.0.0", backward_compatible=True)(user_v4)
     return MigrationManager(registry)
 
 
