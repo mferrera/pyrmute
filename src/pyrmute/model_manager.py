@@ -591,7 +591,8 @@ class ModelManager:
             output_dir: Directory path for output.
             indent: JSON indentation level.
             separate_definitions: If True, create separate schema files for nested
-                models and use $ref to reference them.
+                models and use $ref to reference them. Only applies to models with
+                'enable_ref=True'.
             ref_template: Template for $ref URLs when separate_definitions=True.
                 Defaults to relative file references if not provided.
 
@@ -611,37 +612,6 @@ class ModelManager:
         """
         self._schema_manager.dump_schemas(
             output_dir, indent, separate_definitions, ref_template
-        )
-
-    def dump_schemas_with_refs(
-        self: Self,
-        output_dir: str | Path,
-        ref_template: str | None = None,
-        indent: int = 2,
-    ) -> None:
-        """Export schemas with separate files for nested models.
-
-        This is a convenience method that calls dump_schemas with
-        separate_definitions=True.
-
-        Args:
-            output_dir: Directory path for output.
-            ref_template: Template for $ref URLs. Supports {model} and {version}
-                placeholders. Defaults to relative file refs.
-            indent: JSON indentation level.
-
-        Example:
-            >>> # Relative file references (default)
-            >>> manager.dump_schemas_with_refs("schemas/")
-            >>>
-            >>> # Absolute URL references
-            >>> manager.dump_schemas_with_refs(
-            ...     "schemas/",
-            ...     ref_template="https://example.com/schemas/{model}_v{version}.json"
-            ... )
-        """
-        self._schema_manager.dump_schemas(
-            output_dir, indent, separate_definitions=True, ref_template=ref_template
         )
 
     def get_nested_models(
