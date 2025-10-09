@@ -14,9 +14,9 @@ from pyrmute import MigrationTestCase, ModelData, ModelManager, ModelVersion
 # Initialization tests
 def test_manager_initialization(manager: ModelManager) -> None:
     """Test ModelManager initializes with required components."""
-    assert manager.registry is not None
-    assert manager.migration_manager is not None
-    assert manager.schema_manager is not None
+    assert manager._registry is not None
+    assert manager._migration_manager is not None
+    assert manager._schema_manager is not None
 
 
 # Model registration tests
