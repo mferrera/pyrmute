@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Self
 
+from .exceptions import InvalidVersionError
+
 
 @dataclass(frozen=True, order=True)
 class ModelVersion:
@@ -29,19 +31,25 @@ class ModelVersion:
             Parsed Version instance.
 
         Raises:
-            ValueError: If version string format is invalid.
+            InvalidVersionError: If version string format is invalid.
         """
-        parts = version_str.split(".")
-        if len(parts) != 3:  # noqa: PLR2004
-            raise ValueError(f"Invalid version format: {version_str}")
-
         try:
-            major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
+            parts = version_str.split(".")
+            if len(parts) != 3:  # noqa: PLR2004
+                raise InvalidVersionError(
+                    version_str, "Version must have exactly 3 parts (major.minor.patch)"
+                )
+
+            major, minor, patch = map(int, parts)
             if major < 0 or minor < 0 or patch < 0:
-                raise ValueError(f"Invalid version format: {version_str}")
+                raise InvalidVersionError(
+                    version_str, "Version parts must be positive integers"
+                )
             return cls(major, minor, patch)
         except ValueError as e:
-            raise ValueError(f"Invalid version format: {version_str}") from e
+            raise InvalidVersionError(
+                version_str, f"Version parts must be integers: {e}"
+            ) from e
 
     def __str__(self: Self) -> str:
         """Return string representation of version.

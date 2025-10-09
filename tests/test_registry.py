@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from pyrmute import ModelVersion
+from pyrmute import ModelNotFoundError, ModelVersion
 from pyrmute._registry import Registry
 
 
@@ -200,16 +200,18 @@ def test_get_model_all_versions(
 
 
 def test_get_model_not_found(registry: Registry) -> None:
-    """Test getting non-existent model raises ValueError."""
-    with pytest.raises(ValueError, match=r"Model NonExistent v1\.0\.0 not found"):
+    """Test getting non-existent model raises ModelNotFoundError."""
+    with pytest.raises(ModelNotFoundError, match=r"Model 'NonExistent' not found"):
         registry.get_model("NonExistent", "1.0.0")
 
 
 def test_get_model_version_not_found(
     populated_registry: Registry,
 ) -> None:
-    """Test getting non-existent version raises ValueError."""
-    with pytest.raises(ValueError, match=r"Model User v9\.9\.9 not found"):
+    """Test getting non-existent version raises ModelNotFoundError."""
+    with pytest.raises(
+        ModelNotFoundError, match=r"Model 'User' version '9.9.9' not found"
+    ):
         populated_registry.get_model("User", "9.9.9")
 
 
@@ -256,8 +258,8 @@ def test_get_latest_unordered_registration(registry: Registry) -> None:
 
 
 def test_get_latest_not_found(registry: Registry) -> None:
-    """Test getting latest for non-existent model raises ValueError."""
-    with pytest.raises(ValueError, match="Model NonExistent not found"):
+    """Test getting latest for non-existent model raises ModelNotFoundError."""
+    with pytest.raises(ModelNotFoundError, match="Model 'NonExistent' not found"):
         registry.get_latest("NonExistent")
 
 
@@ -309,8 +311,8 @@ def test_get_versions_sorted(registry: Registry) -> None:
 
 
 def test_get_versions_not_found(registry: Registry) -> None:
-    """Test getting versions for non-existent model raises ValueError."""
-    with pytest.raises(ValueError, match="Model NonExistent not found"):
+    """Test getting versions for non-existent model raises ModelNotFoundError."""
+    with pytest.raises(ModelNotFoundError, match="Model 'NonExistent' not found"):
         registry.get_versions("NonExistent")
 
 

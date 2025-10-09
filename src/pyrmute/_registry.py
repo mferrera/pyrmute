@@ -6,6 +6,7 @@ from typing import Self
 
 from pydantic import BaseModel
 
+from .exceptions import ModelNotFoundError
 from .model_version import ModelVersion
 from .types import (
     DecoratedBaseModel,
@@ -100,12 +101,15 @@ class Registry:
             Model class for the specified version.
 
         Raises:
-            ValueError: If model or version not found.
+            ModelNotFoundError: If model or version not found.
         """
         ver = ModelVersion.parse(version) if isinstance(version, str) else version
 
-        if name not in self._models or ver not in self._models[name]:
-            raise ValueError(f"Model {name} v{ver} not found")
+        if name not in self._models:
+            raise ModelNotFoundError(name)
+
+        if ver not in self._models[name]:
+            raise ModelNotFoundError(name, str(ver))
 
         return self._models[name][ver]
 
@@ -119,10 +123,10 @@ class Registry:
             Latest version of the model class.
 
         Raises:
-            ValueError: If model not found.
+            ModelNotFoundError: If model not found.
         """
         if name not in self._models:
-            raise ValueError(f"Model {name} not found")
+            raise ModelNotFoundError(name)
 
         latest_version = max(self._models[name].keys())
         return self._models[name][latest_version]
@@ -137,10 +141,10 @@ class Registry:
             Sorted list of available versions.
 
         Raises:
-            ValueError: If model not found.
+            ModelNotFoundError: If model not found.
         """
         if name not in self._models:
-            raise ValueError(f"Model {name} not found")
+            raise ModelNotFoundError(name)
 
         return sorted(self._models[name].keys())
 

@@ -8,7 +8,7 @@ from hypothesis import HealthCheck, assume, given, settings, strategies as st
 from hypothesis.stateful import Bundle, RuleBasedStateMachine, invariant, rule
 from pydantic import BaseModel, Field
 
-from pyrmute import ModelManager, ModelVersion
+from pyrmute import MigrationError, ModelManager, ModelVersion
 
 
 # Strategies
@@ -766,7 +766,7 @@ class ModelManagerStateMachine(RuleBasedStateMachine):
         try:
             result = self.manager.migration_manager.migrate(data, name1, v1, v2)
             assert isinstance(result, dict)
-        except ValueError as e:
+        except MigrationError as e:
             assert "migration path" in str(e).lower() or "not found" in str(e).lower()
 
     @invariant()
