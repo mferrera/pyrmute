@@ -22,6 +22,7 @@ through multiple versions.
   support for `$ref`, custom generators, and nested models
 - **Production-ready** - Batch processing, parallel execution, and streaming
   support for large datasets
+- **Only one dependency** - Pydantic
 
 ## Help
 
