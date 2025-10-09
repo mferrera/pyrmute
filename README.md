@@ -39,7 +39,7 @@ pip install pyrmute
 
 ```python
 from pydantic import BaseModel
-from pyrmute import ModelManager, MigrationData
+from pyrmute import ModelManager, ModelData
 
 manager = ModelManager()
 
@@ -70,7 +70,7 @@ class UserV3(BaseModel):
 
 # Define how to migrate between versions
 @manager.migration("User", "1.0.0", "2.0.0")
-def split_name(data: MigrationData) -> MigrationData:
+def split_name(data: ModelData) -> ModelData:
     parts = data["name"].split(" ", 1)
     return {
         "first_name": parts[0],
@@ -80,7 +80,7 @@ def split_name(data: MigrationData) -> MigrationData:
 
 
 @manager.migration("User", "2.0.0", "3.0.0")
-def add_email(data: MigrationData) -> MigrationData:
+def add_email(data: ModelData) -> ModelData:
     return {
         **data,
         "email": f"{data['first_name'].lower()}@example.com"
@@ -239,7 +239,7 @@ config = manager.migrate({"timeout": 60}, "Config", "1.0.0", "2.0.0")
 ```python
 from datetime import datetime
 from pydantic import BaseModel, EmailStr
-from pyrmute import ModelManager, MigrationData
+from pyrmute import ModelManager, ModelData
 
 manager = ModelManager()
 
@@ -280,12 +280,12 @@ class OrderV3(BaseModel):
 
 # Define migrations
 @manager.migration("Order", "1.0.0", "2.0.0")
-def add_customer_email(data: MigrationData) -> MigrationData:
+def add_customer_email(data: ModelData) -> ModelData:
     return {**data, "customer_email": "customer@example.com"}
 
 
 @manager.migration("Order", "2.0.0", "3.0.0")
-def structure_items(data: MigrationData) -> MigrationData:
+def structure_items(data: ModelData) -> ModelData:
     # Convert simple strings to structured items
     structured_items = [
         {

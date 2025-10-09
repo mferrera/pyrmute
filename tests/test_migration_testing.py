@@ -4,10 +4,10 @@ import pytest
 from pydantic import BaseModel
 
 from pyrmute import (
-    MigrationData,
     MigrationTestCase,
     MigrationTestResult,
     MigrationTestResults,
+    ModelData,
     ModelManager,
     ModelVersion,
 )
@@ -453,7 +453,7 @@ def test_test_migration_catches_exceptions(manager: ModelManager) -> None:
         email: str
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def bad_migration(data: MigrationData) -> MigrationData:
+    def bad_migration(data: ModelData) -> ModelData:
         raise ValueError("Migration failed")
 
     results = manager.test_migration(
@@ -504,7 +504,7 @@ def test_test_migration_multiple_failures(manager: ModelManager) -> None:
         email: str
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def migrate(data: MigrationData) -> MigrationData:
+    def migrate(data: ModelData) -> ModelData:
         return {**data, "email": "default@example.com"}
 
     results = manager.test_migration(
@@ -567,11 +567,11 @@ def test_test_migration_chain_through_versions(manager: ModelManager) -> None:
         age: int
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def migrate_1_to_2(data: MigrationData) -> MigrationData:
+    def migrate_1_to_2(data: ModelData) -> ModelData:
         return {**data, "email": "default@example.com"}
 
     @manager.migration("User", "2.0.0", "3.0.0")
-    def migrate_2_to_3(data: MigrationData) -> MigrationData:
+    def migrate_2_to_3(data: ModelData) -> ModelData:
         return {**data, "age": 25}
 
     results = manager.test_migration(

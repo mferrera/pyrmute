@@ -22,8 +22,8 @@ from .types import (
     DecoratedBaseModel,
     JsonSchema,
     JsonSchemaGenerator,
-    MigrationData,
     MigrationFunc,
+    ModelData,
     ModelMetadata,
 )
 
@@ -55,7 +55,7 @@ class ModelManager:
         >>>
         >>> # Define migration between versions
         >>> @manager.migration("User", "1.0.0", "2.0.0")
-        ... def migrate(data: MigrationData) -> MigrationData:
+        ... def migrate(data: ModelData) -> ModelData:
         ...     return {**data, "email": "unknown@example.com"}
         >>>
         >>> # Migrate legacy data
@@ -207,7 +207,7 @@ class ModelManager:
 
     def validate_data(
         self: Self,
-        data: MigrationData,
+        data: ModelData,
         name: str,
         version: str | ModelVersion,
     ) -> bool:
@@ -241,7 +241,7 @@ class ModelManager:
 
     def migrate(
         self: Self,
-        data: MigrationData,
+        data: ModelData,
         name: str,
         from_version: str | ModelVersion,
         to_version: str | ModelVersion,
@@ -263,11 +263,11 @@ class ModelManager:
 
     def migrate_data(
         self: Self,
-        data: MigrationData,
+        data: ModelData,
         name: str,
         from_version: str | ModelVersion,
         to_version: str | ModelVersion,
-    ) -> MigrationData:
+    ) -> ModelData:
         """Migrate data between versions.
 
         Args:
@@ -283,7 +283,7 @@ class ModelManager:
 
     def migrate_batch(  # noqa: PLR0913
         self: Self,
-        data_list: Iterable[MigrationData],
+        data_list: Iterable[ModelData],
         name: str,
         from_version: str | ModelVersion,
         to_version: str | ModelVersion,
@@ -341,14 +341,14 @@ class ModelManager:
 
     def migrate_batch_data(  # noqa: PLR0913
         self: Self,
-        data_list: Iterable[MigrationData],
+        data_list: Iterable[ModelData],
         name: str,
         from_version: str | ModelVersion,
         to_version: str | ModelVersion,
         parallel: bool = False,
         max_workers: int | None = None,
         use_processes: bool = False,
-    ) -> list[MigrationData]:
+    ) -> list[ModelData]:
         """Migrate multiple data items between versions, returning raw dictionaries.
 
         Args:
@@ -393,7 +393,7 @@ class ModelManager:
 
     def migrate_batch_streaming(
         self: Self,
-        data_list: Iterable[MigrationData],
+        data_list: Iterable[ModelData],
         name: str,
         from_version: str | ModelVersion,
         to_version: str | ModelVersion,
@@ -439,12 +439,12 @@ class ModelManager:
 
     def migrate_batch_data_streaming(
         self: Self,
-        data_list: Iterable[MigrationData],
+        data_list: Iterable[ModelData],
         name: str,
         from_version: str | ModelVersion,
         to_version: str | ModelVersion,
         chunk_size: int = 100,
-    ) -> Iterable[MigrationData]:
+    ) -> Iterable[ModelData]:
         """Migrate data in chunks, yielding raw dictionaries as they complete.
 
         Useful for large datasets where you want to start processing results before all
@@ -656,7 +656,7 @@ class ModelManager:
         name: str,
         from_version: str | ModelVersion,
         to_version: str | ModelVersion,
-        test_cases: list[tuple[MigrationData, MigrationData] | MigrationTestCase],
+        test_cases: list[tuple[ModelData, ModelData] | MigrationTestCase],
     ) -> MigrationTestResults:
         """Test a migration with multiple test cases.
 

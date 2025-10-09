@@ -3,7 +3,7 @@
 import pytest
 from pydantic import BaseModel, Field
 
-from pyrmute import MigrationData, ModelManager
+from pyrmute import ModelData, ModelManager
 from pyrmute._migration_manager import MigrationManager
 from pyrmute._registry import Registry
 from pyrmute._schema_manager import SchemaManager
@@ -81,7 +81,7 @@ def address_v1() -> type[BaseModel]:
     return AddressV1
 
 
-def _migrate_user_v1_to_v2(data: MigrationData) -> MigrationData:
+def _migrate_user_v1_to_v2(data: ModelData) -> ModelData:
     """Migration function for User 1.0.0 -> 2.0.0.
 
     This is separated out so it can be pickled.

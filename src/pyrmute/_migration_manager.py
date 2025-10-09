@@ -11,7 +11,7 @@ from pydantic_core import PydanticUndefined
 from ._registry import Registry
 from .exceptions import MigrationError, ModelNotFoundError
 from .model_version import ModelVersion
-from .types import MigrationData, MigrationFunc, ModelName
+from .types import MigrationFunc, ModelData, ModelName
 
 
 class MigrationManager:
@@ -73,11 +73,11 @@ class MigrationManager:
 
     def migrate(
         self: Self,
-        data: MigrationData,
+        data: ModelData,
         name: ModelName,
         from_version: str | ModelVersion,
         to_version: str | ModelVersion,
-    ) -> MigrationData:
+    ) -> ModelData:
         """Migrate data from one version to another.
 
         Args:
@@ -224,11 +224,11 @@ class MigrationManager:
 
     def _auto_migrate(
         self: Self,
-        data: MigrationData,
+        data: ModelData,
         name: ModelName,
         from_ver: ModelVersion,
         to_ver: ModelVersion,
-    ) -> MigrationData:
+    ) -> ModelData:
         """Automatically migrate data when no explicit migration exists.
 
         This method handles nested Pydantic models recursively, migrating them to their
@@ -249,7 +249,7 @@ class MigrationManager:
         from_fields = from_model.model_fields
         to_fields = to_model.model_fields
 
-        result: MigrationData = {}
+        result: ModelData = {}
 
         for field_name, to_field_info in to_fields.items():
             # Field exists in data, migrate it
@@ -313,7 +313,7 @@ class MigrationManager:
 
     def _extract_nested_model_info(
         self: Self,
-        value: MigrationData,
+        value: ModelData,
         from_field: FieldInfo | None,
         to_field: FieldInfo,
     ) -> tuple[ModelName, ModelVersion, ModelVersion] | None:
