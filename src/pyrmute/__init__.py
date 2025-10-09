@@ -4,6 +4,9 @@ A package for managing versioned Pydantic models with automatic migrations
 and schema management.
 """
 
+from ._migration_manager import MigrationManager
+from ._registry import Registry
+from ._schema_manager import SchemaManager
 from ._version import __version__
 from .exceptions import (
     InvalidVersionError,
@@ -21,27 +24,26 @@ from .model_manager import ModelManager
 from .model_version import ModelVersion
 from .types import (
     JsonSchema,
-    JsonValue,
     MigrationFunc,
     ModelData,
-    ModelMetadata,
 )
 
 __all__ = [
     "InvalidVersionError",
     "JsonSchema",
-    "JsonValue",
     "MigrationError",
     "MigrationFunc",
+    "MigrationManager",
     "MigrationTestCase",
     "MigrationTestResult",
     "MigrationTestResults",
     "ModelData",
     "ModelDiff",
     "ModelManager",
-    "ModelMetadata",
     "ModelNotFoundError",
     "ModelVersion",
+    "Registry",
+    "SchemaManager",
     "VersionedModelError",
     "__version__",
 ]
