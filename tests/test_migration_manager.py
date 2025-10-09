@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field
 from pydantic.fields import FieldInfo
 
 from pyrmute import (
-    MigrationData,
     MigrationError,
+    ModelData,
     ModelManager,
     ModelNotFoundError,
     ModelVersion,
@@ -118,7 +118,7 @@ def test_migrate_same_version_returns_unchanged(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test migrating to same version returns data unchanged."""
-    data: MigrationData = {"name": "Alice"}
+    data: ModelData = {"name": "Alice"}
     result = populated_migration_manager.migrate(data, "User", "1.0.0", "1.0.0")
     assert result == data
     assert result is data
@@ -133,7 +133,7 @@ def test_migrate_with_explicit_migration(
     def migrate(data: dict[str, Any]) -> dict[str, Any]:
         return {**data, "email": "migrated@example.com"}
 
-    data: MigrationData = {"name": "Bob"}
+    data: ModelData = {"name": "Bob"}
     result = populated_migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
     assert result == {"name": "Bob", "email": "migrated@example.com"}
 
@@ -150,7 +150,7 @@ def test_migrate_with_model_versions(
     from_ver = ModelVersion(1, 0, 0)
     to_ver = ModelVersion(2, 0, 0)
 
-    data: MigrationData = {"name": "Charlie"}
+    data: ModelData = {"name": "Charlie"}
     result = populated_migration_manager.migrate(data, "User", from_ver, to_ver)
     assert result == {"name": "Charlie", "email": "test@example.com"}
 
@@ -168,7 +168,7 @@ def test_migrate_chain_multiple_versions(
     def migrate_2_to_3(data: dict[str, Any]) -> dict[str, Any]:
         return {**data, "age": 25}
 
-    data: MigrationData = {"name": "David"}
+    data: ModelData = {"name": "David"}
     result = populated_migration_manager.migrate(data, "User", "1.0.0", "3.0.0")
     assert result == {"name": "David", "email": "default@example.com", "age": 25}
 
@@ -182,7 +182,7 @@ def test_migrate_backward_compatibility(
     def migrate_3_to_2(data: dict[str, Any]) -> dict[str, Any]:
         return {k: v for k, v in data.items() if k != "age"}
 
-    data: MigrationData = {"name": "Eve", "email": "eve@example.com", "age": 30}
+    data: ModelData = {"name": "Eve", "email": "eve@example.com", "age": 30}
     result = populated_migration_manager.migrate(data, "User", "3.0.0", "2.0.0")
     assert result == {"name": "Eve", "email": "eve@example.com"}
 
@@ -196,7 +196,7 @@ def test_migrate_preserves_extra_fields(
     def migrate(data: dict[str, Any]) -> dict[str, Any]:
         return {**data, "email": "new@example.com"}
 
-    data: MigrationData = {"name": "Frank", "custom_field": "value"}
+    data: ModelData = {"name": "Frank", "custom_field": "value"}
     result = populated_migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
     assert result["custom_field"] == "value"
 
@@ -205,7 +205,7 @@ def test_migration_fails_if_no_direct_path(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test migration fails if no direct migration path is found."""
-    data: MigrationData = {"name": "Grace"}
+    data: ModelData = {"name": "Grace"}
     with pytest.raises(
         MigrationError,
         match=r"Migration failed for 'User': 1.0.0 → 2.0.0",
@@ -218,7 +218,7 @@ def test_migration_fails_if_no_transient_path(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test migration fails if no transient migration path is found."""
-    data: MigrationData = {"name": "Grace"}
+    data: ModelData = {"name": "Grace"}
     with pytest.raises(
         MigrationError,
         match=r"Migration failed for 'User': 1.0.0 → 2.0.0",
@@ -232,7 +232,7 @@ def test_backward_compatible_adds_default_fields(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test auto-migration adds new, required fields with defaults."""
-    data: MigrationData = {"name": "Grace", "email": "foo@bar.com"}
+    data: ModelData = {"name": "Grace", "email": "foo@bar.com"}
     result = populated_migration_manager.migrate(data, "User", "2.0.0", "3.0.0")
     assert result == {**data, "age": 0}
 
@@ -241,10 +241,10 @@ def test_backward_compatible_adds_default_fields_and_uses_migration_func(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test auto-migration with default field uses migration func first."""
-    data: MigrationData = {"name": "Grace", "email": "foo@bar.com"}
+    data: ModelData = {"name": "Grace", "email": "foo@bar.com"}
 
     @populated_migration_manager.register_migration("User", "2.0.0", "3.0.0")
-    def migrate_user_age(data: MigrationData) -> MigrationData:
+    def migrate_user_age(data: ModelData) -> ModelData:
         return {**data, "age": 5}
 
     result = populated_migration_manager.migrate(data, "User", "2.0.0", "3.0.0")
@@ -255,7 +255,7 @@ def test_backward_compatible_adds_default_factory_fields(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test auto-migration adds new, required fields with a default factory."""
-    data: MigrationData = {"name": "Grace", "email": "foo@bar.com"}
+    data: ModelData = {"name": "Grace", "email": "foo@bar.com"}
     result = populated_migration_manager.migrate(data, "User", "2.0.0", "4.0.0")
     assert result == {**data, "age": 0, "aliases": []}
 
@@ -264,14 +264,14 @@ def test_backward_compatible_adds_default_factory_fields_uses_migration_func(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test auto-migration with default factory uses migration func first."""
-    data: MigrationData = {"name": "Grace", "email": "foo@bar.com"}
+    data: ModelData = {"name": "Grace", "email": "foo@bar.com"}
 
     @populated_migration_manager.register_migration("User", "2.0.0", "3.0.0")
-    def migrate_user_age(data: MigrationData) -> MigrationData:
+    def migrate_user_age(data: ModelData) -> ModelData:
         return {**data, "age": 5}
 
     @populated_migration_manager.register_migration("User", "3.0.0", "4.0.0")
-    def migrate_user_aliases(data: MigrationData) -> MigrationData:
+    def migrate_user_aliases(data: ModelData) -> ModelData:
         return {**data, "aliases": ["Bob"]}
 
     result = populated_migration_manager.migrate(data, "User", "2.0.0", "4.0.0")
@@ -321,7 +321,7 @@ def test_backward_compatible_handles_none_values(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test auto-migration handles None values correctly."""
-    data: MigrationData = {"name": None, "email": "foo@bar.com"}
+    data: ModelData = {"name": None, "email": "foo@bar.com"}
     result = populated_migration_manager.migrate(data, "User", "2.0.0", "3.0.0")
     assert result["name"] is None
 
@@ -330,7 +330,7 @@ def test_backward_compatible_preserves_extra_fields(
     populated_migration_manager: MigrationManager,
 ) -> None:
     """Test auto-migration handles None values correctly."""
-    data: MigrationData = {"name": "Grace", "email": "foo@bar.com", "foo": "bar"}
+    data: ModelData = {"name": "Grace", "email": "foo@bar.com", "foo": "bar"}
     result = populated_migration_manager.migrate(data, "User", "2.0.0", "3.0.0")
     assert result == {"name": "Grace", "email": "foo@bar.com", "foo": "bar", "age": 0}
 
@@ -362,10 +362,10 @@ def test_migrate_nested_model(registry: Registry) -> None:
     manager = MigrationManager(registry)
 
     @manager.register_migration("Address", "1.0.0", "2.0.0")
-    def migrate_address(data: MigrationData) -> MigrationData:
+    def migrate_address(data: ModelData) -> ModelData:
         return {**data, "city": "Unknown"}
 
-    data: MigrationData = {"name": "Iris", "address": {"street": "123 Main St"}}
+    data: ModelData = {"name": "Iris", "address": {"street": "123 Main St"}}
 
     result = manager.migrate(data, "Person", "1.0.0", "2.0.0")
     assert result["address"]["street"] == "123 Main St"
@@ -399,7 +399,7 @@ def test_migrate_list_of_nested_models(registry: Registry) -> None:
     def migrate_item(data: dict[str, Any]) -> dict[str, Any]:
         return {**data, "quantity": 1}
 
-    data: MigrationData = {"items": [{"name": "Apple"}, {"name": "Banana"}]}
+    data: ModelData = {"items": [{"name": "Apple"}, {"name": "Banana"}]}
 
     result = manager.migrate(data, "Order", "1.0.0", "2.0.0")
     assert len(result["items"]) == 2  # noqa: PLR2004
@@ -414,7 +414,7 @@ def test_migrate_dict_values(populated_migration_manager: MigrationManager) -> N
     def migrate(data: dict[str, Any]) -> dict[str, Any]:
         return {**data, "email": "default@example.com"}
 
-    data: MigrationData = {
+    data: ModelData = {
         "name": "Jack",
         "metadata": {"key1": "value1", "key2": "value2"},
     }
@@ -752,11 +752,11 @@ def test_validate_migration_path_multi_hop_complete(
         age: int
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def migrate_1_to_2(data: MigrationData) -> MigrationData:
+    def migrate_1_to_2(data: ModelData) -> ModelData:
         return {**data, "email": "test@example.com"}
 
     @manager.migration("User", "2.0.0", "3.0.0")
-    def migrate_2_to_3(data: MigrationData) -> MigrationData:
+    def migrate_2_to_3(data: ModelData) -> ModelData:
         return {**data, "age": 0}
 
     # Should not raise
@@ -786,7 +786,7 @@ def test_validate_migration_path_multi_hop_broken_chain(
         age: int
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def migrate_1_to_2(data: MigrationData) -> MigrationData:
+    def migrate_1_to_2(data: ModelData) -> ModelData:
         return {**data, "email": "test@example.com"}
 
     with pytest.raises(
@@ -818,7 +818,7 @@ def test_validate_migration_path_multi_hop_first_step_missing(
         age: int
 
     @manager.migration("User", "2.0.0", "3.0.0")
-    def migrate_2_to_3(data: MigrationData) -> MigrationData:
+    def migrate_2_to_3(data: ModelData) -> ModelData:
         return {**data, "age": 0}
 
     with pytest.raises(
@@ -857,15 +857,15 @@ def test_validate_migration_path_complex_chain(
         age: int
 
     @manager.migration("User", "1.0.0", "1.5.0")
-    def migrate_1_to_15(data: MigrationData) -> MigrationData:
+    def migrate_1_to_15(data: ModelData) -> ModelData:
         return {**data, "middle_name": ""}
 
     @manager.migration("User", "1.5.0", "2.0.0")
-    def migrate_15_to_2(data: MigrationData) -> MigrationData:
+    def migrate_15_to_2(data: ModelData) -> ModelData:
         return {**data, "email": "test@example.com"}
 
     @manager.migration("User", "2.0.0", "3.0.0")
-    def migrate_2_to_3(data: MigrationData) -> MigrationData:
+    def migrate_2_to_3(data: ModelData) -> ModelData:
         return {**data, "age": 0}
 
     # Should not raise for any valid path
@@ -949,7 +949,7 @@ def test_validate_migration_path_backward_no_migration(
 
     # Forward migration only
     @manager.migration("User", "1.0.0", "2.0.0")
-    def migrate_forward(data: MigrationData) -> MigrationData:
+    def migrate_forward(data: ModelData) -> ModelData:
         return {**data, "email": "test@example.com"}
 
     with pytest.raises(
@@ -975,11 +975,11 @@ def test_validate_migration_path_bidirectional(
         email: str
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def migrate_forward(data: MigrationData) -> MigrationData:
+    def migrate_forward(data: ModelData) -> ModelData:
         return {**data, "email": "test@example.com"}
 
     @manager.migration("User", "2.0.0", "1.0.0")
-    def migrate_backward(data: MigrationData) -> MigrationData:
+    def migrate_backward(data: ModelData) -> ModelData:
         result = dict(data)
         result.pop("email", None)
         return result
@@ -1014,7 +1014,7 @@ def test_validate_migration_path_mixed_auto_explicit(
         age: int
 
     @manager.migration("User", "2.0.0", "3.0.0")
-    def migrate_2_to_3(data: MigrationData) -> MigrationData:
+    def migrate_2_to_3(data: ModelData) -> ModelData:
         return {**data, "age": 0}
 
     manager.migration_manager.validate_migration_path(
@@ -1062,7 +1062,7 @@ def test_validate_migration_path_explicit_overrides_auto(
         email: str = "auto@example.com"
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def explicit_migration(data: MigrationData) -> MigrationData:
+    def explicit_migration(data: ModelData) -> ModelData:
         return {**data, "email": "explicit@example.com"}
 
     # Should not raise
@@ -1121,7 +1121,7 @@ def test_auto_migration_raises_on_field_processing_error(
         metadata: dict[str, str]
         email: str = "default@example.com"
 
-    data: MigrationData = {"name": "Alice", "metadata": BrokenDict()}
+    data: ModelData = {"name": "Alice", "metadata": BrokenDict()}
     with pytest.raises(
         MigrationError,
         match=r"Migration failed for 'User': 1.0.0 → 2.0.0",
@@ -1150,7 +1150,7 @@ def test_auto_migration_raises_on_default_factory_error(
         tags: list[str]
 
     UserV2.model_fields["tags"].default_factory = bad_factory
-    data: MigrationData = {"name": "Bob"}
+    data: ModelData = {"name": "Bob"}
     result = manager.migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
     assert "tags" not in result
 
@@ -1179,7 +1179,7 @@ def test_auto_migration_nested_model_migration_error(
         name: str
         address: AddressV2
 
-    data: MigrationData = {"name": "Charlie", "address": {"street": "123 Main St"}}
+    data: ModelData = {"name": "Charlie", "address": {"street": "123 Main St"}}
     with pytest.raises(
         MigrationError,
         match=r"Migration failed for 'Address': 1.0.0 → 2.0.0",
@@ -1207,7 +1207,7 @@ def test_auto_migration_preserves_exception_chain(manager: ModelManager) -> None
         items: list[str]
         email: str = "default@example.com"
 
-    data: MigrationData = {"name": "Diana", "items": BrokenList(["a", "b"])}
+    data: ModelData = {"name": "Diana", "items": BrokenList(["a", "b"])}
 
     with pytest.raises(MigrationError) as exc_info:
         manager.migration_manager.migrate(data, "User", "1.0.0", "2.0.0")

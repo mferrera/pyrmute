@@ -22,8 +22,8 @@ from .model_version import ModelVersion
 from .types import (
     JsonSchema,
     JsonValue,
-    MigrationData,
     MigrationFunc,
+    ModelData,
     ModelMetadata,
 )
 
@@ -31,12 +31,12 @@ __all__ = [
     "InvalidVersionError",
     "JsonSchema",
     "JsonValue",
-    "MigrationData",
     "MigrationError",
     "MigrationFunc",
     "MigrationTestCase",
     "MigrationTestResult",
     "MigrationTestResults",
+    "ModelData",
     "ModelDiff",
     "ModelManager",
     "ModelMetadata",

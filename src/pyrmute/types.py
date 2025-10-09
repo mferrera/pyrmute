@@ -19,8 +19,8 @@ JsonSchemaDefinitions: TypeAlias = dict[str, JsonValue]
 JsonSchemaGenerator: TypeAlias = Callable[[type[BaseModel]], JsonSchema]
 SchemaGenerators: TypeAlias = dict[ModelVersion, JsonSchemaGenerator]
 
-MigrationData: TypeAlias = dict[str, Any]
-MigrationFunc: TypeAlias = Callable[[MigrationData], MigrationData]
+ModelData: TypeAlias = dict[str, Any]
+MigrationFunc: TypeAlias = Callable[[ModelData], ModelData]
 
 
 MigrationKey: TypeAlias = tuple[ModelVersion, ModelVersion]

@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Self
 
-from .types import MigrationData
+from .types import ModelData
 
 
 @dataclass
@@ -28,8 +28,8 @@ class MigrationTestCase:
         ... )
     """
 
-    source: MigrationData
-    target: MigrationData | None = None
+    source: ModelData
+    target: ModelData | None = None
     description: str = ""
 
 
@@ -55,7 +55,7 @@ class MigrationTestResult:
     """
 
     test_case: MigrationTestCase
-    actual: MigrationData
+    actual: ModelData
     passed: bool
     error: str | None = None
 

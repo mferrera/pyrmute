@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
-from pyrmute import MigrationData, MigrationTestCase, ModelManager, ModelVersion
+from pyrmute import MigrationTestCase, ModelData, ModelManager, ModelVersion
 
 
 # Initialization tests
@@ -142,7 +142,7 @@ def test_migrate_validation_catches_invalid(
 
     # Register a migration that produces invalid data
     @registered_manager.migration("User", "1.0.0", "2.0.0")
-    def bad_migration(data: MigrationData) -> MigrationData:
+    def bad_migration(data: ModelData) -> ModelData:
         return {"name": data["name"]}  # Missing required 'email'
 
     with pytest.raises(ValidationError):
@@ -228,7 +228,7 @@ def test_migrate_data_does_not_validate(
     """Test migrate_data returns dict even if data would fail validation."""
 
     @registered_manager.migration("User", "1.0.0", "2.0.0")
-    def bad_migration(data: MigrationData) -> MigrationData:
+    def bad_migration(data: ModelData) -> ModelData:
         return {"name": data["name"]}  # Missing required 'email'
 
     result = registered_manager.migrate_data(
@@ -347,7 +347,7 @@ def test_migrate_batch_validation_catches_invalid(
     """Test that validation catches invalid data in batch."""
 
     @registered_manager.migration("User", "1.0.0", "2.0.0")
-    def bad_migration(data: MigrationData) -> MigrationData:
+    def bad_migration(data: ModelData) -> ModelData:
         return {"name": data["name"]}  # Missing required 'email'
 
     with pytest.raises(ValidationError):
@@ -365,7 +365,7 @@ def test_migrate_batch_stops_on_first_validation_error(
     """Test that batch migration stops on first validation error."""
 
     @registered_manager.migration("User", "1.0.0", "2.0.0")
-    def selective_bad_migration(data: MigrationData) -> MigrationData:
+    def selective_bad_migration(data: ModelData) -> ModelData:
         if data["name"] == "Bad":
             return {"name": data["name"]}  # Missing email
         return {**data, "email": "test@example.com"}
@@ -500,7 +500,7 @@ def test_migrate_batch_data_does_not_validate(
     """Test migrate_batch_data returns dicts even if invalid."""
 
     @registered_manager.migration("User", "1.0.0", "2.0.0")
-    def bad_migration(data: MigrationData) -> MigrationData:
+    def bad_migration(data: ModelData) -> ModelData:
         return {"name": data["name"]}  # Missing required 'email'
 
     result = registered_manager.migrate_batch_data(
@@ -810,7 +810,7 @@ def test_migrate_batch_data_streaming_does_not_validate(
     """Test data streaming returns dicts even if invalid."""
 
     @registered_manager.migration("User", "1.0.0", "2.0.0")
-    def bad_migration(data: MigrationData) -> MigrationData:
+    def bad_migration(data: ModelData) -> ModelData:
         return {"name": data["name"]}  # Missing required 'email'
 
     data = [{"name": "Invalid"}]
@@ -832,7 +832,7 @@ def test_migrate_batch_data_streaming_with_generator(
 ) -> None:
     """Test data streaming with generator input."""
 
-    def data_generator() -> Iterable[MigrationData]:
+    def data_generator() -> Iterable[ModelData]:
         for i in range(15):
             yield {"name": f"User{i}"}
 
@@ -2134,7 +2134,7 @@ def test_test_migration_catches_migration_exception(manager: ModelManager) -> No
         email: str
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def bad_migration(data: MigrationData) -> MigrationData:
+    def bad_migration(data: ModelData) -> ModelData:
         raise ValueError("Migration failed")
 
     results = manager.test_migration(
@@ -2165,7 +2165,7 @@ def test_test_migration_catches_key_error(manager: ModelManager) -> None:
         email: str
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def bad_migration(data: MigrationData) -> MigrationData:
+    def bad_migration(data: ModelData) -> ModelData:
         return {**data, "email": data["nonexistent"]}
 
     results = manager.test_migration(
@@ -2195,7 +2195,7 @@ def test_test_migration_continues_after_exception(manager: ModelManager) -> None
         email: str
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def conditional_migration(data: MigrationData) -> MigrationData:
+    def conditional_migration(data: ModelData) -> ModelData:
         if data["name"] == "Alice":
             raise ValueError("Alice not allowed")
         return {**data, "email": "unknown@example.com"}
@@ -2284,7 +2284,7 @@ def test_test_migration_multiple_failures(manager: ModelManager) -> None:
         email: str
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def migrate(data: MigrationData) -> MigrationData:
+    def migrate(data: ModelData) -> ModelData:
         return {**data, "email": "default@example.com"}
 
     results = manager.test_migration(
@@ -2316,7 +2316,7 @@ def test_test_migration_mixed_pass_fail(manager: ModelManager) -> None:
         email: str
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def migrate(data: MigrationData) -> MigrationData:
+    def migrate(data: ModelData) -> ModelData:
         return {**data, "email": f"{data['name'].lower()}@example.com"}
 
     results = manager.test_migration(
@@ -2355,11 +2355,11 @@ def test_test_migration_chain_through_versions(manager: ModelManager) -> None:
         age: int
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def migrate_1_to_2(data: MigrationData) -> MigrationData:
+    def migrate_1_to_2(data: ModelData) -> ModelData:
         return {**data, "email": "default@example.com"}
 
     @manager.migration("User", "2.0.0", "3.0.0")
-    def migrate_2_to_3(data: MigrationData) -> MigrationData:
+    def migrate_2_to_3(data: ModelData) -> ModelData:
         return {**data, "age": 25}
 
     results = manager.test_migration(
@@ -2404,15 +2404,15 @@ def test_test_migration_multi_hop_chain(manager: ModelManager) -> None:
         active: bool
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def migrate_1_to_2(data: MigrationData) -> MigrationData:
+    def migrate_1_to_2(data: ModelData) -> ModelData:
         return {**data, "email": "default@example.com"}
 
     @manager.migration("User", "2.0.0", "3.0.0")
-    def migrate_2_to_3(data: MigrationData) -> MigrationData:
+    def migrate_2_to_3(data: ModelData) -> ModelData:
         return {**data, "age": 0}
 
     @manager.migration("User", "3.0.0", "4.0.0")
-    def migrate_3_to_4(data: MigrationData) -> MigrationData:
+    def migrate_3_to_4(data: ModelData) -> ModelData:
         return {**data, "active": True}
 
     results = manager.test_migration(
@@ -2489,7 +2489,7 @@ def test_test_migration_preserves_actual_on_exception(
         email: str
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def bad_migration(data: MigrationData) -> MigrationData:
+    def bad_migration(data: ModelData) -> ModelData:
         raise ValueError("Failed")
 
     results = manager.test_migration(
@@ -2539,7 +2539,7 @@ def test_test_migration_with_none_values(manager: ModelManager) -> None:
         email: str
 
     @manager.migration("User", "1.0.0", "2.0.0")
-    def migrate(data: MigrationData) -> MigrationData:
+    def migrate(data: ModelData) -> ModelData:
         return {**data, "email": "default@example.com"}
 
     results = manager.test_migration(
