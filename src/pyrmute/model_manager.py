@@ -91,9 +91,9 @@ class ModelManager:
 
     def __init__(self: Self) -> None:
         """Initialize the versioned model manager."""
-        self.registry = Registry()
-        self.migration_manager = MigrationManager(self.registry)
-        self.schema_manager = SchemaManager(self.registry)
+        self._registry = Registry()
+        self._migration_manager = MigrationManager(self._registry)
+        self._schema_manager = SchemaManager(self._registry)
 
     def model(
         self: Self,
@@ -129,7 +129,7 @@ class ModelManager:
             ... class CityV1(BaseModel):
             ...     city: City
         """
-        return self.registry.register(
+        return self._registry.register(
             name, version, schema_generator, enable_ref, backward_compatible
         )
 
@@ -149,7 +149,9 @@ class ModelManager:
         Returns:
             Decorator function for migration function.
         """
-        return self.migration_manager.register_migration(name, from_version, to_version)
+        return self._migration_manager.register_migration(
+            name, from_version, to_version
+        )
 
     def get(
         self: Self, name: str, version: str | ModelVersion | None = None
@@ -164,8 +166,8 @@ class ModelManager:
             Model class.
         """
         if version is None:
-            return self.registry.get_latest(name)
-        return self.registry.get_model(name, version)
+            return self._registry.get_latest(name)
+        return self._registry.get_model(name, version)
 
     def has_migration_path(
         self: Self,
@@ -200,7 +202,7 @@ class ModelManager:
             else to_version
         )
         try:
-            self.migration_manager.validate_migration_path(name, from_ver, to_ver)
+            self._migration_manager.validate_migration_path(name, from_ver, to_ver)
             return True
         except (KeyError, ModelNotFoundError, MigrationError):
             return False
@@ -279,7 +281,7 @@ class ModelManager:
         Returns:
             Raw migrated dictionary.
         """
-        return self.migration_manager.migrate(data, name, from_version, to_version)
+        return self._migration_manager.migrate(data, name, from_version, to_version)
 
     def migrate_batch(  # noqa: PLR0913
         self: Self,
@@ -548,7 +550,7 @@ class ModelManager:
         Returns:
             JSON schema dictionary.
         """
-        return self.schema_manager.get_schema(name, version, **kwargs)
+        return self._schema_manager.get_schema(name, version, **kwargs)
 
     def list_models(self: Self) -> list[str]:
         """Get list of all registered models.
@@ -556,7 +558,7 @@ class ModelManager:
         Returns:
             List of model names.
         """
-        return self.registry.list_models()
+        return self._registry.list_models()
 
     def list_versions(self: Self, name: str) -> list[ModelVersion]:
         """Get all versions for a model.
@@ -567,7 +569,7 @@ class ModelManager:
         Returns:
             Sorted list of versions.
         """
-        return self.registry.get_versions(name)
+        return self._registry.get_versions(name)
 
     def dump_schemas(
         self: Self,
@@ -600,7 +602,7 @@ class ModelManager:
             ...     ref_template="https://example.com/schemas/{model}_v{version}.json"
             ... )
         """
-        self.schema_manager.dump_schemas(
+        self._schema_manager.dump_schemas(
             output_dir, indent, separate_definitions, ref_template
         )
 
@@ -631,7 +633,7 @@ class ModelManager:
             ...     ref_template="https://example.com/schemas/{model}_v{version}.json"
             ... )
         """
-        self.schema_manager.dump_schemas(
+        self._schema_manager.dump_schemas(
             output_dir, indent, separate_definitions=True, ref_template=ref_template
         )
 
@@ -649,7 +651,7 @@ class ModelManager:
         Returns:
             List of (model_name, version) tuples for nested models.
         """
-        return self.schema_manager.get_nested_models(name, version)
+        return self._schema_manager.get_nested_models(name, version)
 
     def test_migration(
         self: Self,

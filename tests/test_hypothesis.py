@@ -118,7 +118,7 @@ def test_migrate_to_same_version_is_identity(
     )
 
     manager.model(name, version, backward_compatible=True)(DynamicModel)
-    result = manager.migration_manager.migrate(data, name, version, version)
+    result = manager._migration_manager.migrate(data, name, version, version)
 
     assert result == data
 
@@ -161,11 +161,11 @@ def test_migration_transitivity(name: str, v1: str, v2: str, v3: str) -> None:
     data = {"field1": "test"}
 
     # Direct migration
-    direct = manager.migration_manager.migrate(data, name, v1, v3)
+    direct = manager._migration_manager.migrate(data, name, v1, v3)
 
     # Transitive migration
-    intermediate = manager.migration_manager.migrate(data, name, v1, v2)
-    transitive = manager.migration_manager.migrate(intermediate, name, v2, v3)
+    intermediate = manager._migration_manager.migrate(data, name, v1, v2)
+    transitive = manager._migration_manager.migrate(intermediate, name, v2, v3)
 
     assert direct == transitive
 
@@ -212,7 +212,7 @@ def test_extra_fields_preserved(
     manager.model(name, version, backward_compatible=True)(DynamicModel)
 
     full_data = {**data, **extra_fields}
-    result = manager.migration_manager.migrate(full_data, name, version, version)
+    result = manager._migration_manager.migrate(full_data, name, version, version)
 
     for key, value in extra_fields.items():
         assert key in result
@@ -244,11 +244,11 @@ def test_version_ordering_independence(name: str, v1: str, v2: str) -> None:
         field2: str = "default2"
 
     data = {"field1": "test"}
-    forward = manager.migration_manager.migrate(data, name, v1, v2)
+    forward = manager._migration_manager.migrate(data, name, v1, v2)
     assert "field1" in forward
     assert "field2" in forward
 
-    backward = manager.migration_manager.migrate(forward, name, v2, v1)
+    backward = manager._migration_manager.migrate(forward, name, v2, v1)
     assert "field1" in backward
 
 
@@ -283,7 +283,7 @@ def test_migration_chain_consistency(name: str, versions: list[str]) -> None:
         manager.model(name, version, backward_compatible=True)(ModelClass)
 
     data = {"field1": "test"}
-    result = manager.migration_manager.migrate(
+    result = manager._migration_manager.migrate(
         data, name, version_strs[0], version_strs[-1]
     )
 
@@ -326,7 +326,7 @@ def test_data_types_preserved(data: dict[str, Any]) -> None:
 
     manager.model(name, version, backward_compatible=True)(DynamicModel)
 
-    result = manager.migration_manager.migrate(data, name, version, version)
+    result = manager._migration_manager.migrate(data, name, version, version)
 
     for key, value in data.items():
         assert key in result
@@ -359,7 +359,7 @@ def test_many_fields_handled_correctly(num_fields: int, version: str) -> None:
 
     data = {f"field_{i}": f"value_{i}" for i in range(num_fields)}
 
-    result = manager.migration_manager.migrate(data, name, version, version)
+    result = manager._migration_manager.migrate(data, name, version, version)
 
     # All fields should be present
     assert len(result) >= num_fields
@@ -411,7 +411,7 @@ def test_field_addition_with_defaults(
     manager.model(name, v2, backward_compatible=True)(ModelV2)
 
     data = {"base_field": "test"}
-    result = manager.migration_manager.migrate(data, name, v1, v2)
+    result = manager._migration_manager.migrate(data, name, v1, v2)
 
     assert result["base_field"] == "test"
     for fname in field_names:
@@ -448,7 +448,7 @@ def test_null_values_handled(name: str, version: str, null_fields: list[str]) ->
 
     data = dict.fromkeys(null_fields)
 
-    result = manager.migration_manager.migrate(data, name, version, version)
+    result = manager._migration_manager.migrate(data, name, version, version)
 
     for fname in null_fields:
         assert fname in result
@@ -494,7 +494,7 @@ def test_deeply_nested_models(depth: int) -> None:
     for i in range(1, depth):
         nested_data = {"value": f"level{i}", "nested": nested_data}
 
-    result = manager.migration_manager.migrate(
+    result = manager._migration_manager.migrate(
         nested_data, f"Level{depth - 1}", "1.0.0", "1.0.0"
     )
     assert isinstance(result, dict)
@@ -535,7 +535,7 @@ def test_long_migration_chains(num_versions: int) -> None:
             manager.migration(name, prev_version, version)(make_migration(i))
 
     data = {"field1": "value"}
-    result = manager.migration_manager.migrate(
+    result = manager._migration_manager.migrate(
         data, name, "1.0.0", f"1.0.{num_versions - 1}"
     )
 
@@ -561,7 +561,7 @@ def test_migration_with_all_optional_fields(data: dict[str, Any]) -> None:
         field2: int = 0
         field3: list[str] = Field(default_factory=list)
 
-    result = manager.migration_manager.migrate(data, "Optional", "1.0.0", "2.0.0")
+    result = manager._migration_manager.migrate(data, "Optional", "1.0.0", "2.0.0")
     assert "field3" in result
     assert result["field3"] == []
 
@@ -580,7 +580,7 @@ def test_many_extra_fields_preserved(num_extra_fields: int) -> None:
     for i in range(num_extra_fields):
         data[f"extra_{i}"] = f"value_{i}"
 
-    result = manager.migration_manager.migrate(data, "ManyFields", "1.0.0", "1.0.0")
+    result = manager._migration_manager.migrate(data, "ManyFields", "1.0.0", "1.0.0")
 
     for i in range(num_extra_fields):
         assert f"extra_{i}" in result
@@ -599,7 +599,7 @@ def test_empty_data_migration(name: str, version: str) -> None:
         field2: int = 0
         field3: list[str] = Field(default_factory=list)
 
-    result = manager.migration_manager.migrate({}, name, version, version)
+    result = manager._migration_manager.migrate({}, name, version, version)
 
     assert isinstance(result, dict)
 
@@ -626,7 +626,7 @@ def test_migration_with_no_changes(name: str, v1: str, v2: str) -> None:
         field2: int = 0
 
     data = {"field1": "test", "field2": 42}
-    result = manager.migration_manager.migrate(data, name, v1, v2)
+    result = manager._migration_manager.migrate(data, name, v1, v2)
 
     assert result == data
 
@@ -646,7 +646,7 @@ def test_list_fields_preserved(name: str, version: str, list_size: int) -> None:
         items: list[int] = Field(default_factory=list)
 
     data = {"items": list(range(list_size))}
-    result = manager.migration_manager.migrate(data, name, version, version)
+    result = manager._migration_manager.migrate(data, name, version, version)
 
     assert "items" in result
     assert result["items"] == list(range(list_size))
@@ -668,7 +668,7 @@ def test_dict_fields_preserved(name: str, version: str, dict_size: int) -> None:
         metadata: dict[str, int] = Field(default_factory=dict)
 
     data = {"metadata": {f"key_{i}": i for i in range(dict_size)}}
-    result = manager.migration_manager.migrate(data, name, version, version)
+    result = manager._migration_manager.migrate(data, name, version, version)
 
     assert "metadata" in result
     assert result["metadata"] == {f"key_{i}": i for i in range(dict_size)}
@@ -744,7 +744,7 @@ class ModelManagerStateMachine(RuleBasedStateMachine):
         """Migrating to same version should preserve data."""
         name, version = model
 
-        result = self.manager.migration_manager.migrate(data, name, version, version)
+        result = self.manager._migration_manager.migrate(data, name, version, version)
 
         for key, value in data.items():
             if key in result:
@@ -764,7 +764,7 @@ class ModelManagerStateMachine(RuleBasedStateMachine):
         data = {"name": "test", "value": 42}
 
         try:
-            result = self.manager.migration_manager.migrate(data, name1, v1, v2)
+            result = self.manager._migration_manager.migrate(data, name1, v1, v2)
             assert isinstance(result, dict)
         except MigrationError as e:
             assert "migration path" in str(e).lower() or "not found" in str(e).lower()

@@ -291,7 +291,7 @@ def test_migration_with_default_factory(manager: ModelManager) -> None:
         field3: list[str] = Field(default_factory=list)
 
     # When field is missing, default_factory should be called
-    result = manager.migration_manager.migrate(
+    result = manager._migration_manager.migrate(
         {"field1": "test"}, "Optional", "1.0.0", "2.0.0"
     )
     assert result["field3"] == []
@@ -311,7 +311,7 @@ def test_migration_preserves_explicit_none(manager: ModelManager) -> None:
         field3: list[str] | None = Field(default_factory=list)
 
     # When field is explicitly None, it should be preserved
-    result = manager.migration_manager.migrate(
+    result = manager._migration_manager.migrate(
         {"field1": "test", "field3": None}, "Optional", "1.0.0", "2.0.0"
     )
     assert result["field3"] is None  # Preserved, not replaced with []
@@ -689,7 +689,7 @@ def test_validate_migration_path_direct_migration(
 ) -> None:
     """Test validate_migration_path with direct migration."""
     # Should not raise
-    registered_manager.migration_manager.validate_migration_path(
+    registered_manager._migration_manager.validate_migration_path(
         "User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
     )
 
@@ -706,7 +706,7 @@ def test_validate_migration_path_no_migration_raises(
     with pytest.raises(
         MigrationError, match=r"Migration failed for 'User': 1.0.0 → 2.0.0"
     ):
-        manager.migration_manager.validate_migration_path(
+        manager._migration_manager.validate_migration_path(
             "User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
         )
 
@@ -726,7 +726,7 @@ def test_validate_migration_path_backward_compatible_enabled(
         email: str = "default@example.com"
 
     # Should not raise
-    manager.migration_manager.validate_migration_path(
+    manager._migration_manager.validate_migration_path(
         "User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
     )
 
@@ -760,7 +760,7 @@ def test_validate_migration_path_multi_hop_complete(
         return {**data, "age": 0}
 
     # Should not raise
-    manager.migration_manager.validate_migration_path(
+    manager._migration_manager.validate_migration_path(
         "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
     )
 
@@ -792,7 +792,7 @@ def test_validate_migration_path_multi_hop_broken_chain(
     with pytest.raises(
         MigrationError, match=r"Migration failed for 'User': 2.0.0 → 3.0.0"
     ):
-        manager.migration_manager.validate_migration_path(
+        manager._migration_manager.validate_migration_path(
             "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
         )
 
@@ -824,7 +824,7 @@ def test_validate_migration_path_multi_hop_first_step_missing(
     with pytest.raises(
         MigrationError, match=r"Migration failed for 'User': 1.0.0 → 2.0.0"
     ):
-        manager.migration_manager.validate_migration_path(
+        manager._migration_manager.validate_migration_path(
             "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
         )
 
@@ -869,16 +869,16 @@ def test_validate_migration_path_complex_chain(
         return {**data, "age": 0}
 
     # Should not raise for any valid path
-    manager.migration_manager.validate_migration_path(
+    manager._migration_manager.validate_migration_path(
         "User", ModelVersion(1, 0, 0), ModelVersion(1, 5, 0)
     )
-    manager.migration_manager.validate_migration_path(
+    manager._migration_manager.validate_migration_path(
         "User", ModelVersion(1, 5, 0), ModelVersion(2, 0, 0)
     )
-    manager.migration_manager.validate_migration_path(
+    manager._migration_manager.validate_migration_path(
         "User", ModelVersion(2, 0, 0), ModelVersion(3, 0, 0)
     )
-    manager.migration_manager.validate_migration_path(
+    manager._migration_manager.validate_migration_path(
         "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
     )
 
@@ -888,7 +888,7 @@ def test_validate_migration_path_nonexistent_model(
 ) -> None:
     """Test validate_migration_path with nonexistent model."""
     with pytest.raises(ModelNotFoundError, match="Model 'NonExistent' not found"):
-        manager.migration_manager.validate_migration_path(
+        manager._migration_manager.validate_migration_path(
             "NonExistent", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
         )
 
@@ -901,7 +901,7 @@ def test_validate_migration_path_nonexistent_from_version(
     manager.model("User", "1.0.0")(user_v1)
 
     with pytest.raises(ModelNotFoundError, match=r"Model 'User' version '2.0.0'"):
-        manager.migration_manager.validate_migration_path(
+        manager._migration_manager.validate_migration_path(
             "User", ModelVersion(2, 0, 0), ModelVersion(1, 0, 0)
         )
 
@@ -914,7 +914,7 @@ def test_validate_migration_path_nonexistent_to_version(
     manager.model("User", "1.0.0")(user_v1)
 
     with pytest.raises(ModelNotFoundError, match=r"Model 'User' version '2.0.0'"):
-        manager.migration_manager.validate_migration_path(
+        manager._migration_manager.validate_migration_path(
             "User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
         )
 
@@ -927,7 +927,7 @@ def test_validate_migration_path_same_version(
     manager.model("User", "1.0.0")(user_v1)
 
     # Should not raise
-    manager.migration_manager.validate_migration_path(
+    manager._migration_manager.validate_migration_path(
         "User", ModelVersion(1, 0, 0), ModelVersion(1, 0, 0)
     )
 
@@ -955,7 +955,7 @@ def test_validate_migration_path_backward_no_migration(
     with pytest.raises(
         MigrationError, match=r"Migration failed for 'User': 2.0.0 → 1.0.0"
     ):
-        manager.migration_manager.validate_migration_path(
+        manager._migration_manager.validate_migration_path(
             "User", ModelVersion(2, 0, 0), ModelVersion(1, 0, 0)
         )
 
@@ -985,10 +985,10 @@ def test_validate_migration_path_bidirectional(
         return result
 
     # Both directions should not raise
-    manager.migration_manager.validate_migration_path(
+    manager._migration_manager.validate_migration_path(
         "User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
     )
-    manager.migration_manager.validate_migration_path(
+    manager._migration_manager.validate_migration_path(
         "User", ModelVersion(2, 0, 0), ModelVersion(1, 0, 0)
     )
 
@@ -1017,7 +1017,7 @@ def test_validate_migration_path_mixed_auto_explicit(
     def migrate_2_to_3(data: ModelData) -> ModelData:
         return {**data, "age": 0}
 
-    manager.migration_manager.validate_migration_path(
+    manager._migration_manager.validate_migration_path(
         "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
     )
 
@@ -1042,7 +1042,7 @@ def test_validate_migration_path_all_backward_compatible(
         email: str
         age: int = 0
 
-    manager.migration_manager.validate_migration_path(
+    manager._migration_manager.validate_migration_path(
         "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
     )
 
@@ -1066,7 +1066,7 @@ def test_validate_migration_path_explicit_overrides_auto(
         return {**data, "email": "explicit@example.com"}
 
     # Should not raise
-    manager.migration_manager.validate_migration_path(
+    manager._migration_manager.validate_migration_path(
         "User", ModelVersion(1, 0, 0), ModelVersion(2, 0, 0)
     )
 
@@ -1094,7 +1094,7 @@ def test_validate_migration_path_middle_version_backward_compatible_disabled(
     with pytest.raises(
         MigrationError, match=r"Migration failed for 'User': 1.0.0 → 2.0.0"
     ):
-        manager.migration_manager.validate_migration_path(
+        manager._migration_manager.validate_migration_path(
             "User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)
         )
 
@@ -1126,7 +1126,7 @@ def test_auto_migration_raises_on_field_processing_error(
         MigrationError,
         match=r"Migration failed for 'User': 1.0.0 → 2.0.0",
     ) as exc_info:
-        manager.migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+        manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
 
     assert "Auto-migration failed" in str(exc_info.value)
     assert "RuntimeError" in str(exc_info.value)
@@ -1151,7 +1151,7 @@ def test_auto_migration_raises_on_default_factory_error(
 
     UserV2.model_fields["tags"].default_factory = bad_factory
     data: ModelData = {"name": "Bob"}
-    result = manager.migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
     assert "tags" not in result
 
 
@@ -1184,7 +1184,7 @@ def test_auto_migration_nested_model_migration_error(
         MigrationError,
         match=r"Migration failed for 'Address': 1.0.0 → 2.0.0",
     ):
-        manager.migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+        manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
 
 
 def test_auto_migration_preserves_exception_chain(manager: ModelManager) -> None:
@@ -1210,7 +1210,7 @@ def test_auto_migration_preserves_exception_chain(manager: ModelManager) -> None
     data: ModelData = {"name": "Diana", "items": BrokenList(["a", "b"])}
 
     with pytest.raises(MigrationError) as exc_info:
-        manager.migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+        manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
 
     assert exc_info.value.__cause__ is not None
     assert isinstance(exc_info.value.__cause__, Exception)
