@@ -102,6 +102,9 @@ print(current_user)
 ```python
 # See exactly what changed between versions
 diff = manager.diff("User", "1.0.0", "3.0.0")
+print(f"Added: {diff.added_fields}")
+print(f"Removed: {diff.removed_fields}")
+# Render a changelog to Markdown
 print(diff.to_markdown(header_depth=4))
 ```
 
