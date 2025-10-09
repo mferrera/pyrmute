@@ -8,9 +8,13 @@ import pytest
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
-from pyrmute import ModelNotFoundError, ModelVersion
-from pyrmute._registry import Registry
-from pyrmute._schema_manager import SchemaManager
+from pyrmute import (
+    ModelNotFoundError,
+    ModelVersion,
+    NestedModelInfo,
+    Registry,
+    SchemaManager,
+)
 
 if TYPE_CHECKING:
     from pyrmute.types import JsonSchema, JsonSchemaDefinitions
@@ -656,7 +660,7 @@ def test_get_nested_models_with_nesting(
     nested = manager.get_nested_models("Person", "1.0.0")
 
     assert len(nested) == 1
-    assert nested[0] == ("Address", ModelVersion(1, 0, 0))
+    assert nested[0] == NestedModelInfo(name="Address", version=ModelVersion(1, 0, 0))
 
 
 def test_get_nested_models_multiple(
@@ -683,8 +687,8 @@ def test_get_nested_models_multiple(
     nested = manager.get_nested_models("Person", "1.0.0")
 
     assert len(nested) == 2  # noqa: PLR2004
-    assert ("Address", ModelVersion(1, 0, 0)) in nested
-    assert ("Contact", ModelVersion(1, 0, 0)) in nested
+    assert NestedModelInfo(name="Address", version=ModelVersion(1, 0, 0)) in nested
+    assert NestedModelInfo(name="Contact", version=ModelVersion(1, 0, 0)) in nested
 
 
 def test_get_nested_models_with_model_version(
@@ -728,7 +732,7 @@ def test_get_nested_models_no_duplicates(
     nested = manager.get_nested_models("Person", "1.0.0")
 
     assert len(nested) == 1
-    assert nested[0] == ("Address", ModelVersion(1, 0, 0))
+    assert nested[0] == NestedModelInfo(name="Address", version=ModelVersion(1, 0, 0))
 
 
 def test_get_nested_models_unregistered_ignored(

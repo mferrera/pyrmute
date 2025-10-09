@@ -16,6 +16,7 @@ from .types import (
     JsonValue,
     ModelMetadata,
     ModelName,
+    NestedModelInfo,
 )
 
 
@@ -285,7 +286,7 @@ class SchemaManager:
         self: Self,
         name: ModelName,
         version: str | ModelVersion,
-    ) -> list[ModelMetadata]:
+    ) -> list[NestedModelInfo]:
         """Get all nested models referenced by a model.
 
         Args:
@@ -293,19 +294,28 @@ class SchemaManager:
             version: Semantic version.
 
         Returns:
-            List of (model_name, model_version) tuples for nested models.
+            List of NestedModelInfo.
         """
         ver = ModelVersion.parse(version) if isinstance(version, str) else version
         model = self.registry.get_model(name, ver)
 
-        nested: list[ModelMetadata] = []
+        nested: list[NestedModelInfo] = []
 
         for field_info in model.model_fields.values():
             model_type = self._get_model_type_from_field(field_info)
-            if model_type:
-                model_info = self.registry.get_model_info(model_type)
-                if model_info and model_info not in nested:
-                    nested.append(model_info)
+            if not model_type:
+                continue
+
+            model_info = self.registry.get_model_info(model_type)
+
+            if not model_info:
+                continue
+
+            name_, version_ = model_info
+            nested_model_info = NestedModelInfo(name=name_, version=version_)
+
+            if nested_model_info not in nested:
+                nested.append(nested_model_info)
 
         return nested
 

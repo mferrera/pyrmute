@@ -24,7 +24,7 @@ from .types import (
     JsonSchemaGenerator,
     MigrationFunc,
     ModelData,
-    ModelMetadata,
+    NestedModelInfo,
 )
 
 
@@ -641,7 +641,7 @@ class ModelManager:
         self: Self,
         name: str,
         version: str | ModelVersion,
-    ) -> list[ModelMetadata]:
+    ) -> list[NestedModelInfo]:
         """Get all nested models used by a model.
 
         Args:
@@ -649,7 +649,7 @@ class ModelManager:
             version: Semantic version.
 
         Returns:
-            List of (model_name, version) tuples for nested models.
+            List of NestedModelInfo.
         """
         return self._schema_manager.get_nested_models(name, version)
 

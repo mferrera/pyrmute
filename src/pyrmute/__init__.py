@@ -1,8 +1,4 @@
-"""pyrmute - versioned Pydantic models and schemas with migrations.
-
-A package for managing versioned Pydantic models with automatic migrations
-and schema management.
-"""
+"""pyrmute - versioned Pydantic models and schemas with migrations."""
 
 from ._migration_manager import MigrationManager
 from ._registry import Registry
@@ -26,6 +22,7 @@ from .types import (
     JsonSchema,
     MigrationFunc,
     ModelData,
+    NestedModelInfo,
 )
 
 __all__ = [
@@ -42,6 +39,7 @@ __all__ = [
     "ModelManager",
     "ModelNotFoundError",
     "ModelVersion",
+    "NestedModelInfo",
     "Registry",
     "SchemaManager",
     "VersionedModelError",
