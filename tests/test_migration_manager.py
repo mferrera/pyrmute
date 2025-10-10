@@ -1,10 +1,11 @@
 """Tests MigrationManager."""
 
-from typing import Any
+from typing import Annotated, Any, Literal, Union, get_origin
 
 import pytest
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic.fields import FieldInfo
+from pydantic_core import PydanticUndefined
 
 from pyrmute import (
     MigrationError,
@@ -1538,3 +1539,1602 @@ def test_auto_migration_preserves_extra_fields_with_aliases(
     assert result["email"] == "default@example.com"
     assert result["custom_field"] == "custom_value"
     assert result["another_extra"] == 42  # noqa: PLR2004
+
+
+def test_discriminated_union_basic_migration(
+    manager: ModelManager,
+) -> None:
+    """Test basic discriminated union migration with two types."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+
+    @manager.model("PetOwner", "1.0.0")
+    class PetOwnerV1(BaseModel):
+        name: str
+        pet: CatV1 | DogV1 = Field(discriminator="type")
+
+    @manager.model("Cat", "2.0.0", backward_compatible=True)
+    class CatV2(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+        favorite_toy: str = "ball"
+
+    @manager.model("Dog", "2.0.0", backward_compatible=True)
+    class DogV2(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+        breed: str = "mixed"
+
+    @manager.model("PetOwner", "2.0.0", backward_compatible=True)
+    class PetOwnerV2(BaseModel):
+        name: str
+        pet: CatV2 | DogV2 = Field(discriminator="type")
+
+    dog_data: ModelData = {"name": "Bob", "pet": {"type": "dog", "bark": "woof"}}
+    result = manager._migration_manager.migrate(dog_data, "PetOwner", "1.0.0", "2.0.0")
+
+    assert result["name"] == "Bob"
+    assert result["pet"]["type"] == "dog"
+    assert result["pet"]["bark"] == "woof"
+    assert result["pet"]["breed"] == "mixed"
+    assert "favorite_toy" not in result["pet"]
+
+
+def test_discriminated_union_cat_migration(
+    manager: ModelManager,
+) -> None:
+    """Test discriminated union correctly migrates cat type."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+
+    @manager.model("PetOwner", "1.0.0")
+    class PetOwnerV1(BaseModel):
+        name: str
+        pet: CatV1 | DogV1 = Field(discriminator="type")
+
+    @manager.model("Cat", "2.0.0", backward_compatible=True)
+    class CatV2(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+        favorite_toy: str = "ball"
+
+    @manager.model("Dog", "2.0.0", backward_compatible=True)
+    class DogV2(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+        breed: str = "mixed"
+
+    @manager.model("PetOwner", "2.0.0", backward_compatible=True)
+    class PetOwnerV2(BaseModel):
+        name: str
+        pet: CatV2 | DogV2 = Field(discriminator="type")
+
+    cat_data: ModelData = {"name": "Alice", "pet": {"type": "cat", "meow": "loud"}}
+    result = manager._migration_manager.migrate(cat_data, "PetOwner", "1.0.0", "2.0.0")
+
+    assert result["name"] == "Alice"
+    assert result["pet"]["type"] == "cat"
+    assert result["pet"]["meow"] == "loud"
+    assert result["pet"]["favorite_toy"] == "ball"
+    assert "breed" not in result["pet"]
+
+
+def test_discriminated_union_with_explicit_migrations(
+    manager: ModelManager,
+) -> None:
+    """Test discriminated union where each type has explicit migration logic."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        sound: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        type: Literal["dog"] = "dog"
+        sound: str
+
+    @manager.model("PetOwner", "1.0.0")
+    class PetOwnerV1(BaseModel):
+        name: str
+        pet: CatV1 | DogV1 = Field(discriminator="type")
+
+    @manager.model("Cat", "2.0.0")
+    class CatV2(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    @manager.model("Dog", "2.0.0")
+    class DogV2(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+
+    @manager.model("PetOwner", "2.0.0", backward_compatible=True)
+    class PetOwnerV2(BaseModel):
+        name: str
+        pet: CatV2 | DogV2 = Field(discriminator="type")
+
+    @manager.migration("Cat", "1.0.0", "2.0.0")
+    def migrate_cat(data: ModelData) -> ModelData:
+        return {"type": "cat", "meow": data["sound"].upper()}
+
+    @manager.migration("Dog", "1.0.0", "2.0.0")
+    def migrate_dog(data: ModelData) -> ModelData:
+        return {"type": "dog", "bark": data["sound"].lower()}
+
+    dog_data: ModelData = {"name": "Bob", "pet": {"type": "dog", "sound": "WOOF"}}
+    result = manager._migration_manager.migrate(dog_data, "PetOwner", "1.0.0", "2.0.0")
+
+    assert result["pet"]["type"] == "dog"
+    assert result["pet"]["bark"] == "woof"
+    assert "meow" not in result["pet"]
+
+
+def test_discriminated_union_three_types(
+    manager: ModelManager,
+) -> None:
+    """Test discriminated union with more than two types."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+
+    @manager.model("Bird", "1.0.0")
+    class BirdV1(BaseModel):
+        type: Literal["bird"] = "bird"
+        chirp: str
+
+    @manager.model("PetOwner", "1.0.0")
+    class PetOwnerV1(BaseModel):
+        name: str
+        pet: CatV1 | DogV1 | BirdV1 = Field(discriminator="type")
+
+    @manager.model("Cat", "2.0.0", backward_compatible=True)
+    class CatV2(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+        favorite_toy: str = "ball"
+
+    @manager.model("Dog", "2.0.0", backward_compatible=True)
+    class DogV2(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+        breed: str = "mixed"
+
+    @manager.model("Bird", "2.0.0", backward_compatible=True)
+    class BirdV2(BaseModel):
+        type: Literal["bird"] = "bird"
+        chirp: str
+        can_fly: bool = True
+
+    @manager.model("PetOwner", "2.0.0", backward_compatible=True)
+    class PetOwnerV2(BaseModel):
+        name: str
+        pet: CatV2 | DogV2 | BirdV2 = Field(discriminator="type")
+
+    bird_data: ModelData = {
+        "name": "Charlie",
+        "pet": {"type": "bird", "chirp": "tweet"},
+    }
+    result = manager._migration_manager.migrate(bird_data, "PetOwner", "1.0.0", "2.0.0")
+
+    assert result["pet"]["type"] == "bird"
+    assert result["pet"]["chirp"] == "tweet"
+    assert result["pet"]["can_fly"] is True
+    assert "breed" not in result["pet"]
+    assert "favorite_toy" not in result["pet"]
+
+
+def test_discriminated_union_missing_discriminator_field(
+    manager: ModelManager,
+) -> None:
+    """Test discriminated union when data lacks discriminator field.
+
+    Falls back to treating as first type in union when discriminator is missing.
+    """
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+
+    @manager.model("PetOwner", "1.0.0")
+    class PetOwnerV1(BaseModel):
+        name: str
+        pet: CatV1 | DogV1 = Field(discriminator="type")
+
+    @manager.model("Cat", "2.0.0", backward_compatible=True)
+    class CatV2(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+        favorite_toy: str = "ball"
+
+    @manager.model("Dog", "2.0.0", backward_compatible=True)
+    class DogV2(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+        breed: str = "mixed"
+
+    @manager.model("PetOwner", "2.0.0", backward_compatible=True)
+    class PetOwnerV2(BaseModel):
+        name: str
+        pet: CatV2 | DogV2 = Field(discriminator="type")
+
+    invalid_data: ModelData = {
+        "name": "Alice",
+        "pet": {"meow": "loud"},
+    }
+    result = manager._migration_manager.migrate(
+        invalid_data, "PetOwner", "1.0.0", "2.0.0"
+    )
+
+    # Falls back to non-discriminated behavior, migrates as Cat (first in union)
+    assert result["pet"]["meow"] == "loud"
+    assert result["pet"]["type"] == "cat"  # Default added
+    assert result["pet"]["favorite_toy"] == "ball"  # Cat's default
+
+
+def test_discriminated_union_nested_in_list(
+    manager: ModelManager,
+) -> None:
+    """Test discriminated union types nested within a list."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+
+    @manager.model("PetOwner", "1.0.0")
+    class PetOwnerV1(BaseModel):
+        name: str
+        pets: list[Annotated[CatV1 | DogV1, Field(discriminator="type")]]
+
+    @manager.model("Cat", "2.0.0", backward_compatible=True)
+    class CatV2(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+        favorite_toy: str = "ball"
+
+    @manager.model("Dog", "2.0.0", backward_compatible=True)
+    class DogV2(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+        breed: str = "mixed"
+
+    @manager.model("PetOwner", "2.0.0", backward_compatible=True)
+    class PetOwnerV2(BaseModel):
+        name: str
+        pets: list[Annotated[CatV2 | DogV2, Field(discriminator="type")]]
+
+    data: ModelData = {
+        "name": "Alice",
+        "pets": [
+            {"type": "cat", "meow": "loud"},
+            {"type": "dog", "bark": "woof"},
+            {"type": "cat", "meow": "quiet"},
+        ],
+    }
+    result = manager._migration_manager.migrate(data, "PetOwner", "1.0.0", "2.0.0")
+
+    assert len(result["pets"]) == 3  # noqa: PLR2004
+    assert result["pets"][0]["type"] == "cat"
+    assert result["pets"][0]["favorite_toy"] == "ball"
+    assert "breed" not in result["pets"][0]
+
+    assert result["pets"][1]["type"] == "dog"
+    assert result["pets"][1]["breed"] == "mixed"
+    assert "favorite_toy" not in result["pets"][1]
+
+    assert result["pets"][2]["type"] == "cat"
+    assert result["pets"][2]["favorite_toy"] == "ball"
+
+
+def test_discriminated_union_with_aliases(
+    manager: ModelManager,
+) -> None:
+    """Test discriminated union where discriminator field uses aliases."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        pet_type: Literal["cat"] = Field("cat", alias="petType")
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        pet_type: Literal["dog"] = Field("dog", alias="petType")
+        bark: str
+
+    @manager.model("PetOwner", "1.0.0")
+    class PetOwnerV1(BaseModel):
+        name: str
+        # Use field name as discriminator, data uses alias
+        pet: CatV1 | DogV1 = Field(discriminator="pet_type")
+
+    @manager.model("Cat", "2.0.0", backward_compatible=True)
+    class CatV2(BaseModel):
+        pet_type: Literal["cat"] = Field("cat", alias="petType")
+        meow: str
+        favorite_toy: str = "ball"
+
+    @manager.model("Dog", "2.0.0", backward_compatible=True)
+    class DogV2(BaseModel):
+        pet_type: Literal["dog"] = Field("dog", alias="petType")
+        bark: str
+        breed: str = "mixed"
+
+    @manager.model("PetOwner", "2.0.0", backward_compatible=True)
+    class PetOwnerV2(BaseModel):
+        name: str
+        pet: CatV2 | DogV2 = Field(discriminator="pet_type")
+
+    data: ModelData = {
+        "name": "Bob",
+        "pet": {
+            "petType": "dog",  # Using alias in data
+            "bark": "woof",
+        },
+    }
+    result = manager._migration_manager.migrate(data, "PetOwner", "1.0.0", "2.0.0")
+
+    assert result["pet"]["petType"] == "dog"
+    assert result["pet"]["bark"] == "woof"
+    assert result["pet"]["breed"] == "mixed"
+
+
+def test_discriminated_union_chained_migrations(
+    manager: ModelManager,
+) -> None:
+    """Test discriminated union through multiple version migrations."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+
+    @manager.model("PetOwner", "1.0.0")
+    class PetOwnerV1(BaseModel):
+        pet: CatV1 | DogV1 = Field(discriminator="type")
+
+    @manager.model("Cat", "2.0.0", backward_compatible=True)
+    class CatV2(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+        favorite_toy: str = "ball"
+
+    @manager.model("Dog", "2.0.0", backward_compatible=True)
+    class DogV2(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+        breed: str = "mixed"
+
+    @manager.model("PetOwner", "2.0.0", backward_compatible=True)
+    class PetOwnerV2(BaseModel):
+        pet: CatV2 | DogV2 = Field(discriminator="type")
+
+    @manager.model("Cat", "3.0.0", backward_compatible=True)
+    class CatV3(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+        favorite_toy: str = "ball"
+        indoor: bool = True
+
+    @manager.model("Dog", "3.0.0", backward_compatible=True)
+    class DogV3(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+        breed: str = "mixed"
+        trained: bool = False
+
+    @manager.model("PetOwner", "3.0.0", backward_compatible=True)
+    class PetOwnerV3(BaseModel):
+        pet: CatV3 | DogV3 = Field(discriminator="type")
+
+    data: ModelData = {"pet": {"type": "cat", "meow": "loud"}}
+    result = manager._migration_manager.migrate(data, "PetOwner", "1.0.0", "3.0.0")
+
+    assert result["pet"]["type"] == "cat"
+    assert result["pet"]["meow"] == "loud"
+    assert result["pet"]["favorite_toy"] == "ball"
+    assert result["pet"]["indoor"] is True
+    assert "breed" not in result["pet"]
+    assert "trained" not in result["pet"]
+
+
+def test_discriminated_union_preserves_extra_fields(
+    manager: ModelManager,
+) -> None:
+    """Test that extra fields in discriminated union data are preserved."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+
+    @manager.model("PetOwner", "1.0.0")
+    class PetOwnerV1(BaseModel):
+        name: str
+        pet: CatV1 | DogV1 = Field(discriminator="type")
+
+    @manager.model("Cat", "2.0.0", backward_compatible=True)
+    class CatV2(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    @manager.model("Dog", "2.0.0", backward_compatible=True)
+    class DogV2(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+
+    @manager.model("PetOwner", "2.0.0", backward_compatible=True)
+    class PetOwnerV2(BaseModel):
+        name: str
+        pet: CatV2 | DogV2 = Field(discriminator="type")
+
+    data: ModelData = {
+        "name": "Alice",
+        "pet": {
+            "type": "cat",
+            "meow": "loud",
+            "custom_field": "custom_value",
+            "extra_number": 42,
+        },
+    }
+    result = manager._migration_manager.migrate(data, "PetOwner", "1.0.0", "2.0.0")
+
+    assert result["pet"]["type"] == "cat"
+    assert result["pet"]["meow"] == "loud"
+    assert result["pet"]["custom_field"] == "custom_value"
+    assert result["pet"]["extra_number"] == 42  # noqa: PLR2004
+
+
+def test_migration_function_raises_exception(manager: ModelManager) -> None:
+    """Test that exceptions in migration functions are properly wrapped."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def broken_migration(data: ModelData) -> ModelData:
+        raise ValueError("Intentional migration error")
+
+    data: ModelData = {"name": "Alice"}
+    with pytest.raises(
+        MigrationError,
+        match=r"Migration failed for 'User': 1.0.0 → 2.0.0",
+    ) as exc_info:
+        manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert "Migration function raised: ValueError" in str(exc_info.value)
+    assert "Intentional migration error" in str(exc_info.value)
+
+
+def test_get_field_default_with_pydantic_undefined(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_field_default when default is PydanticUndefined."""
+    field_info = FieldInfo(annotation=str, default=PydanticUndefined)
+    sentinel = object()
+    result = populated_migration_manager._get_field_default(field_info, sentinel)
+    assert result is sentinel
+
+
+def test_get_field_default_with_default_value(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_field_default when field has a default value."""
+    field_info = FieldInfo(annotation=str, default="test_default")
+    result = populated_migration_manager._get_field_default(field_info)
+    assert result == "test_default"
+
+
+def test_get_field_default_with_working_factory(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_field_default when default_factory works."""
+    field_info = FieldInfo(annotation=list[str], default_factory=list)
+    result = populated_migration_manager._get_field_default(field_info)
+    assert result == []
+
+
+def test_get_field_default_with_broken_factory(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_field_default when default_factory raises exception."""
+
+    def broken_factory() -> list[str]:
+        raise RuntimeError("Factory broken")
+
+    field_info = FieldInfo(annotation=list[str])
+    field_info.default_factory = broken_factory
+    sentinel = object()
+    result = populated_migration_manager._get_field_default(field_info, sentinel)
+    assert result is sentinel
+
+
+def test_find_field_value_with_field_name(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _find_field_value finds value using field name."""
+    data: ModelData = {"user_id": "123", "name": "Alice"}
+    key_to_field_name = {"user_id": "user_id", "name": "name"}
+
+    value, key = populated_migration_manager._find_field_value(
+        data, "user_id", key_to_field_name
+    )
+
+    assert value == "123"
+    assert key == "user_id"
+
+
+def test_find_field_value_with_alias(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _find_field_value finds value using alias."""
+    data: ModelData = {"userId": "456", "name": "Bob"}
+    key_to_field_name = {"userId": "user_id", "user_id": "user_id", "name": "name"}
+
+    value, key = populated_migration_manager._find_field_value(
+        data, "user_id", key_to_field_name
+    )
+
+    assert value == "456"
+    assert key == "userId"
+
+
+def test_find_field_value_not_found(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _find_field_value returns None when field not found."""
+    data: ModelData = {"name": "Charlie"}
+    key_to_field_name = {"name": "name"}
+
+    value, key = populated_migration_manager._find_field_value(
+        data, "email", key_to_field_name
+    )
+
+    assert value is None
+    assert key is None
+
+
+def test_migrate_single_field_no_value_no_default(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _migrate_single_field returns None when no value and no default."""
+    data: ModelData = {"name": "Alice"}
+    to_field_info = FieldInfo(annotation=str, default=PydanticUndefined)
+    from_fields = {"name": FieldInfo(annotation=str)}
+    key_to_field_name = {"name": "name"}
+
+    result = populated_migration_manager._migrate_single_field(
+        data, "email", to_field_info, from_fields, key_to_field_name
+    )
+
+    assert result is None
+
+
+def test_migrate_field_value_nested_dict_without_model(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _migrate_field_value with nested dict that's not a model."""
+    field_info = FieldInfo(annotation=dict[str, Any])
+    value = {"nested": {"key": "value"}}
+
+    result = populated_migration_manager._migrate_field_value(
+        value, field_info, field_info
+    )
+
+    assert result == {"nested": {"key": "value"}}
+
+
+def test_migrate_list_item_with_primitive(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _migrate_list_item with primitive value."""
+    result = populated_migration_manager._migrate_list_item("string", None, None)
+    assert result == "string"
+
+
+def test_migrate_list_item_with_none_to_field(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _migrate_list_item with None to_field."""
+    result = populated_migration_manager._migrate_list_item(
+        {"key": "value"}, None, None
+    )
+    assert result == {"key": "value"}
+
+
+def test_extract_list_item_field_with_none(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _extract_list_item_field with None field."""
+    result = populated_migration_manager._extract_list_item_field(None)
+    assert result is None
+
+
+def test_extract_list_item_field_with_none_annotation(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _extract_list_item_field with field that has None annotation."""
+    field_info = FieldInfo(annotation=None)
+    result = populated_migration_manager._extract_list_item_field(field_info)
+    assert result is None
+
+
+def test_extract_list_item_field_non_list_origin(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _extract_list_item_field with non-list type."""
+    field_info = FieldInfo(annotation=dict[str, str])
+    result = populated_migration_manager._extract_list_item_field(field_info)
+    assert result is None
+
+
+def test_extract_list_item_field_no_args(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _extract_list_item_field with list that has no type args."""
+    field_info = FieldInfo(annotation=list)
+    result = populated_migration_manager._extract_list_item_field(field_info)
+    assert result is None
+
+
+def test_extract_list_item_field_with_discriminator(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _extract_list_item_field extracts discriminator from Annotated."""
+
+    class DummyModel(BaseModel):
+        type: Literal["test"] = "test"
+
+    annotated_type = Annotated[DummyModel, Field(discriminator="type")]
+    field_info = FieldInfo(annotation=list[annotated_type])
+
+    result = populated_migration_manager._extract_list_item_field(field_info)
+
+    assert result is not None
+    assert result.annotation == DummyModel
+    assert hasattr(result, "discriminator")
+    assert result.discriminator == "type"
+
+
+def test_try_extract_discriminated_model_no_discriminator(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _try_extract_discriminated_model with no discriminator."""
+    field_info = FieldInfo(annotation=dict[str, Any])
+    value: ModelData = {"key": "value"}
+
+    result = populated_migration_manager._try_extract_discriminated_model(
+        value, None, field_info
+    )
+
+    assert result is None
+
+
+def test_get_discriminator_key_with_none(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_discriminator_key with None discriminator."""
+    field_info = FieldInfo(annotation=str)
+    result = populated_migration_manager._get_discriminator_key(field_info)
+    assert result is None
+
+
+def test_get_discriminator_key_with_string(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_discriminator_key with string discriminator."""
+    field_info = FieldInfo(annotation=str)
+    field_info.discriminator = "type"
+    result = populated_migration_manager._get_discriminator_key(field_info)
+    assert result == "type"
+
+
+def test_get_discriminator_key_with_object_having_discriminator_attr(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_discriminator_key with object that has discriminator attribute."""
+
+    class DiscriminatorObj:
+        discriminator = "pet_type"
+
+    field_info = FieldInfo(annotation=str)
+    field_info.discriminator = DiscriminatorObj()  # type: ignore[assignment]
+    result = populated_migration_manager._get_discriminator_key(field_info)
+    assert result == "pet_type"
+
+
+def test_get_discriminator_key_with_object_without_string_attr(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_discriminator_key with object that has non-string discriminator."""
+
+    class DiscriminatorObj:
+        discriminator = 123  # Not a string
+
+    field_info = FieldInfo(annotation=str)
+    field_info.discriminator = DiscriminatorObj()  # type: ignore[assignment]
+    result = populated_migration_manager._get_discriminator_key(field_info)
+    assert result is None
+
+
+def test_find_discriminator_value_with_field_name(
+    manager: ModelManager,
+) -> None:
+    """Test _find_discriminator_value finds value using field name."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        pet_type: Literal["cat"] = "cat"
+        meow: str
+
+    field_info = FieldInfo(annotation=CatV1)
+    field_info.discriminator = "pet_type"
+    value: ModelData = {"pet_type": "cat", "meow": "loud"}
+
+    result = manager._migration_manager._find_discriminator_value(
+        value, "pet_type", field_info
+    )
+
+    assert result == "cat"
+
+
+def test_find_discriminator_value_with_alias(
+    manager: ModelManager,
+) -> None:
+    """Test _find_discriminator_value finds value using alias."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        pet_type: Literal["cat"] = Field("cat", alias="petType")
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        pet_type: Literal["dog"] = Field("dog", alias="petType")
+        bark: str
+
+    field_info = FieldInfo(annotation=CatV1 | DogV1)  # type: ignore[arg-type]
+    field_info.discriminator = "pet_type"
+    value: ModelData = {"petType": "cat", "meow": "loud"}
+
+    result = manager._migration_manager._find_discriminator_value(
+        value, "pet_type", field_info
+    )
+
+    assert result == "cat"
+
+
+def test_find_discriminator_value_with_serialization_alias(
+    manager: ModelManager,
+) -> None:
+    """Test _find_discriminator_value finds value using serialization_alias."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        pet_type: Literal["cat"] = Field("cat", serialization_alias="petType")
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        pet_type: Literal["dog"] = Field("dog", serialization_alias="petType")
+        bark: str
+
+    field_info = FieldInfo(annotation=CatV1 | DogV1)  # type: ignore[arg-type]
+    field_info.discriminator = "pet_type"
+    value: ModelData = {"petType": "dog", "bark": "woof"}
+
+    result = manager._migration_manager._find_discriminator_value(
+        value, "pet_type", field_info
+    )
+
+    assert result == "dog"
+
+
+def test_find_discriminator_value_with_validation_alias_string(
+    manager: ModelManager,
+) -> None:
+    """Test _find_discriminator_value finds value using string validation_alias."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        pet_type: Literal["cat"] = Field("cat", validation_alias="petType")
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        pet_type: Literal["dog"] = Field("dog", validation_alias="petType")
+        bark: str
+
+    field_info = FieldInfo(annotation=CatV1 | DogV1)  # type: ignore[arg-type]
+    field_info.discriminator = "pet_type"
+    value: ModelData = {"petType": "cat", "meow": "loud"}
+
+    result = manager._migration_manager._find_discriminator_value(
+        value, "pet_type", field_info
+    )
+
+    assert result == "cat"
+
+
+def test_find_discriminator_value_not_found(
+    manager: ModelManager,
+) -> None:
+    """Test _find_discriminator_value returns None when not found."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        pet_type: Literal["cat"] = "cat"
+        meow: str
+
+    field_info = FieldInfo(annotation=CatV1)
+    field_info.discriminator = "pet_type"
+    value: ModelData = {"meow": "loud"}  # Missing discriminator
+
+    result = manager._migration_manager._find_discriminator_value(
+        value, "pet_type", field_info
+    )
+
+    assert result is None
+
+
+def test_find_discriminated_type_no_union_members(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _find_discriminated_type with no union members."""
+    field_info = FieldInfo(annotation=str)
+    result = populated_migration_manager._find_discriminated_type(
+        field_info, "type", "cat"
+    )
+    assert result is None
+
+
+def test_find_discriminated_type_no_match(
+    manager: ModelManager,
+) -> None:
+    """Test _find_discriminated_type when no type matches discriminator."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+
+    field_info = FieldInfo(annotation=CatV1 | DogV1)  # type: ignore[arg-type]
+
+    result = manager._migration_manager._find_discriminated_type(
+        field_info,
+        "type",
+        "bird",  # No bird type
+    )
+
+    assert result is None
+
+
+def test_get_union_members_with_none_annotation(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_union_members with None annotation."""
+    field_info = FieldInfo(annotation=None)
+    result = populated_migration_manager._get_union_members(field_info)
+    assert result == []
+
+
+def test_get_union_members_with_single_model(
+    manager: ModelManager,
+) -> None:
+    """Test _get_union_members with single BaseModel (not a union)."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    field_info = FieldInfo(annotation=CatV1)
+    result = manager._migration_manager._get_union_members(field_info)
+    assert result == [CatV1]
+
+
+def test_get_union_members_filters_none_type(
+    manager: ModelManager,
+) -> None:
+    """Test _get_union_members filters out None type."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    field_info = FieldInfo(annotation=CatV1 | None)  # type: ignore
+    result = manager._migration_manager._get_union_members(field_info)
+    assert result == [CatV1]
+    assert type(None) not in result  # type: ignore[comparison-overlap]
+
+
+def test_is_union_type_with_union(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _is_union_type with Union type."""
+    result = populated_migration_manager._is_union_type(Union)
+    assert result is True
+
+
+def test_is_union_type_with_pipe_syntax(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _is_union_type with | syntax (UnionType)."""
+    union_type = str | int
+    origin = get_origin(union_type)
+
+    result = populated_migration_manager._is_union_type(origin)
+    assert result is True
+
+
+def test_is_union_type_with_non_union(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _is_union_type with non-union type."""
+    result = populated_migration_manager._is_union_type(list)
+    assert result is False
+
+
+def test_is_union_type_handles_missing_uniontype(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _is_union_type gracefully handles missing UnionType attribute."""
+    result = populated_migration_manager._is_union_type(dict)
+    assert result is False
+
+
+def test_model_matches_discriminator_field_not_in_model(
+    manager: ModelManager,
+) -> None:
+    """Test _model_matches_discriminator when field not in model."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        meow: str  # No 'type' field
+
+    result = manager._migration_manager._model_matches_discriminator(
+        CatV1, "type", "cat"
+    )
+
+    assert result is False
+
+
+def test_model_matches_discriminator_with_literal(
+    manager: ModelManager,
+) -> None:
+    """Test _model_matches_discriminator with Literal annotation."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    result = manager._migration_manager._model_matches_discriminator(
+        CatV1, "type", "cat"
+    )
+
+    assert result is True
+
+
+def test_model_matches_discriminator_with_default_value(
+    manager: ModelManager,
+) -> None:
+    """Test _model_matches_discriminator with default value match."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: str = "cat"  # Not a Literal, but has default
+        meow: str
+
+    result = manager._migration_manager._model_matches_discriminator(
+        CatV1, "type", "cat"
+    )
+
+    assert result is True
+
+
+def test_model_matches_discriminator_default_mismatch(
+    manager: ModelManager,
+) -> None:
+    """Test _model_matches_discriminator with non-matching default."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: str = "dog"  # Mismatched default
+        meow: str
+
+    result = manager._migration_manager._model_matches_discriminator(
+        CatV1, "type", "cat"
+    )
+
+    assert result is False
+
+
+def test_literal_matches_value_with_none_annotation(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _literal_matches_value with None annotation."""
+    result = populated_migration_manager._literal_matches_value(None, "cat")
+    assert result is False
+
+
+def test_literal_matches_value_with_non_literal(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _literal_matches_value with non-Literal annotation."""
+    result = populated_migration_manager._literal_matches_value(str, "cat")
+    assert result is False
+
+
+def test_literal_matches_value_value_in_literal(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _literal_matches_value when value is in Literal."""
+    result = populated_migration_manager._literal_matches_value(
+        Literal["cat", "dog"], "cat"
+    )
+    assert result is True
+
+
+def test_literal_matches_value_value_not_in_literal(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _literal_matches_value when value is not in Literal."""
+    result = populated_migration_manager._literal_matches_value(
+        Literal["cat", "dog"], "bird"
+    )
+    assert result is False
+
+
+def test_get_model_type_from_field_with_none_origin(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_model_type_from_field with type that has no origin."""
+    field_info = FieldInfo(annotation=int)
+    result = populated_migration_manager._get_model_type_from_field(field_info)
+    assert result is None
+
+
+def test_get_model_type_from_field_with_generic_no_model_args(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_model_type_from_field with generic type but no BaseModel args."""
+    field_info = FieldInfo(annotation=list[str])
+    result = populated_migration_manager._get_model_type_from_field(field_info)
+    assert result is None
+
+
+def test_discriminated_union_in_nested_list_with_auto_migration(
+    manager: ModelManager,
+) -> None:
+    """Test discriminated union in nested list with auto-migration."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+
+    @manager.model("PetGroup", "1.0.0")
+    class PetGroupV1(BaseModel):
+        name: str
+        pets: list[Annotated[CatV1 | DogV1, Field(discriminator="type")]]
+
+    @manager.model("Owner", "1.0.0")
+    class OwnerV1(BaseModel):
+        groups: list[PetGroupV1]
+
+    @manager.model("Cat", "2.0.0", backward_compatible=True)
+    class CatV2(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+        favorite_toy: str = "ball"
+
+    @manager.model("Dog", "2.0.0", backward_compatible=True)
+    class DogV2(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+        breed: str = "mixed"
+
+    @manager.model("PetGroup", "2.0.0", backward_compatible=True)
+    class PetGroupV2(BaseModel):
+        name: str
+        pets: list[Annotated[CatV2 | DogV2, Field(discriminator="type")]]
+
+    @manager.model("Owner", "2.0.0", backward_compatible=True)
+    class OwnerV2(BaseModel):
+        groups: list[PetGroupV2]
+
+    data: ModelData = {
+        "groups": [
+            {
+                "name": "Group A",
+                "pets": [
+                    {"type": "cat", "meow": "loud"},
+                    {"type": "dog", "bark": "woof"},
+                ],
+            },
+            {
+                "name": "Group B",
+                "pets": [
+                    {"type": "dog", "bark": "arf"},
+                ],
+            },
+        ]
+    }
+    result = manager._migration_manager.migrate(data, "Owner", "1.0.0", "2.0.0")
+
+    assert len(result["groups"]) == 2  # noqa: PLR2004
+    assert result["groups"][0]["pets"][0]["favorite_toy"] == "ball"
+    assert result["groups"][0]["pets"][1]["breed"] == "mixed"
+    assert result["groups"][1]["pets"][0]["breed"] == "mixed"
+
+
+def test_auto_migrate_branch_used(manager: ModelManager) -> None:
+    """Test that auto-migration path is used when no explicit migration exists."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        name: str
+        email: str = "default@example.com"
+
+    data: ModelData = {"name": "Alice"}
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert result["name"] == "Alice"
+    assert result["email"] == "default@example.com"
+
+
+def test_get_field_default_none_factory(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_field_default when default_factory is explicitly None."""
+    field_info = FieldInfo(annotation=str, default=PydanticUndefined)
+    field_info.default_factory = None
+    sentinel = object()
+    result = populated_migration_manager._get_field_default(field_info, sentinel)
+    assert result is sentinel
+
+
+def test_build_alias_map_with_all_alias_types(manager: ModelManager) -> None:
+    """Test _build_alias_map handles all alias types."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        user_id: str = Field(
+            alias="userId",
+            serialization_alias="userID",
+            validation_alias="user_identifier",
+        )
+        name: str = Field(alias="userName")
+        email: str  # No alias
+
+    fields = UserV1.model_fields
+    result = manager._migration_manager._build_alias_map(fields)
+
+    assert result["user_id"] == "user_id"
+    assert result["userId"] == "user_id"
+    assert result["userID"] == "user_id"
+    assert result["user_identifier"] == "user_id"
+    assert result["name"] == "name"
+    assert result["userName"] == "name"
+    assert result["email"] == "email"
+
+
+def test_build_alias_map_with_non_string_validation_alias(
+    manager: ModelManager,
+) -> None:
+    """Test _build_alias_map skips non-string validation_alias."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        user_id: str = Field(validation_alias=AliasChoices("userId", "user_id"))
+
+    fields = UserV1.model_fields
+    result = manager._migration_manager._build_alias_map(fields)
+
+    assert result["user_id"] == "user_id"
+    assert "userId" not in result
+
+
+def test_migrate_single_field_uses_serialization_alias_for_output(
+    manager: ModelManager,
+) -> None:
+    """Test _migrate_single_field uses serialization_alias for output key."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        name: str
+        email: str = Field("default@example.com", serialization_alias="emailAddress")
+
+    data: ModelData = {"name": "Alice"}
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert "emailAddress" in result
+    assert result["emailAddress"] == "default@example.com"
+
+
+def test_migrate_single_field_uses_alias_for_output_when_no_serialization_alias(
+    manager: ModelManager,
+) -> None:
+    """Test _migrate_single_field uses alias when no serialization_alias."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        name: str
+        email: str = Field("default@example.com", alias="emailAddr")
+
+    data: ModelData = {"name": "Alice"}
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert "emailAddr" in result
+    assert result["emailAddr"] == "default@example.com"
+
+
+def test_get_list_item_fields_from_field_is_none(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_list_item_fields when from_field is None."""
+    to_field = FieldInfo(annotation=list[str])
+
+    from_item, to_item = populated_migration_manager._get_list_item_fields(
+        None, to_field
+    )
+
+    assert from_item is None
+    assert to_item is not None
+
+
+def test_get_list_item_fields_extract_returns_none(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test _get_list_item_fields when extraction returns None."""
+    from_field = FieldInfo(annotation=str)
+    to_field = FieldInfo(annotation=str)
+
+    from_item, to_item = populated_migration_manager._get_list_item_fields(
+        from_field, to_field
+    )
+
+    assert from_item is None
+    assert to_item is None
+
+
+def test_extract_nested_model_info_discriminated_found(manager: ModelManager) -> None:
+    """Test _extract_nested_model_info returns discriminated result first."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+
+    @manager.model("Cat", "2.0.0", backward_compatible=True)
+    class CatV2(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+        favorite_toy: str = "ball"
+
+    @manager.model("Dog", "2.0.0", backward_compatible=True)
+    class DogV2(BaseModel):
+        type: Literal["dog"] = "dog"
+        bark: str
+        breed: str = "mixed"
+
+    from_field = FieldInfo(annotation=CatV1 | DogV1)  # type: ignore[arg-type]
+    from_field.discriminator = "type"
+    to_field = FieldInfo(annotation=CatV2 | DogV2)  # type: ignore[arg-type]
+    to_field.discriminator = "type"
+
+    value: ModelData = {"type": "cat", "meow": "loud"}
+
+    info = manager._migration_manager._extract_nested_model_info(
+        value, from_field, to_field
+    )
+
+    assert info is not None
+    assert info[0] == "Cat"
+    assert info[1] == ModelVersion(1, 0, 0)
+    assert info[2] == ModelVersion(2, 0, 0)
+
+
+def test_try_extract_discriminated_model_discriminator_value_none(
+    manager: ModelManager,
+) -> None:
+    """Test _try_extract_discriminated_model when discriminator value not found."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    field_info = FieldInfo(annotation=CatV1)
+    field_info.discriminator = "type"
+    value: ModelData = {"meow": "loud"}
+
+    result = manager._migration_manager._try_extract_discriminated_model(
+        value, None, field_info
+    )
+
+    assert result is None
+
+
+def test_try_extract_discriminated_model_type_not_basemodel(
+    manager: ModelManager,
+) -> None:
+    """Test _try_extract_discriminated_model when type is not BaseModel."""
+
+    class NotAModel:
+        type: str = "not_model"
+
+    field_info = FieldInfo(annotation=NotAModel | dict)  # type: ignore
+    field_info.discriminator = "type"
+    value: ModelData = {"type": "not_model"}
+
+    result = manager._migration_manager._try_extract_discriminated_model(
+        value, None, field_info
+    )
+
+    assert result is None
+
+
+def test_try_extract_discriminated_model_not_registered(
+    manager: ModelManager,
+) -> None:
+    """Test _try_extract_discriminated_model when model not registered."""
+
+    class UnregisteredModel(BaseModel):
+        type: Literal["unregistered"] = "unregistered"
+
+    field_info = FieldInfo(annotation=UnregisteredModel)
+    field_info.discriminator = "type"
+    value: ModelData = {"type": "unregistered"}
+
+    result = manager._migration_manager._try_extract_discriminated_model(
+        value, None, field_info
+    )
+
+    assert result is None
+
+
+def test_get_discriminated_source_version_from_model_not_basemodel(
+    manager: ModelManager,
+) -> None:
+    """Test _get_discriminated_source_version when from model is not BaseModel."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    class NotAModel:
+        type: str = "not_model"
+
+    from_field = FieldInfo(annotation=NotAModel | dict)  # type: ignore
+    from_field.discriminator = "type"
+
+    result = manager._migration_manager._get_discriminated_source_version(
+        from_field,
+        "type",
+        "cat",
+        "Cat",
+        ModelVersion(1, 0, 0),
+    )
+
+    assert result == ModelVersion(1, 0, 0)
+
+
+def test_get_discriminated_source_version_model_not_registered(
+    manager: ModelManager,
+) -> None:
+    """Test _get_discriminated_source_version when model not in registry."""
+
+    class UnregisteredCat(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    from_field = FieldInfo(annotation=UnregisteredCat)
+    from_field.discriminator = "type"
+
+    result = manager._migration_manager._get_discriminated_source_version(
+        from_field,
+        "type",
+        "cat",
+        "Cat",
+        ModelVersion(1, 0, 0),
+    )
+
+    assert result == ModelVersion(1, 0, 0)
+
+
+def test_get_discriminated_source_version_different_model_name(
+    manager: ModelManager,
+) -> None:
+    """Test _get_discriminated_source_version when model name doesn't match."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"] = "cat"
+        meow: str
+
+    from_field = FieldInfo(annotation=CatV1)
+    from_field.discriminator = "type"
+
+    result = manager._migration_manager._get_discriminated_source_version(
+        from_field,
+        "type",
+        "cat",
+        "Dog",  # Different model name
+        ModelVersion(1, 0, 0),
+    )
+
+    assert result == ModelVersion(1, 0, 0)
+
+
+def test_model_matches_discriminator_literal_no_match_but_default_undefined(
+    manager: ModelManager,
+) -> None:
+    """Test _model_matches_discriminator when literal doesn't match and no default."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"]
+        meow: str
+
+    result = manager._migration_manager._model_matches_discriminator(
+        CatV1,
+        "type",
+        "dog",
+    )
+
+    assert result is False
+
+
+def test_model_matches_discriminator_literal_no_match_default_pydantic_undefined(
+    manager: ModelManager,
+) -> None:
+    """Test when literal doesn't match and default is PydanticUndefined."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        type: Literal["cat"]
+        meow: str
+
+    CatV1.model_fields["type"].default = PydanticUndefined
+    result = manager._migration_manager._model_matches_discriminator(
+        CatV1, "type", "dog"
+    )
+
+    assert result is False
+
+
+def test_complex_nested_discriminated_union_migration(
+    manager: ModelManager,
+) -> None:
+    """Integration test covering multiple edge cases together."""
+
+    @manager.model("Cat", "1.0.0")
+    class CatV1(BaseModel):
+        pet_type: Literal["cat"] = Field("cat", alias="petType")
+        name: str
+
+    @manager.model("Dog", "1.0.0")
+    class DogV1(BaseModel):
+        pet_type: Literal["dog"] = Field("dog", alias="petType")
+        name: str
+
+    @manager.model("PetStore", "1.0.0")
+    class PetStoreV1(BaseModel):
+        inventory: list[Annotated[CatV1 | DogV1, Field(discriminator="pet_type")]]
+
+    @manager.model("Cat", "2.0.0", backward_compatible=True)
+    class CatV2(BaseModel):
+        pet_type: Literal["cat"] = Field("cat", alias="petType")
+        name: str
+        toys: list[str] = Field(default_factory=list, serialization_alias="toyList")
+
+    @manager.model("Dog", "2.0.0", backward_compatible=True)
+    class DogV2(BaseModel):
+        pet_type: Literal["dog"] = Field("dog", alias="petType")
+        name: str
+        collar_color: str = Field("blue", alias="collarColor")
+
+    @manager.model("PetStore", "2.0.0", backward_compatible=True)
+    class PetStoreV2(BaseModel):
+        inventory: list[Annotated[CatV2 | DogV2, Field(discriminator="pet_type")]]
+        store_name: str = Field("Pet Paradise", serialization_alias="storeName")
+
+    data: ModelData = {
+        "inventory": [
+            {"petType": "cat", "name": "Whiskers"},
+            {"petType": "dog", "name": "Buddy"},
+        ]
+    }
+    result = manager._migration_manager.migrate(data, "PetStore", "1.0.0", "2.0.0")
+
+    assert result["storeName"] == "Pet Paradise"
+    assert len(result["inventory"]) == 2  # noqa: PLR2004
+
+    cat = result["inventory"][0]
+    assert cat["petType"] == "cat"
+    assert cat["toyList"] == []
+
+    dog = result["inventory"][1]
+    assert dog["petType"] == "dog"
+    assert dog["collarColor"] == "blue"
