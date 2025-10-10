@@ -12,6 +12,7 @@ from .exceptions import (
 )
 from .migration_testing import (
     MigrationTestCase,
+    MigrationTestCases,
     MigrationTestResult,
     MigrationTestResults,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "MigrationFunc",
     "MigrationManager",
     "MigrationTestCase",
+    "MigrationTestCases",
     "MigrationTestResult",
     "MigrationTestResults",
     "ModelData",

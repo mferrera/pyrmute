@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Self
+from typing import Self, TypeAlias
 
 from .types import ModelData
 
@@ -159,3 +159,6 @@ class MigrationTestResults:
             f"✗ {len(self.failures)} of {total_count} test(s) failed "
             f"({passed_count} passed)"
         )
+
+
+MigrationTestCases: TypeAlias = list[tuple[ModelData, ModelData] | MigrationTestCase]
