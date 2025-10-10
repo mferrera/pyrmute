@@ -1,8 +1,9 @@
 """Migrations manager."""
 
 import contextlib
+import types
 from collections.abc import Callable
-from typing import Any, Self, get_args, get_origin
+from typing import Annotated, Any, Literal, Self, Union, get_args, get_origin
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
@@ -54,16 +55,8 @@ class MigrationManager:
             ... def migrate_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
             ...     return {**data, "email": "unknown@example.com"}
         """
-        from_ver = (
-            ModelVersion.parse(from_version)
-            if isinstance(from_version, str)
-            else from_version
-        )
-        to_ver = (
-            ModelVersion.parse(to_version)
-            if isinstance(to_version, str)
-            else to_version
-        )
+        from_ver = self._parse_version(from_version)
+        to_ver = self._parse_version(to_version)
 
         def decorator(func: MigrationFunc) -> MigrationFunc:
             self.registry._migrations[name][(from_ver, to_ver)] = func
@@ -93,61 +86,14 @@ class MigrationManager:
             ModelNotFoundError: If model or versions don't exist.
             MigrationError: If migration path cannot be found.
         """
-        from_ver = (
-            ModelVersion.parse(from_version)
-            if isinstance(from_version, str)
-            else from_version
-        )
-        to_ver = (
-            ModelVersion.parse(to_version)
-            if isinstance(to_version, str)
-            else to_version
-        )
+        from_ver = self._parse_version(from_version)
+        to_ver = self._parse_version(to_version)
 
         if from_ver == to_ver:
             return data
 
         path = self.find_migration_path(name, from_ver, to_ver)
-
-        current_data = data
-        for i in range(len(path) - 1):
-            migration_key = (path[i], path[i + 1])
-
-            if migration_key in self.registry._migrations[name]:
-                migration_func = self.registry._migrations[name][migration_key]
-                try:
-                    current_data = migration_func(current_data)
-                except Exception as e:
-                    raise MigrationError(
-                        name,
-                        str(path[i]),
-                        str(path[i + 1]),
-                        f"Migration function raised: {type(e).__name__}: {e}",
-                    ) from e
-            elif path[i + 1] in self.registry._backward_compatible_enabled[name]:
-                try:
-                    current_data = self._auto_migrate(
-                        current_data, name, path[i], path[i + 1]
-                    )
-                except Exception as e:
-                    raise MigrationError(
-                        name,
-                        str(path[i]),
-                        str(path[i + 1]),
-                        f"Auto-migration failed: {type(e).__name__}: {e}",
-                    ) from e
-            else:
-                raise MigrationError(
-                    name,
-                    str(path[i]),
-                    str(path[i + 1]),
-                    (
-                        "No migration path found. Define a migration function or mark "
-                        "the target version as backward_compatible."
-                    ),
-                )
-
-        return current_data
+        return self._execute_migration_path(data, name, path)
 
     def find_migration_path(
         self: Self,
@@ -204,14 +150,8 @@ class MigrationManager:
         for i in range(len(path) - 1):
             current_ver = path[i]
             next_ver = path[i + 1]
-            migration_key = (current_ver, next_ver)
 
-            has_explicit = migration_key in self.registry._migrations.get(name, {})
-            has_auto = next_ver in self.registry._backward_compatible_enabled.get(
-                name, set()
-            )
-
-            if not has_explicit and not has_auto:
+            if not self._has_migration_step(name, current_ver, next_ver):
                 raise MigrationError(
                     name,
                     str(current_ver),
@@ -221,6 +161,85 @@ class MigrationManager:
                         "the target version as backward_compatible."
                     ),
                 )
+
+    def _parse_version(self: Self, version: str | ModelVersion) -> ModelVersion:
+        """Parse version string or return ModelVersion as-is."""
+        return ModelVersion.parse(version) if isinstance(version, str) else version
+
+    def _has_migration_step(
+        self: Self, name: ModelName, from_ver: ModelVersion, to_ver: ModelVersion
+    ) -> bool:
+        """Check if a migration step exists (explicit or auto)."""
+        migration_key = (from_ver, to_ver)
+        has_explicit = migration_key in self.registry._migrations.get(name, {})
+        has_auto = to_ver in self.registry._backward_compatible_enabled.get(name, set())
+        return has_explicit or has_auto
+
+    def _execute_migration_path(
+        self: Self, data: ModelData, name: ModelName, path: list[ModelVersion]
+    ) -> ModelData:
+        """Execute migration through a path of versions."""
+        current_data = data
+
+        for i in range(len(path) - 1):
+            try:
+                current_data = self._execute_single_step(
+                    current_data, name, path[i], path[i + 1]
+                )
+            except Exception as e:
+                if isinstance(e, MigrationError):
+                    raise
+                raise MigrationError(
+                    name,
+                    str(path[i]),
+                    str(path[i + 1]),
+                    f"Migration failed: {type(e).__name__}: {e}",
+                ) from e
+
+        return current_data
+
+    def _execute_single_step(
+        self: Self,
+        data: ModelData,
+        name: ModelName,
+        from_ver: ModelVersion,
+        to_ver: ModelVersion,
+    ) -> ModelData:
+        """Execute a single migration step."""
+        migration_key = (from_ver, to_ver)
+
+        if migration_key in self.registry._migrations[name]:
+            migration_func = self.registry._migrations[name][migration_key]
+            try:
+                return migration_func(data)
+            except Exception as e:
+                raise MigrationError(
+                    name,
+                    str(from_ver),
+                    str(to_ver),
+                    f"Migration function raised: {type(e).__name__}: {e}",
+                ) from e
+
+        if to_ver in self.registry._backward_compatible_enabled[name]:
+            try:
+                return self._auto_migrate(data, name, from_ver, to_ver)
+            except Exception as e:
+                raise MigrationError(
+                    name,
+                    str(from_ver),
+                    str(to_ver),
+                    f"Auto-migration failed: {type(e).__name__}: {e}",
+                ) from e
+
+        raise MigrationError(
+            name,
+            str(from_ver),
+            str(to_ver),
+            (
+                "No migration path found. Define a migration function or mark "
+                "the target version as backward_compatible."
+            ),
+        )
 
     def _auto_migrate(
         self: Self,
@@ -262,7 +281,7 @@ class MigrationManager:
             if field_result is not None:
                 output_key, migrated_value, source_keys = field_result
                 result[output_key] = migrated_value
-                processed_keys.update(source_keys)  # Mark all related keys as processed
+                processed_keys.update(source_keys)
 
         # Preserve unprocessed extra fields
         for data_key, value in data.items():
@@ -271,10 +290,7 @@ class MigrationManager:
 
         return result
 
-    def _build_alias_map(
-        self: Self,
-        fields: dict[str, FieldInfo],
-    ) -> dict[str, str]:
+    def _build_alias_map(self: Self, fields: dict[str, FieldInfo]) -> dict[str, str]:
         """Build a mapping from all possible input keys to canonical field names.
 
         Args:
@@ -292,9 +308,7 @@ class MigrationManager:
                 key_to_field_name[field_info.alias] = field_name
             if field_info.serialization_alias:
                 key_to_field_name[field_info.serialization_alias] = field_name
-            if field_info.validation_alias and isinstance(
-                field_info.validation_alias, str
-            ):
+            if isinstance(field_info.validation_alias, str):
                 key_to_field_name[field_info.validation_alias] = field_name
 
         return key_to_field_name
@@ -320,8 +334,6 @@ class MigrationManager:
             Tuple of (output_key, migrated_value, source_keys_to_mark_processed) if
             field should be included, None if field should be skipped.
         """
-        _NO_DEFAULT = object()
-
         value, data_key_used = self._find_field_value(
             data, field_name, key_to_field_name
         )
@@ -331,14 +343,14 @@ class MigrationManager:
             migrated_value = self._migrate_field_value(
                 value, from_field_info, to_field_info
             )
-
             keys_to_process = {
                 k for k, v in key_to_field_name.items() if v == field_name
             }
-
             return (data_key_used, migrated_value, keys_to_process)
 
+        _NO_DEFAULT = object()
         default_value = self._get_field_default(to_field_info, _NO_DEFAULT)
+
         if default_value is not _NO_DEFAULT:
             output_key = (
                 to_field_info.serialization_alias or to_field_info.alias or field_name
@@ -348,10 +360,7 @@ class MigrationManager:
         return None
 
     def _find_field_value(
-        self: Self,
-        data: ModelData,
-        field_name: str,
-        key_to_field_name: dict[str, str],
+        self: Self, data: ModelData, field_name: str, key_to_field_name: dict[str, str]
     ) -> tuple[Any, str | None]:
         """Find a field's value in data, checking both field name and aliases.
 
@@ -373,9 +382,7 @@ class MigrationManager:
         return (None, None)
 
     def _get_field_default(
-        self: Self,
-        field_info: FieldInfo,
-        sentinel: Any = None,
+        self: Self, field_info: FieldInfo, sentinel: Any = None
     ) -> Any:
         """Get the default value for a field.
 
@@ -396,10 +403,7 @@ class MigrationManager:
         return sentinel
 
     def _migrate_field_value(
-        self: Self,
-        value: Any,
-        from_field: FieldInfo | None,
-        to_field: FieldInfo,
+        self: Self, value: Any, from_field: FieldInfo | None, to_field: FieldInfo
     ) -> Any:
         """Migrate a single field value, handling nested models.
 
@@ -415,30 +419,103 @@ class MigrationManager:
             return None
 
         if isinstance(value, dict):
-            nested_info = self._extract_nested_model_info(value, from_field, to_field)
-            if nested_info:
-                nested_name, nested_from_ver, nested_to_ver = nested_info
-                return self.migrate(value, nested_name, nested_from_ver, nested_to_ver)
-
-            return {
-                k: self._migrate_field_value(v, from_field, to_field)
-                for k, v in value.items()
-            }
+            return self._migrate_dict_value(value, from_field, to_field)
 
         if isinstance(value, list):
-            return [
-                self._migrate_field_value(item, from_field, to_field) for item in value
-            ]
+            return self._migrate_list_value(value, from_field, to_field)
 
         return value
 
+    def _migrate_dict_value(
+        self, value: dict[str, Any], from_field: FieldInfo | None, to_field: FieldInfo
+    ) -> dict[str, Any]:
+        """Migrate a dictionary value (might be a nested model)."""
+        nested_info = self._extract_nested_model_info(value, from_field, to_field)
+        if nested_info:
+            nested_name, nested_from_ver, nested_to_ver = nested_info
+            return self.migrate(value, nested_name, nested_from_ver, nested_to_ver)
+
+        return {
+            k: self._migrate_field_value(v, from_field, to_field)
+            for k, v in value.items()
+        }
+
+    def _migrate_list_value(
+        self, value: list[Any], from_field: FieldInfo | None, to_field: FieldInfo
+    ) -> list[Any]:
+        """Migrate a list value (might contain nested models)."""
+        from_item_field, to_item_field = self._get_list_item_fields(
+            from_field, to_field
+        )
+
+        return [
+            self._migrate_list_item(item, from_item_field, to_item_field)
+            for item in value
+        ]
+
+    def _migrate_list_item(
+        self, item: Any, from_field: FieldInfo | None, to_field: FieldInfo | None
+    ) -> Any:
+        """Migrate a single item from a list."""
+        if not isinstance(item, dict) or to_field is None:
+            return item
+
+        nested_info = self._extract_nested_model_info(item, from_field, to_field)
+        if nested_info:
+            nested_name, nested_from_ver, nested_to_ver = nested_info
+            return self.migrate(item, nested_name, nested_from_ver, nested_to_ver)
+
+        return item
+
+    def _get_list_item_fields(
+        self, from_field: FieldInfo | None, to_field: FieldInfo
+    ) -> tuple[FieldInfo | None, FieldInfo | None]:
+        """Extract field info for items in a list field."""
+        to_item_field = self._extract_list_item_field(to_field)
+        from_item_field = (
+            self._extract_list_item_field(from_field) if from_field else None
+        )
+        return from_item_field, to_item_field
+
+    def _extract_list_item_field(self, field: FieldInfo | None) -> FieldInfo | None:
+        """Extract field info for the items of a list field."""
+        if field is None or field.annotation is None:
+            return None
+
+        origin = get_origin(field.annotation)
+        if origin is not list:
+            return None
+
+        args = get_args(field.annotation)
+        if not args:
+            return None
+
+        item_annotation = args[0]
+
+        discriminator = None
+        if get_origin(item_annotation) is Annotated:
+            annotated_args = get_args(item_annotation)
+            item_annotation = annotated_args[0]
+            for metadata in annotated_args[1:]:
+                if hasattr(metadata, "discriminator"):
+                    discriminator = metadata.discriminator
+
+        synthetic_field = FieldInfo(
+            annotation=item_annotation, default=PydanticUndefined
+        )
+        if discriminator:
+            synthetic_field.discriminator = discriminator
+
+        return synthetic_field
+
     def _extract_nested_model_info(
-        self: Self,
-        value: ModelData,
-        from_field: FieldInfo | None,
-        to_field: FieldInfo,
+        self, value: ModelData, from_field: FieldInfo | None, to_field: FieldInfo
     ) -> tuple[ModelName, ModelVersion, ModelVersion] | None:
         """Extract nested model migration information.
+
+        Handles discriminated unions by using the discriminator field to determine which
+        model type to migrate.
+
 
         Args:
             value: The nested model data.
@@ -449,8 +526,32 @@ class MigrationManager:
             Tuple of (model_name, from_version, to_version) if this is a
             versioned nested model, None otherwise.
         """
-        to_model_type = self._get_model_type_from_field(to_field)
-        if not to_model_type or not issubclass(to_model_type, BaseModel):
+        discriminated_info = self._try_extract_discriminated_model(
+            value, from_field, to_field
+        )
+        if discriminated_info:
+            return discriminated_info
+
+        return self._try_extract_simple_nested_model(from_field, to_field)
+
+    def _try_extract_discriminated_model(
+        self, value: ModelData, from_field: FieldInfo | None, to_field: FieldInfo
+    ) -> tuple[ModelName, ModelVersion, ModelVersion] | None:
+        """Try to extract model info from a discriminated union field."""
+        discriminator_key = self._get_discriminator_key(to_field)
+        if not discriminator_key:
+            return None
+
+        discriminator_value = self._find_discriminator_value(
+            value, discriminator_key, to_field
+        )
+        if discriminator_value is None:
+            return None
+
+        to_model_type = self._find_discriminated_type(
+            to_field, discriminator_key, discriminator_value
+        )
+        if not to_model_type:
             return None
 
         to_info = self.registry.get_model_info(to_model_type)
@@ -458,34 +559,194 @@ class MigrationManager:
             return None
 
         model_name, to_version = to_info
+        from_version = self._get_discriminated_source_version(
+            from_field, discriminator_key, discriminator_value, model_name, to_version
+        )
 
-        # Get the source version
-        if from_field:
-            from_model_type = self._get_model_type_from_field(from_field)
-            if from_model_type and issubclass(from_model_type, BaseModel):
-                from_info = self.registry.get_model_info(from_model_type)
-                if from_info and from_info[0] == model_name:
-                    from_version = from_info[1]
-                    return (model_name, from_version, to_version)
+        return (model_name, from_version, to_version)
 
-        # If we can't determine the source version, assume it's the same as target
-        return (model_name, to_version, to_version)
+    def _try_extract_simple_nested_model(
+        self, from_field: FieldInfo | None, to_field: FieldInfo
+    ) -> tuple[ModelName, ModelVersion, ModelVersion] | None:
+        """Try to extract model info from a simple (non-discriminated) nested field."""
+        to_model_type = self._get_model_type_from_field(to_field)
+        if not to_model_type:
+            return None
 
-    def _get_model_type_from_field(
-        self: Self, field: FieldInfo
+        to_info = self.registry.get_model_info(to_model_type)
+        if not to_info:
+            return None
+
+        model_name, to_version = to_info
+        from_version = self._get_simple_source_version(from_field, model_name)
+
+        return (model_name, from_version or to_version, to_version)
+
+    def _get_simple_source_version(
+        self, from_field: FieldInfo | None, model_name: str
+    ) -> ModelVersion | None:
+        """Get the source version for a simple nested field."""
+        if not from_field:
+            return None
+
+        from_model_type = self._get_model_type_from_field(from_field)
+        if not from_model_type:
+            return None
+
+        from_info = self.registry.get_model_info(from_model_type)
+        if not from_info or from_info[0] != model_name:
+            return None
+
+        return from_info[1]
+
+    def _get_discriminator_key(self, field: FieldInfo) -> str | None:
+        """Extract the discriminator key from a field."""
+        discriminator = field.discriminator
+        if discriminator is None:
+            return None
+
+        if isinstance(discriminator, str):
+            return discriminator
+
+        if hasattr(discriminator, "discriminator") and isinstance(
+            discriminator.discriminator, str
+        ):
+            return discriminator.discriminator
+
+        return None
+
+    def _find_discriminator_value(
+        self, value: ModelData, discriminator_key: str, field: FieldInfo
+    ) -> Any:
+        """Find the discriminator value in data, checking field name and aliases."""
+        if discriminator_key in value:
+            return value[discriminator_key]
+
+        for model_type in self._get_union_members(field):
+            if discriminator_key not in model_type.model_fields:
+                continue
+
+            disc_field = model_type.model_fields[discriminator_key]
+
+            for alias_attr in ["alias", "serialization_alias"]:
+                alias = getattr(disc_field, alias_attr, None)
+                if alias and alias in value:
+                    return value[alias]
+
+            val_alias = disc_field.validation_alias
+            if isinstance(val_alias, str) and val_alias in value:
+                return value[val_alias]
+
+        return None
+
+    def _get_discriminated_source_version(
+        self,
+        from_field: FieldInfo | None,
+        discriminator_key: str,
+        discriminator_value: Any,
+        model_name: str,
+        default_version: ModelVersion,
+    ) -> ModelVersion:
+        """Get the source version for a discriminated union field."""
+        if not from_field:
+            return default_version
+
+        from_model_type = self._find_discriminated_type(
+            from_field, discriminator_key, discriminator_value
+        )
+        if not from_model_type:
+            return default_version
+
+        from_info = self.registry.get_model_info(from_model_type)
+        if not from_info or from_info[0] != model_name:
+            return default_version
+
+        return from_info[1]
+
+    def _find_discriminated_type(
+        self, field: FieldInfo, discriminator_key: str, discriminator_value: Any
     ) -> type[BaseModel] | None:
-        """Extract the Pydantic model type from a field.
+        """Find the right type in a discriminated union based on discriminator value."""
+        for model_type in self._get_union_members(field):
+            if self._model_matches_discriminator(
+                model_type, discriminator_key, discriminator_value
+            ):
+                return model_type
+        return None
 
-        Handles Optional, List, and other generic types.
+    def _model_matches_discriminator(
+        self,
+        model_type: type[BaseModel],
+        discriminator_key: str,
+        discriminator_value: Any,
+    ) -> bool:
+        """Check if a model type matches a discriminator value."""
+        if discriminator_key not in model_type.model_fields:
+            return False
 
-        Args:
-            field: The field info to extract from.
+        field_info = model_type.model_fields[discriminator_key]
 
-        Returns:
-            The model type if found, None otherwise.
-        """
+        if self._literal_matches_value(field_info.annotation, discriminator_value):
+            return True
+
+        return (
+            field_info.default is not PydanticUndefined
+            and field_info.default == discriminator_value
+        )
+
+    def _literal_matches_value(self, annotation: Any, value: Any) -> bool:
+        """Check if a Literal type annotation contains a specific value."""
+        if annotation is None:
+            return False
+
+        origin = get_origin(annotation)
+        if origin is not Literal:
+            return False
+
+        literal_values = get_args(annotation)
+        return value in literal_values
+
+    def _get_union_members(self, field: FieldInfo) -> list[type[BaseModel]]:
+        """Extract all BaseModel types from a union field."""
         annotation = field.annotation
+        if annotation is None:
+            return []
 
+        origin = get_origin(annotation)
+
+        if origin is None:
+            if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+                return [annotation]
+            return []
+
+        if not self._is_union_type(origin):
+            return []
+
+        args = get_args(annotation)
+        return [
+            arg
+            for arg in args
+            if arg is not type(None)
+            and isinstance(arg, type)
+            and issubclass(arg, BaseModel)
+        ]
+
+    def _is_union_type(self, origin: Any) -> bool:
+        """Check if an origin type represents a Union."""
+        if origin is Union:
+            return True
+
+        if hasattr(types, "UnionType"):
+            try:
+                return origin is types.UnionType
+            except (ImportError, AttributeError):
+                pass
+
+        return False
+
+    def _get_model_type_from_field(self, field: FieldInfo) -> type[BaseModel] | None:
+        """Extract the Pydantic model type from a field."""
+        annotation = field.annotation
         if annotation is None:
             return None
 
