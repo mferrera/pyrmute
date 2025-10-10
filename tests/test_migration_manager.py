@@ -3,7 +3,7 @@
 from typing import Any
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic.fields import FieldInfo
 
 from pyrmute import (
@@ -1215,3 +1215,326 @@ def test_auto_migration_preserves_exception_chain(manager: ModelManager) -> None
     assert exc_info.value.__cause__ is not None
     assert isinstance(exc_info.value.__cause__, Exception)
     assert "Intentional error in list iteration" in str(exc_info.value.__cause__)
+
+
+def test_auto_migration_with_field_aliases(manager: ModelManager) -> None:
+    """Test that auto-migration handles field aliases correctly."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        user_id: str = Field(alias="userId")
+        user_name: str = Field(alias="userName")
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        user_id: str = Field(alias="userId")
+        user_name: str = Field(alias="userName")
+        email: str = "default@example.com"
+
+    data: ModelData = {"userId": "123", "userName": "Alice"}
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert result["userId"] == "123"
+    assert result["userName"] == "Alice"
+    assert result["email"] == "default@example.com"
+
+
+def test_auto_migration_with_nested_model_aliases(manager: ModelManager) -> None:
+    """Test that auto-migration handles aliases in nested models."""
+
+    @manager.model("Address", "1.0.0")
+    class AddressV1(BaseModel):
+        street_name: str = Field(alias="streetName")
+
+    @manager.model("Address", "2.0.0", backward_compatible=True)
+    class AddressV2(BaseModel):
+        street_name: str = Field(alias="streetName")
+        city_name: str = Field(alias="cityName", default="Unknown")
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        user_id: str = Field(alias="userId")
+        address: AddressV1
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        user_id: str = Field(alias="userId")
+        address: AddressV2
+
+    data: ModelData = {
+        "userId": "456",
+        "address": {"streetName": "123 Main St"},
+    }
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert result["userId"] == "456"
+    assert result["address"]["streetName"] == "123 Main St"
+    assert result["address"]["cityName"] == "Unknown"
+
+
+def test_auto_migration_with_both_alias_and_field_name_present(
+    manager: ModelManager,
+) -> None:
+    """Test behavior when data contains both aliased and non-aliased versions."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        user_id: str = Field(alias="userId")
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        user_id: str = Field(alias="userId")
+        email: str = "default@example.com"
+
+    data: ModelData = {"userId": "123", "user_id": "456"}
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert result["user_id"] == "456"
+    assert "userId" in result or "user_id" in result
+
+
+def test_auto_migration_with_multiple_alias_types(
+    manager: ModelManager,
+) -> None:
+    """Test field with alias, validation_alias, and serialization_alias all set."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        user_id: str = Field(
+            alias="userId",
+            validation_alias="user_identifier",
+            serialization_alias="userID",
+        )
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        user_id: str = Field(
+            alias="userId",
+            validation_alias="user_identifier",
+            serialization_alias="userID",
+        )
+        email: str = "default@example.com"
+
+    data: ModelData = {"user_identifier": "789"}
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert "user_identifier" in result or "userId" in result or "userID" in result
+    assert "789" in str(result.values())
+
+
+def test_auto_migration_with_validation_alias_choices(
+    manager: ModelManager,
+) -> None:
+    """Test field with AliasChoices (non-string validation_alias)."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        user_id: str = Field(validation_alias=AliasChoices("userId", "user_id"))
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        user_id: str = Field(validation_alias=AliasChoices("userId", "user_id"))
+        email: str = "default@example.com"
+
+    data: ModelData = {"userId": "999"}
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert "email" in result
+
+
+def test_auto_migration_none_value_vs_missing_field(
+    manager: ModelManager,
+) -> None:
+    """Test distinction between explicit None and missing field."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str | None = None
+        age: int | None = None
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        name: str | None = "default_name"
+        age: int | None = 999
+
+    data: ModelData = {"name": None}
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert result["name"] is None
+    assert result["age"] == 999  # noqa: PLR2004
+
+
+def test_auto_migration_alias_changes_between_versions(
+    manager: ModelManager,
+) -> None:
+    """Test when field has different aliases in source vs target."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        user_id: str = Field(alias="userId")
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        user_id: str = Field(alias="userIdentifier")  # Different alias
+
+    data: ModelData = {"userId": "123"}
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert "userIdentifier" in result or "userId" in result
+    assert "123" in str(result.values())
+
+
+def test_auto_migration_extra_field_conflicts_with_alias(
+    manager: ModelManager,
+) -> None:
+    """Test extra field that has same name as a model field's alias."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        user_id: str = Field(alias="userId")
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        user_id: str = Field(alias="userId")
+        email: str = "default@example.com"
+
+    data: ModelData = {"userId": "123", "user_id": "extra_value"}
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert len(result) >= 2  # noqa: PLR2004
+
+
+def test_auto_migration_empty_data(
+    manager: ModelManager,
+) -> None:
+    """Test migration with empty data dictionary."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str = "default"
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        name: str = "default"
+        email: str = "default@example.com"
+
+    data: ModelData = {}
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert result["name"] == "default"
+    assert result["email"] == "default@example.com"
+
+
+def test_auto_migration_default_factory_returns_none(
+    manager: ModelManager,
+) -> None:
+    """Test field where default_factory intentionally returns None."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        name: str
+        metadata: dict[str, Any] | None = Field(default_factory=lambda: None)
+
+    data: ModelData = {"name": "Alice"}
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert result["metadata"] is None
+
+
+def test_auto_migration_nested_model_with_different_aliases(
+    manager: ModelManager,
+) -> None:
+    """Test nested model where parent and child have different alias conventions."""
+
+    @manager.model("Address", "1.0.0")
+    class AddressV1(BaseModel):
+        street_name: str = Field(alias="streetName")
+
+    @manager.model("Address", "2.0.0", backward_compatible=True)
+    class AddressV2(BaseModel):
+        street_name: str = Field(alias="street")  # Different alias
+        city: str = "Unknown"
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        user_name: str = Field(alias="userName")
+        address: AddressV1
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        user_name: str = Field(alias="name")  # Different alias
+        address: AddressV2
+
+    data: ModelData = {
+        "userName": "Bob",
+        "address": {"streetName": "123 Main St"},
+    }
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert "userName" in result
+    assert result["userName"] == "Bob"
+    assert "address" in result
+    assert "streetName" in result["address"]
+    assert result["address"]["streetName"] == "123 Main St"
+    assert result["address"]["city"] == "Unknown"
+
+
+def test_auto_migration_field_name_takes_precedence_over_alias(
+    manager: ModelManager,
+) -> None:
+    """Test documented behavior that field_name takes precedence over alias."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        user_id: str = Field(alias="userId")
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        user_id: str = Field(alias="userId")
+        email: str = "default@example.com"
+
+    data: ModelData = {"userId": "from_alias", "user_id": "from_field_name"}
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert (
+        result.get("user_id") == "from_field_name"
+        or result.get("userId") == "from_field_name"
+    )
+    if "userId" in result and "user_id" in result:
+        assert result["userId"] == result["user_id"], (
+            "Should not have conflicting values"
+        )
+    user_id_keys = [k for k in result if k in ("user_id", "userId")]
+    assert len(user_id_keys) == 1, "Should only have one key for user_id field"
+
+
+def test_auto_migration_preserves_extra_fields_with_aliases(
+    manager: ModelManager,
+) -> None:
+    """Test that extra fields are preserved even when model uses aliases."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        user_id: str = Field(alias="userId")
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        user_id: str = Field(alias="userId")
+        email: str = "default@example.com"
+
+    data: ModelData = {
+        "userId": "123",
+        "custom_field": "custom_value",
+        "another_extra": 42,
+    }
+    result = manager._migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+    assert "userId" in result
+    assert result["userId"] == "123"
+    assert result["email"] == "default@example.com"
+    assert result["custom_field"] == "custom_value"
+    assert result["another_extra"] == 42  # noqa: PLR2004

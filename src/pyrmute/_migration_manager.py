@@ -232,7 +232,7 @@ class MigrationManager:
         """Automatically migrate data when no explicit migration exists.
 
         This method handles nested Pydantic models recursively, migrating them to their
-        corresponding versions.
+        corresponding versions. Handles field aliases by building a lookup map.
 
         Args:
             data: Data dictionary to migrate.
@@ -249,30 +249,151 @@ class MigrationManager:
         from_fields = from_model.model_fields
         to_fields = to_model.model_fields
 
+        key_to_field_name = self._build_alias_map(from_fields)
+
         result: ModelData = {}
+        processed_keys: set[str] = set()
 
         for field_name, to_field_info in to_fields.items():
-            # Field exists in data, migrate it
-            if field_name in data:
-                value = data[field_name]
-                from_field_info = from_fields.get(field_name)
-                result[field_name] = self._migrate_field_value(
-                    value, from_field_info, to_field_info
-                )
+            field_result = self._migrate_single_field(
+                data, field_name, to_field_info, from_fields, key_to_field_name
+            )
 
-            # Field missing from data, use default if available
-            elif to_field_info.default is not PydanticUndefined:
-                result[field_name] = to_field_info.default
-            elif to_field_info.default_factory is not None:
-                with contextlib.suppress(Exception):
-                    result[field_name] = to_field_info.default_factory()  # type: ignore
+            if field_result is not None:
+                output_key, migrated_value, source_keys = field_result
+                result[output_key] = migrated_value
+                processed_keys.update(source_keys)  # Mark all related keys as processed
 
-        # Migrate all extra data not in the field, too
-        for field_name, value in data.items():
-            if field_name not in to_fields:
-                result[field_name] = value
+        # Preserve unprocessed extra fields
+        for data_key, value in data.items():
+            if data_key not in processed_keys:
+                result[data_key] = value
 
         return result
+
+    def _build_alias_map(
+        self: Self,
+        fields: dict[str, FieldInfo],
+    ) -> dict[str, str]:
+        """Build a mapping from all possible input keys to canonical field names.
+
+        Args:
+            fields: Model fields to extract aliases from.
+
+        Returns:
+            Dictionary mapping data keys (field names and aliases) to field names.
+        """
+        key_to_field_name: dict[str, str] = {}
+
+        for field_name, field_info in fields.items():
+            key_to_field_name[field_name] = field_name
+
+            if field_info.alias:
+                key_to_field_name[field_info.alias] = field_name
+            if field_info.serialization_alias:
+                key_to_field_name[field_info.serialization_alias] = field_name
+            if field_info.validation_alias and isinstance(
+                field_info.validation_alias, str
+            ):
+                key_to_field_name[field_info.validation_alias] = field_name
+
+        return key_to_field_name
+
+    def _migrate_single_field(
+        self: Self,
+        data: ModelData,
+        field_name: str,
+        to_field_info: FieldInfo,
+        from_fields: dict[str, FieldInfo],
+        key_to_field_name: dict[str, str],
+    ) -> tuple[str, Any, set[str]] | None:
+        """Migrate a single field, handling aliases and defaults.
+
+        Args:
+            data: Source data dictionary.
+            field_name: Target field name.
+            to_field_info: Target field info.
+            from_fields: Source model fields.
+            key_to_field_name: Mapping from data keys to field names.
+
+        Returns:
+            Tuple of (output_key, migrated_value, source_keys_to_mark_processed) if
+            field should be included, None if field should be skipped.
+        """
+        _NO_DEFAULT = object()
+
+        value, data_key_used = self._find_field_value(
+            data, field_name, key_to_field_name
+        )
+
+        if data_key_used is not None:
+            from_field_info = from_fields.get(field_name)
+            migrated_value = self._migrate_field_value(
+                value, from_field_info, to_field_info
+            )
+
+            keys_to_process = {
+                k for k, v in key_to_field_name.items() if v == field_name
+            }
+
+            return (data_key_used, migrated_value, keys_to_process)
+
+        default_value = self._get_field_default(to_field_info, _NO_DEFAULT)
+        if default_value is not _NO_DEFAULT:
+            output_key = (
+                to_field_info.serialization_alias or to_field_info.alias or field_name
+            )
+            return (output_key, default_value, set())
+
+        return None
+
+    def _find_field_value(
+        self: Self,
+        data: ModelData,
+        field_name: str,
+        key_to_field_name: dict[str, str],
+    ) -> tuple[Any, str | None]:
+        """Find a field's value in data, checking both field name and aliases.
+
+        Args:
+            data: Source data dictionary.
+            field_name: Target field name to find.
+            key_to_field_name: Mapping from data keys to field names.
+
+        Returns:
+            Tuple of (value, data_key) if found, (None, None) otherwise.
+        """
+        if field_name in data:
+            return (data[field_name], field_name)
+
+        for data_key in data:
+            if key_to_field_name.get(data_key) == field_name:
+                return (data[data_key], data_key)
+
+        return (None, None)
+
+    def _get_field_default(
+        self: Self,
+        field_info: FieldInfo,
+        sentinel: Any = None,
+    ) -> Any:
+        """Get the default value for a field.
+
+        Args:
+            field_info: Field info to extract default from.
+            sentinel: Sentinel value to return if no default is available.
+
+        Returns:
+            Default value if available, sentinel otherwise.
+        """
+        if field_info.default is not PydanticUndefined:
+            return field_info.default
+
+        if field_info.default_factory is not None:
+            with contextlib.suppress(Exception):
+                return field_info.default_factory()  # type: ignore
+
+        return sentinel
 
     def _migrate_field_value(
         self: Self,
