@@ -13,6 +13,7 @@ from ._schema_manager import SchemaManager
 from .exceptions import MigrationError, ModelNotFoundError
 from .migration_testing import (
     MigrationTestCase,
+    MigrationTestCases,
     MigrationTestResult,
     MigrationTestResults,
 )
@@ -635,7 +636,7 @@ class ModelManager:
         name: str,
         from_version: str | ModelVersion,
         to_version: str | ModelVersion,
-        test_cases: list[tuple[ModelData, ModelData] | MigrationTestCase],
+        test_cases: MigrationTestCases,
     ) -> MigrationTestResults:
         """Test a migration with multiple test cases.
 
