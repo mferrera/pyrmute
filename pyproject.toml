@@ -87,7 +87,7 @@ show_column_numbers = true
 pretty = true
 
 [tool.pytest.ini_options]
-addopts = "-n auto -m 'not examples' --cov src/ --cov-report term-missing"
+addopts = "-n auto -m 'not examples' --cov --cov-report term-missing"
 testpaths = ["tests"]
 markers = [
     "examples: integration tests that run example scripts",
