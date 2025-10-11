@@ -26,7 +26,7 @@ through multiple versions.
 
 ## When to Use pyrmute
 
-pyrmute excels at handling schema evolution in production systems:
+pyrmute is useful for handling schema evolution in production systems:
 
 - **Configuration files** - Upgrade user config files as your CLI/desktop app
   evolves (`.apprc`, `config.json`, `settings.yaml`)
@@ -45,6 +45,21 @@ pyrmute excels at handling schema evolution in production systems:
 
 See the [examples/](examples/) directory for complete, runnable code
 demonstrating these patterns.
+
+## When Not to Use
+
+pyrmute may not be the right choice if you have:
+
+- **High-throughput systems** - Runtime migration adds latency to hot paths.
+  Use upfront batch migrations instead.
+- **Multi-language services** - Python-only. Use Protobuf, Avro, or JSON
+  Schema for polyglot architectures.
+- **Existing schema registries** - Already using Confluent/AWS Glue? Stick
+  with them for compatibility enforcement and governance.
+- **Stable schemas** - Models rarely change? Traditional migration tools are
+  simpler and more maintainable.
+- **Database DDL changes** - pyrmute transforms data, not database schemas.
+  Alembic/Flyway or other ORMs may still be needed to alter tables.
 
 ## Help
 
