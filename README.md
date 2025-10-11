@@ -24,6 +24,28 @@ through multiple versions.
   support for large datasets
 - **Only one dependency** - Pydantic
 
+## When to Use pyrmute
+
+pyrmute excels at handling schema evolution in production systems:
+
+- **Configuration files** - Upgrade user config files as your CLI/desktop app
+  evolves (`.apprc`, `config.json`, `settings.yaml`)
+- **Message queues & event streams** - Handle messages from multiple service
+  versions publishing different schemas (Kafka, RabbitMQ, SQS)
+- **ETL & data imports** - Import CSV/JSON/Excel files exported over years
+  with evolving structures
+- **ML model serving** - Manage feature schema evolution across model versions
+  and A/B tests
+- **API versioning** - Support multiple API versions with automatic
+  request/response migration
+- **Database migrations** - Transparently migrate legacy data on read without
+  downtime
+- **Data archival** - Process historical data dumps with various schema
+  versions
+
+See the [examples/](examples/) directory for complete, runnable code
+demonstrating these patterns.
+
 ## Help
 
 See [documentation](https://mferrera.github.io/pyrmute/) for complete guides
@@ -200,6 +222,71 @@ results = manager.test_migration(
 assert results.all_passed, f"Migration failed: {results.failures}"
 ```
 
+### Bidirectional Migrations
+
+```python
+# Support both upgrades and downgrades
+@manager.migration("Config", "2.0.0", "1.0.0")
+def downgrade_config(data: ModelData) -> ModelData:
+    """Rollback to v1 format."""
+    return {k: v for k, v in data.items() if k in ["setting1", "setting2"]}
+
+# Useful for:
+# - Rolling back deployments
+# - Normalizing outputs from multiple model versions
+# - Supporting legacy systems during transitions
+```
+
+### Nested Model Migrations
+
+```python
+# Automatically migrates nested Pydantic models
+@manager.model("Address", "1.0.0")
+class AddressV1(BaseModel):
+    street: str
+    city: str
+
+@manager.model("Address", "2.0.0")
+class AddressV2(BaseModel):
+    street: str
+    city: str
+    postal_code: str
+
+@manager.model("User", "2.0.0")
+class UserV2(BaseModel):
+    name: str
+    address: AddressV2  # Nested model
+
+# When migrating User, Address is automatically migrated too
+@manager.migration("Address", "1.0.0", "2.0.0")
+def add_postal_code(data: ModelData) -> ModelData:
+    return {**data, "postal_code": "00000"}
+```
+
+### Discriminated Unions
+
+```python
+from typing import Literal, Union
+from pydantic import Field
+
+# Handle complex type hierarchies
+@manager.model("CreditCard", "1.0.0")
+class CreditCardV1(BaseModel):
+    type: Literal["credit_card"] = "credit_card"
+    card_number: str
+
+@manager.model("PayPal", "1.0.0")
+class PayPalV1(BaseModel):
+    type: Literal["paypal"] = "paypal"
+    email: str
+
+@manager.model("Payment", "1.0.0")
+class PaymentV1(BaseModel):
+    method: Union[CreditCardV1, PayPalV1] = Field(discriminator="type")
+
+# Migrations respect discriminated unions
+```
+
 ### Export JSON Schemas
 
 ```python
@@ -235,78 +322,145 @@ config = manager.migrate({"timeout": 60}, "Config", "1.0.0", "2.0.0")
 # ConfigV2(timeout=60, retries=3)
 ```
 
-## Real-World Example
+## Real-World Examples
+
+### Configuration File Evolution
 
 ```python
-from datetime import datetime
-from pydantic import BaseModel, EmailStr
-from pyrmute import ModelManager, ModelData
+# Your CLI tool evolves over time
+@manager.model("AppConfig", "1.0.0")
+class AppConfigV1(BaseModel):
+    api_key: str
+    debug: bool = False
 
-manager = ModelManager()
+@manager.model("AppConfig", "2.0.0")
+class AppConfigV2(BaseModel):
+    api_key: str
+    api_endpoint: str = "https://api.example.com"
+    log_level: Literal["DEBUG", "INFO", "ERROR"] = "INFO"
 
-
-# API v1: Basic order
-@manager.model("Order", "1.0.0")
-class OrderV1(BaseModel):
-    id: str
-    items: list[str]
-    total: float
-
-
-# API v2: Add customer info
-@manager.model("Order", "2.0.0")
-class OrderV2(BaseModel):
-    id: str
-    items: list[str]
-    total: float
-    customer_email: EmailStr
-
-
-# API v3: Structured items and timestamps
-@manager.model("Order", "3.0.0")
-class OrderItemV3(BaseModel):
-    product_id: str
-    quantity: int
-    price: float
-
-
-@manager.model("Order", "3.0.0")
-class OrderV3(BaseModel):
-    id: str
-    items: list[OrderItemV3]
-    total: float
-    customer_email: EmailStr
-    created_at: datetime
-
-
-# Define migrations
-@manager.migration("Order", "1.0.0", "2.0.0")
-def add_customer_email(data: ModelData) -> ModelData:
-    return {**data, "customer_email": "customer@example.com"}
-
-
-@manager.migration("Order", "2.0.0", "3.0.0")
-def structure_items(data: ModelData) -> ModelData:
-    # Convert simple strings to structured items
-    structured_items = [
-        {
-            "product_id": item,
-            "quantity": 1,
-            "price": data["total"] / len(data["items"])
-        }
-        for item in data["items"]
-    ]
+@manager.migration("AppConfig", "1.0.0", "2.0.0")
+def upgrade_config(data: dict) -> dict:
     return {
-        **data,
-        "items": structured_items,
-        "created_at": datetime.now().isoformat()
+        "api_key": data["api_key"],
+        "api_endpoint": "https://api.example.com",
+        "log_level": "DEBUG" if data.get("debug") else "INFO",
     }
 
-# Migrate old orders from your database
-old_order = {"id": "123", "items": ["widget", "gadget"], "total": 29.99}
-new_order = manager.migrate(old_order, "Order", "1.0.0", "3.0.0")
-database.save(new_order)
+# Load and auto-upgrade user's config file
+def load_config(config_path: Path) -> AppConfigV2:
+    with open(config_path) as f:
+        data = json.load(f)
+
+    version = data.get("_version", "1.0.0")
+
+    # Migrate to current version
+    config = manager.migrate(
+        data,
+        "AppConfig",
+        from_version=version,
+        to_version="2.0.0"
+    )
+
+    # Save upgraded config with version tag
+    with open(config_path, "w") as f:
+        json.dump({**config.model_dump(), "_version": "2.0.0"}, f, indent=2)
+
+    return config
 ```
+
+### Message Queue Consumer
+
+```python
+# Handle messages from multiple service versions
+@manager.model("OrderEvent", "1.0.0")
+class OrderEventV1(BaseModel):
+    order_id: str
+    customer_email: str
+    items: list[dict]  # Unstructured
+
+@manager.model("OrderEvent", "2.0.0")
+class OrderEventV2(BaseModel):
+    order_id: str
+    customer_email: str
+    items: list[OrderItem]  # Structured
+    total: Decimal
+
+def process_message(message: dict, schema_version: str) -> None:
+    # Migrate to current schema regardless of source version
+    event = manager.migrate(
+        message,
+        "OrderEvent",
+        from_version=schema_version,
+        to_version="2.0.0"
+    )
+    # Process with current schema only
+    fulfill_order(event)
+```
+
+### ETL Data Import
+
+```python
+# Import historical exports with evolving schemas
+import csv
+
+def import_customers(file_path: Path, file_version: str) -> None:
+    with open(file_path) as f:
+        reader = csv.DictReader(f)
+
+        # Stream migration for memory efficiency
+        for customer in manager.migrate_batch_streaming(
+            reader,
+            "Customer",
+            from_version=file_version,
+            to_version="3.0.0",
+            chunk_size=1000
+        ):
+            database.save(customer)
+
+# Handle files from different years
+import_customers("exports/2022_customers.csv", "1.0.0")
+import_customers("exports/2023_customers.csv", "2.0.0")
+import_customers("exports/2024_customers.csv", "3.0.0")
+```
+
+### ML Model Serving
+
+```python
+# Route requests to appropriate model versions
+class InferenceService:
+    def predict(self, features: dict, request_version: str) -> BaseModel:
+        # Determine target model version (A/B testing, gradual rollout, etc.)
+        model_version = self.get_model_version(features["user_id"])
+
+        # Migrate request to model's expected format
+        model_input = manager.migrate(
+            features,
+            "PredictionRequest",
+            from_version=request_version,
+            to_version=model_version
+        )
+
+        # Run inference
+        prediction = self.models[model_version].predict(model_input)
+
+        # Normalize output for logging/analytics
+        return manager.migrate(
+            prediction,
+            "PredictionResponse",
+            from_version=model_version,
+            to_version="3.0.0"
+        )
+```
+
+See [examples/](examples/) for complete runnable code:
+- `config_file_migration.py` - CLI/desktop app config file evolution
+- `message_queue_consumer.py` - Kafka/RabbitMQ/SQS consumer handling multiple
+  schemas
+- `etl_data_import.py` - CSV/JSON/Excel import pipeline with historical data
+- `ml_inference_pipeline.py` - ML model serving with feature evolution
+- `advanced_features.py` - Complex Pydantic features (unions, nested models,
+  validators)
 
 ## Contributing
 
