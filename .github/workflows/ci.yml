@@ -56,22 +56,25 @@ jobs:
         if: always()
         run: uv run mypy src tests
 
-      - name: Run tests
-        if: always()
-        run: uv run pytest --junitxml=junit.xml -o junit_family=legacy
-
       - name: Run examples
         if: always()
         run: uv run pytest -m "not examples"
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v5
-        if: matrix.python-version == '3.12'
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Run tests
+        if: always()
+        run: uv run pytest --cov-report=xml --junitxml=junit.xml
 
       - name: Upload test results
         if: matrix.python-version == '3.12'
         uses: codecov/test-results-action@v1
         with:
+          files: junit.xml
           token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        if: matrix.python-version == '3.12'
+        with:
+          files: coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+
