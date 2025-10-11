@@ -13,7 +13,7 @@ from pydantic import (
     model_validator,
 )
 
-from pyrmute import MigrationTestCase, ModelData, ModelManager
+from pyrmute import MigrationTestCases, ModelData, ModelManager
 
 manager = ModelManager()
 
@@ -339,7 +339,7 @@ if __name__ == "__main__":
     print("MIGRATION TESTING")
     print("=" * 80)
 
-    test_cases: list[tuple[ModelData, ModelData] | MigrationTestCase] = [
+    test_cases: MigrationTestCases = [
         (
             {"username": "alice", "email": "alice@example.com", "role": "user"},
             {
