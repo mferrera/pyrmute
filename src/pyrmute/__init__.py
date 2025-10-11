@@ -19,8 +19,10 @@ from .migration_testing import (
 from .model_diff import ModelDiff
 from .model_manager import ModelManager
 from .model_version import ModelVersion
+from .schema_config import SchemaConfig
 from .types import (
     JsonSchema,
+    JsonSchemaMode,
     MigrationFunc,
     ModelData,
     NestedModelInfo,
@@ -29,6 +31,7 @@ from .types import (
 __all__ = [
     "InvalidVersionError",
     "JsonSchema",
+    "JsonSchemaMode",
     "MigrationError",
     "MigrationFunc",
     "MigrationManager",
@@ -43,6 +46,7 @@ __all__ = [
     "ModelVersion",
     "NestedModelInfo",
     "Registry",
+    "SchemaConfig",
     "SchemaManager",
     "VersionedModelError",
     "__version__",

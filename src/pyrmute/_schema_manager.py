@@ -1,22 +1,27 @@
-"""Schema manager."""
+"""Schema manager with customizable generation and transformers."""
 
 import json
+from collections import defaultdict
 from pathlib import Path
-from typing import Any, Self, get_args, get_origin
+from typing import Any, Self, cast, get_args, get_origin
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
+from pydantic.json_schema import GenerateJsonSchema
 
 from ._registry import Registry
 from .exceptions import ModelNotFoundError
 from .model_version import ModelVersion
+from .schema_config import SchemaConfig
 from .types import (
     JsonSchema,
     JsonSchemaDefinitions,
+    JsonSchemaGenerator,
     JsonValue,
     ModelMetadata,
     ModelName,
     NestedModelInfo,
+    SchemaTransformer,
 )
 
 
@@ -24,53 +29,217 @@ class SchemaManager:
     """Manager for JSON schema generation and export.
 
     Handles schema generation from Pydantic models with support for custom schema
-    generators and sub-schema references.
+    generators, global configuration, per-call overrides, and schema transformers.
 
     Attributes:
         registry: Reference to the Registry.
+        default_config: Default schema generation configuration.
     """
 
-    def __init__(self: Self, registry: Registry) -> None:
+    def __init__(
+        self: Self, registry: Registry, default_config: SchemaConfig | None = None
+    ) -> None:
         """Initialize the schema manager.
 
         Args:
             registry: Registry instance to use.
+            default_config: Default configuration for schema generation.
         """
         self.registry = registry
+        self.default_config = default_config or SchemaConfig()
+        self._transformers: dict[
+            tuple[ModelName, ModelVersion], list[SchemaTransformer]
+        ] = defaultdict(list)
+
+    def set_default_schema_generator(
+        self: Self, generator: JsonSchemaGenerator | type[GenerateJsonSchema]
+    ) -> None:
+        """Set the default schema generator for all schemas.
+
+        Args:
+            generator: Custom schema generator - either a callable or GenerateJsonSchema
+                class.
+
+        Example (Callable):
+            >>> def custom_gen(model: type[BaseModel]) -> JsonSchema:
+            ...     schema = model.model_json_schema()
+            ...     schema["x-custom"] = True
+            ...     return schema
+            >>>
+            >>> manager.set_default_schema_generator(custom_gen)
+
+        Example (Class):
+            >>> from pydantic.json_schema import GenerateJsonSchema
+            >>>
+            >>> class CustomGenerator(GenerateJsonSchema):
+            ...     def generate(
+            ...         self,
+            ...         schema: Mapping[str, Any],
+            ...         mode: JsonSchemaMode = "validation"
+            ...     ) -> JsonSchema:
+            ...         json_schema = super().generate(schema, mode=mode)
+            ...         json_schema["x-custom"] = True
+            ...         return json_schema
+            >>>
+            >>> manager.set_default_schema_generator(CustomGenerator)
+        """
+        self.default_config.schema_generator = generator
+
+    def register_transformer(
+        self: Self,
+        name: ModelName,
+        version: str | ModelVersion,
+        transformer: SchemaTransformer,
+    ) -> None:
+        """Register a schema transformer for a specific model version.
+
+        Transformers are applied after schema generation, allowing simple
+        post-processing of schemas without needing to customize the generation process
+        itself.
+
+        Args:
+            name: Name of the model.
+            version: Model version.
+            transformer: Function that takes and returns a JsonSchema.
+
+        Example:
+            >>> def add_examples(schema: JsonSchema) -> JsonSchema:
+            ...     schema["examples"] = [{"name": "John", "age": 30}]
+            ...     return schema
+            >>>
+            >>> manager.register_transformer("User", "1.0.0", add_examples)
+        """
+        ver = ModelVersion.parse(version) if isinstance(version, str) else version
+        key = (name, ver)
+        self._transformers[key].append(transformer)
 
     def get_schema(
         self: Self,
         name: ModelName,
         version: str | ModelVersion,
+        config: SchemaConfig | None = None,
+        apply_transformers: bool = True,
         **schema_kwargs: Any,
     ) -> JsonSchema:
         """Get JSON schema for a specific model version.
 
+        Execution order:
+        1. Generate base schema using Pydantic
+        2. Apply custom generator (if configured)
+        3. Apply registered transformers (if any)
+
         Args:
             name: Name of the model.
             version: Semantic version.
-            **schema_kwargs: Additional arguments for schema generation.
+            config: Optional schema configuration (overrides defaults).
+            apply_transformers: If False, skip transformer application.
+            **schema_kwargs: Additional arguments for schema generation (overrides
+                config).
 
         Returns:
             JSON schema dictionary.
+
+        Example:
+            >>> # Use default config
+            >>> schema = manager.get_schema("User", "1.0.0")
+            >>>
+            >>> # Override with custom config
+            >>> config = SchemaConfig(mode="serialization", by_alias=False)
+            >>> schema = manager.get_schema("User", "1.0.0", config=config)
+            >>>
+            >>> # Quick override with kwargs
+            >>> schema = manager.get_schema("User", "1.0.0", mode="serialization")
+            >>>
+            >>> # Get base schema without transformers
+            >>> base_schema = manager.get_schema(
+            ...     "User", "1.0.0",
+            ...     apply_transformers=False
+            ... )
         """
         ver = ModelVersion.parse(version) if isinstance(version, str) else version
         model = self.registry.get_model(name, ver)
 
-        if (
-            name in self.registry._schema_generators
-            and ver in self.registry._schema_generators[name]
-        ):
-            generator = self.registry._schema_generators[name][ver]
-            return generator(model)
+        # Always use the config-based approach
+        final_config = self.default_config
+        if config is not None:
+            final_config = final_config.merge_with(config)
 
-        return model.model_json_schema(**schema_kwargs)
+        if schema_kwargs:
+            kwargs_config = SchemaConfig(extra_kwargs=schema_kwargs)
+            final_config = final_config.merge_with(kwargs_config)
+
+        schema: JsonSchema
+        if final_config.is_callable_generator():
+            schema = final_config.schema_generator(model)  # type: ignore
+        else:
+            schema = model.model_json_schema(**final_config.to_kwargs())
+
+        if apply_transformers:
+            key = (name, ver)
+            if key in self._transformers:
+                for transformer in self._transformers[key]:
+                    schema = transformer(schema)
+
+        return schema
+
+    def get_transformers(
+        self: Self,
+        name: ModelName,
+        version: str | ModelVersion,
+    ) -> list[SchemaTransformer]:
+        """Get all transformers registered for a model version.
+
+        Args:
+            name: Name of the model.
+            version: Model version.
+
+        Returns:
+            List of transformer functions.
+        """
+        ver = ModelVersion.parse(version) if isinstance(version, str) else version
+        key = (name, ver)
+        return self._transformers.get(key, [])
+
+    def clear_transformers(
+        self: Self,
+        name: ModelName | None = None,
+        version: str | ModelVersion | None = None,
+    ) -> None:
+        """Clear registered transformers.
+
+        Args:
+            name: Optional model name. If None, clears all transformers.
+            version: Optional version. If None (but name provided), clears all versions
+                of that model.
+
+        Example:
+            >>> # Clear all transformers
+            >>> manager.clear_transformers()
+            >>>
+            >>> # Clear all User transformers
+            >>> manager.clear_transformers("User")
+            >>>
+            >>> # Clear specific version
+            >>> manager.clear_transformers("User", "1.0.0")
+        """
+        if name is None:
+            self._transformers.clear()
+        elif version is None:
+            keys_to_remove = [key for key in self._transformers if key[0] == name]
+            for key in keys_to_remove:
+                del self._transformers[key]
+        else:
+            ver = ModelVersion.parse(version) if isinstance(version, str) else version
+            key = (name, ver)
+            if key in self._transformers:
+                del self._transformers[key]
 
     def get_schema_with_separate_defs(
         self: Self,
         name: ModelName,
         version: str | ModelVersion,
         ref_template: str = "{model}_v{version}.json",
+        config: SchemaConfig | None = None,
         **schema_kwargs: Any,
     ) -> JsonSchema:
         """Get JSON schema with separate definition files for nested models.
@@ -83,6 +252,7 @@ class SchemaManager:
             version: Semantic version.
             ref_template: Template for generating $ref URLs. Supports {model} and
                 {version} placeholders.
+            config: Optional schema configuration.
             **schema_kwargs: Additional arguments for schema generation.
 
         Returns:
@@ -91,16 +261,16 @@ class SchemaManager:
         Example:
             >>> schema = manager.get_schema_with_separate_defs(
             ...     "User", "2.0.0",
-            ...     ref_template="https://example.com/schemas/{model}_v{version}.json"
+            ...     ref_template="https://example.com/schemas/{model}_v{version}.json",
+            ...     mode="serialization"
             ... )
         """
         ver = ModelVersion.parse(version) if isinstance(version, str) else version
-        schema = self.get_schema(name, ver, **schema_kwargs)
+        schema = self.get_schema(name, ver, config=config, **schema_kwargs)
 
-        # Extract and replace definitions with external references
         if "$defs" in schema or "definitions" in schema:
             defs_key = "$defs" if "$defs" in schema else "definitions"
-            definitions: JsonSchemaDefinitions = schema.pop(defs_key, {})  # type: ignore[assignment]
+            definitions = cast("JsonSchemaDefinitions", schema.pop(defs_key, {}))
 
             # Update all $ref in the schema to point to external files
             schema = self._replace_refs_with_external(schema, definitions, ref_template)
@@ -209,11 +379,14 @@ class SchemaManager:
                     return (name, version)
         return None
 
-    def get_all_schemas(self: Self, name: ModelName) -> dict[ModelVersion, JsonSchema]:
+    def get_all_schemas(
+        self: Self, name: ModelName, config: SchemaConfig | None = None
+    ) -> dict[ModelVersion, JsonSchema]:
         """Get all schemas for a model across all versions.
 
         Args:
             name: Name of the model.
+            config: Optional schema configuration.
 
         Returns:
             Dictionary mapping versions to their schemas.
@@ -225,7 +398,7 @@ class SchemaManager:
             raise ModelNotFoundError(name)
 
         return {
-            version: self.get_schema(name, version)
+            version: self.get_schema(name, version, config=config)
             for version in self.registry._models[name]
         }
 
@@ -235,6 +408,7 @@ class SchemaManager:
         indent: int = 2,
         separate_definitions: bool = False,
         ref_template: str | None = None,
+        config: SchemaConfig | None = None,
     ) -> None:
         """Dump all schemas to JSON files.
 
@@ -245,27 +419,24 @@ class SchemaManager:
                 models that have enable_ref=True.
             ref_template: Template for $ref URLs when separate_definitions=True.
                 Defaults to relative file references if not provided.
+            config: Optional schema configuration for all exported schemas.
 
         Example:
-            >>> # Inline definitions (default)
-            >>> manager.dump_schemas("schemas/")
-            >>>
-            >>> # Separate sub-schemas with relative refs (when enable_ref=True models)
-            >>> manager.dump_schemas("schemas/", separate_definitions=True)
-            >>>
-            >>> # Separate sub-schemas with absolute URLs
-            >>> manager.dump_schemas(
-            ...     "schemas/",
-            ...     separate_definitions=True,
-            ...     ref_template="https://example.com/schemas/{model}_v{version}.json"
+            >>> # Export with custom schema generator
+            >>> config = SchemaConfig(
+            ...     schema_generator=CustomGenerator,
+            ...     mode="serialization"
             ... )
+            >>> manager.dump_schemas("schemas/", config=config)
         """
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
         if not separate_definitions:
             for name in self.registry._models:
-                for version, schema in self.get_all_schemas(name).items():
+                for version, schema in self.get_all_schemas(
+                    name, config=config
+                ).items():
                     file_path = output_path / f"{name}_v{version}.json"
                     with open(file_path, "w", encoding="utf-8") as f:
                         json.dump(schema, f, indent=indent)
@@ -276,7 +447,7 @@ class SchemaManager:
             for name in self.registry._models:
                 for version in self.registry._models[name]:
                     schema = self.get_schema_with_separate_defs(
-                        name, version, ref_template
+                        name, version, ref_template, config=config
                     )
                     file_path = output_path / f"{name}_v{version}.json"
                     with open(file_path, "w", encoding="utf-8") as f:

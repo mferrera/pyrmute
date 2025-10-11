@@ -1,7 +1,5 @@
 """Test Registry."""
 
-from typing import Any
-
 import pytest
 from pydantic import BaseModel
 
@@ -15,7 +13,6 @@ def test_registry_initialization() -> None:
     registry = Registry()
     assert len(registry._models) == 0
     assert len(registry._migrations) == 0
-    assert len(registry._schema_generators) == 0
     assert len(registry._model_metadata) == 0
     assert len(registry._ref_enabled) == 0
 
@@ -103,38 +100,6 @@ def test_register_different_models(registry: Registry) -> None:
     assert "User" in registry._models
     assert "Product" in registry._models
     assert len(registry._models) == 2  # noqa: PLR2004
-
-
-def test_register_with_schema_generator(
-    registry: Registry,
-    user_v1: type[BaseModel],
-) -> None:
-    """Test registering model with custom schema generator."""
-
-    def custom_generator(model: type[BaseModel]) -> dict[str, Any]:
-        return {"custom": True}
-
-    registry.register("User", "1.0.0", schema_generator=custom_generator)(user_v1)
-
-    assert "User" in registry._schema_generators
-    assert ModelVersion(1, 0, 0) in registry._schema_generators["User"]
-    assert (
-        registry._schema_generators["User"][ModelVersion(1, 0, 0)] == custom_generator
-    )
-
-
-def test_register_without_schema_generator(
-    registry: Registry,
-    user_v1: type[BaseModel],
-) -> None:
-    """Test registering model without schema generator."""
-    registry.register("User", "1.0.0")(user_v1)
-
-    # Should not add entry to _schema_generators
-    assert (
-        "User" not in registry._schema_generators
-        or ModelVersion(1, 0, 0) not in registry._schema_generators["User"]
-    )
 
 
 def test_register_with_enable_ref_true(

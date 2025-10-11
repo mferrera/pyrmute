@@ -1,14 +1,23 @@
 """Tests the ModelManager."""
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import BaseModel, Field, ValidationError
+from pydantic.json_schema import GenerateJsonSchema
 
-from pyrmute import MigrationTestCase, ModelData, ModelManager, ModelVersion
+from pyrmute import (
+    JsonSchema,
+    JsonSchemaMode,
+    MigrationTestCase,
+    ModelData,
+    ModelManager,
+    ModelVersion,
+)
+from pyrmute.schema_config import SchemaConfig
 
 
 # Initialization tests
@@ -41,19 +50,6 @@ def test_model_registration_with_model_version(manager: ModelManager) -> None:
 
     retrieved = manager.get("User", version)
     assert retrieved == UserV1
-
-
-def test_model_registration_with_custom_schema_generator(manager: ModelManager) -> None:
-    """Test registering a model with custom schema generator."""
-
-    def custom_generator(model: type[BaseModel]) -> dict[str, Any]:
-        return {"custom": True, "type": "object"}
-
-    @manager.model("User", "1.0.0", schema_generator=custom_generator)
-    class UserV1(BaseModel):
-        name: str
-
-    assert manager.get("User", "1.0.0") == UserV1
 
 
 def test_model_registration_with_enable_ref(manager: ModelManager) -> None:
@@ -2515,3 +2511,573 @@ def test_test_migration_same_version(manager: ModelManager) -> None:
     )
 
     assert results.all_passed is True
+
+
+# Custom generators for testing
+class CustomTestGenerator(GenerateJsonSchema):
+    """Test generator that adds custom metadata."""
+
+    def generate(
+        self, schema: Mapping[str, Any], mode: JsonSchemaMode = "validation"
+    ) -> JsonSchema:
+        """Generate."""
+        json_schema = super().generate(schema, mode=mode)
+        json_schema["x-test-generator"] = True
+        json_schema["$schema"] = self.schema_dialect
+        return json_schema
+
+
+class AnotherTestGenerator(GenerateJsonSchema):
+    """Another test generator."""
+
+    def generate(
+        self, schema: Mapping[str, Any], mode: JsonSchemaMode = "validation"
+    ) -> JsonSchema:
+        """Generate."""
+        json_schema = super().generate(schema, mode=mode)
+        json_schema["x-another"] = True
+        return json_schema
+
+
+def simple_callable_generator(model: type[BaseModel]) -> JsonSchema:
+    """Simple callable generator for testing."""
+    schema = model.model_json_schema()
+    schema["x-simple"] = True
+    return schema
+
+
+# Initialization with default_schema_config tests
+def test_model_manager_init_with_default_schema_config() -> None:
+    """Test ModelManager initialization with default schema config."""
+    config = SchemaConfig(
+        schema_generator=CustomTestGenerator,
+        mode="validation",
+    )
+    manager = ModelManager(default_schema_config=config)
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["x-test-generator"] is True
+
+
+def test_model_manager_init_without_schema_config() -> None:
+    """Test ModelManager initialization without schema config."""
+    manager = ModelManager()
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    schema = manager.get_schema("User", "1.0.0")
+
+    # Should generate normal schema
+    assert "properties" in schema
+    assert "name" in schema["properties"]  # type: ignore
+
+
+# set_default_schema_generator tests
+def test_set_default_schema_generator_with_class(manager: ModelManager) -> None:
+    """Test setting default generator with GenerateJsonSchema class."""
+    manager.set_default_schema_generator(CustomTestGenerator)
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["x-test-generator"] is True
+
+
+def test_set_default_schema_generator_with_callable(manager: ModelManager) -> None:
+    """Test setting default generator with callable function."""
+    manager.set_default_schema_generator(simple_callable_generator)
+
+    @manager.model("Product", "1.0.0")
+    class Product(BaseModel):
+        title: str
+
+    schema = manager.get_schema("Product", "1.0.0")
+
+    assert schema["x-simple"] is True
+
+
+def test_set_default_schema_generator_applies_to_all_models(
+    manager: ModelManager,
+) -> None:
+    """Test default generator applies to all registered models."""
+    manager.set_default_schema_generator(CustomTestGenerator)
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    @manager.model("Product", "1.0.0")
+    class Product(BaseModel):
+        title: str
+
+    user_schema = manager.get_schema("User", "1.0.0")
+    product_schema = manager.get_schema("Product", "1.0.0")
+
+    assert user_schema["x-test-generator"] is True
+    assert product_schema["x-test-generator"] is True
+
+
+# schema_transformer decorator tests
+def test_schema_transformer_decorator(manager: ModelManager) -> None:
+    """Test schema_transformer decorator registers transformer."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    @manager.schema_transformer("User", "1.0.0")
+    def add_metadata(schema: JsonSchema) -> JsonSchema:
+        schema["x-metadata"] = "test"
+        return schema
+
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["x-metadata"] == "test"
+
+
+def test_schema_transformer_multiple_transformers(manager: ModelManager) -> None:
+    """Test multiple transformers for same model."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    @manager.schema_transformer("User", "1.0.0")
+    def add_examples(schema: JsonSchema) -> JsonSchema:
+        schema["examples"] = [{"name": "Alice"}]
+        return schema
+
+    @manager.schema_transformer("User", "1.0.0")
+    def add_version(schema: JsonSchema) -> JsonSchema:
+        schema["x-version"] = "1.0"
+        return schema
+
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["examples"] == [{"name": "Alice"}]
+    assert schema["x-version"] == "1.0"
+
+
+def test_schema_transformer_version_specific(manager: ModelManager) -> None:
+    """Test transformer only affects specific version."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.schema_transformer("User", "1.0.0")
+    def mark_v1(schema: JsonSchema) -> JsonSchema:
+        schema["x-v1-only"] = True
+        return schema
+
+    schema_v1 = manager.get_schema("User", "1.0.0")
+    schema_v2 = manager.get_schema("User", "2.0.0")
+
+    assert schema_v1["x-v1-only"] is True
+    assert "x-v1-only" not in schema_v2
+
+
+def test_schema_transformer_with_model_version(manager: ModelManager) -> None:
+    """Test transformer with ModelVersion object."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    @manager.schema_transformer("User", ModelVersion(1, 0, 0))
+    def add_metadata(schema: JsonSchema) -> JsonSchema:
+        schema["x-metadata"] = True
+        return schema
+
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["x-metadata"] is True
+
+
+def test_schema_transformer_returns_function(manager: ModelManager) -> None:
+    """Test transformer decorator returns the function."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    @manager.schema_transformer("User", "1.0.0")
+    def my_transformer(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    # The decorator should return the original function
+    assert callable(my_transformer)
+
+
+# get_schema_transformers tests
+def test_get_schema_transformers_empty(manager: ModelManager) -> None:
+    """Test get_schema_transformers with no transformers."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    transformers = manager.get_schema_transformers("User", "1.0.0")
+
+    assert transformers == []
+
+
+def test_get_schema_transformers_returns_all(manager: ModelManager) -> None:
+    """Test get_schema_transformers returns all registered transformers."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    @manager.schema_transformer("User", "1.0.0")
+    def transformer1(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    @manager.schema_transformer("User", "1.0.0")
+    def transformer2(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    transformers = manager.get_schema_transformers("User", "1.0.0")
+
+    assert len(transformers) == 2  # noqa: PLR2004
+    assert transformer1 in transformers
+    assert transformer2 in transformers
+
+
+def test_get_schema_transformers_with_model_version(manager: ModelManager) -> None:
+    """Test get_schema_transformers with ModelVersion object."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    @manager.schema_transformer("User", "1.0.0")
+    def transformer(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    transformers = manager.get_schema_transformers("User", ModelVersion(1, 0, 0))
+
+    assert len(transformers) == 1
+
+
+# clear_schema_transformers tests
+def test_clear_schema_transformers_all(manager: ModelManager) -> None:
+    """Test clearing all transformers."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.schema_transformer("User", "1.0.0")
+    def transformer1(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    @manager.schema_transformer("User", "2.0.0")
+    def transformer2(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    manager.clear_schema_transformers()
+
+    assert manager.get_schema_transformers("User", "1.0.0") == []
+    assert manager.get_schema_transformers("User", "2.0.0") == []
+
+
+def test_clear_schema_transformers_by_model(manager: ModelManager) -> None:
+    """Test clearing transformers for specific model."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    @manager.model("Product", "1.0.0")
+    class Product(BaseModel):
+        title: str
+
+    @manager.schema_transformer("User", "1.0.0")
+    def user_transformer(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    @manager.schema_transformer("Product", "1.0.0")
+    def product_transformer(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    manager.clear_schema_transformers("User")
+
+    assert manager.get_schema_transformers("User", "1.0.0") == []
+    assert len(manager.get_schema_transformers("Product", "1.0.0")) == 1
+
+
+def test_clear_schema_transformers_by_version(manager: ModelManager) -> None:
+    """Test clearing transformers for specific version."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.schema_transformer("User", "1.0.0")
+    def transformer1(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    @manager.schema_transformer("User", "2.0.0")
+    def transformer2(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    manager.clear_schema_transformers("User", "1.0.0")
+
+    assert manager.get_schema_transformers("User", "1.0.0") == []
+    assert len(manager.get_schema_transformers("User", "2.0.0")) == 1
+
+
+# get_schema with config tests
+def test_get_schema_with_config(manager: ModelManager) -> None:
+    """Test get_schema with custom config."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    config = SchemaConfig(schema_generator=CustomTestGenerator)
+    schema = manager.get_schema("User", "1.0.0", config=config)
+
+    assert schema["x-test-generator"] is True
+
+
+def test_get_schema_config_overrides_default(manager: ModelManager) -> None:
+    """Test config parameter overrides default config."""
+    manager.set_default_schema_generator(CustomTestGenerator)
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    override_config = SchemaConfig(schema_generator=AnotherTestGenerator)
+    schema = manager.get_schema("User", "1.0.0", config=override_config)
+
+    assert "x-another" in schema
+    assert "x-test-generator" not in schema
+
+
+def test_get_schema_kwargs_override_config(manager: ModelManager) -> None:
+    """Test kwargs override config."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    config = SchemaConfig(by_alias=True)
+    schema = manager.get_schema("User", "1.0.0", config=config, by_alias=False)
+
+    assert isinstance(schema, dict)
+
+
+# dump_schemas with config tests
+def test_dump_schemas_with_config(manager: ModelManager, tmp_path: Path) -> None:
+    """Test dump_schemas with custom config."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    config = SchemaConfig(schema_generator=CustomTestGenerator)
+    manager.dump_schemas(tmp_path, config=config)
+
+    with open(tmp_path / "User_v1.0.0.json") as f:
+        data = json.load(f)
+
+    assert data["x-test-generator"] is True
+
+
+def test_dump_schemas_uses_default_config(tmp_path: Path) -> None:
+    """Test dump_schemas uses default config."""
+    config = SchemaConfig(schema_generator=CustomTestGenerator)
+    manager = ModelManager(default_schema_config=config)
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    manager.dump_schemas(tmp_path)
+
+    with open(tmp_path / "User_v1.0.0.json") as f:
+        data = json.load(f)
+
+    assert data["x-test-generator"] is True
+
+
+def test_dump_schemas_includes_transformers(
+    manager: ModelManager, tmp_path: Path
+) -> None:
+    """Test dump_schemas includes transformer modifications."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    @manager.schema_transformer("User", "1.0.0")
+    def add_export_info(schema: JsonSchema) -> JsonSchema:
+        schema["x-exported"] = True
+        return schema
+
+    manager.dump_schemas(tmp_path)
+
+    with open(tmp_path / "User_v1.0.0.json") as f:
+        data = json.load(f)
+
+    assert data["x-exported"] is True
+
+
+# Integration tests
+def test_generator_and_transformer_integration(manager: ModelManager) -> None:
+    """Test generator and transformer work together."""
+    manager.set_default_schema_generator(CustomTestGenerator)
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    @manager.schema_transformer("User", "1.0.0")
+    def add_examples(schema: JsonSchema) -> JsonSchema:
+        schema["examples"] = [{"name": "Test User"}]
+        return schema
+
+    schema = manager.get_schema("User", "1.0.0")
+
+    # Generator applied
+    assert schema["x-test-generator"] is True
+    # Transformer applied
+    assert schema["examples"] == [{"name": "Test User"}]
+
+
+def test_complete_workflow_with_custom_schema(manager: ModelManager) -> None:
+    """Test complete workflow: models, migrations, and custom schemas."""
+    manager.set_default_schema_generator(CustomTestGenerator)
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    @manager.schema_transformer("User", "1.0.0")
+    def mark_deprecated(schema: JsonSchema) -> JsonSchema:
+        schema["deprecated"] = True
+        return schema
+
+    @manager.schema_transformer("User", "2.0.0")
+    def mark_current(schema: JsonSchema) -> JsonSchema:
+        schema["x-current"] = True
+        return schema
+
+    # Test migration still works
+    old_data = {"name": "Alice"}
+    migrated = manager.migrate(old_data, "User", "1.0.0", "2.0.0")
+    assert migrated.email == "unknown@example.com"  # type: ignore
+
+    # Test schemas have custom generation + transformers
+    schema_v1 = manager.get_schema("User", "1.0.0")
+    schema_v2 = manager.get_schema("User", "2.0.0")
+
+    assert schema_v1["x-test-generator"] is True
+    assert schema_v1["deprecated"] is True
+
+    assert schema_v2["x-test-generator"] is True
+    assert schema_v2["x-current"] is True
+
+
+def test_transformer_with_nested_modifications(manager: ModelManager) -> None:
+    """Test transformer can modify nested schema properties."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+        age: int
+
+    @manager.schema_transformer("User", "1.0.0")
+    def add_field_metadata(schema: JsonSchema) -> JsonSchema:
+        for field_name, field_schema in schema.get("properties", {}).items():  # type: ignore
+            field_schema["x-field-id"] = f"user_{field_name}"  # type: ignore
+        return schema
+
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["properties"]["name"]["x-field-id"] == "user_name"  # type: ignore
+    assert schema["properties"]["age"]["x-field-id"] == "user_age"  # type: ignore
+
+
+def test_multiple_models_with_different_transformers(manager: ModelManager) -> None:
+    """Test different models can have different transformers."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    @manager.model("Product", "1.0.0")
+    class Product(BaseModel):
+        title: str
+
+    @manager.schema_transformer("User", "1.0.0")
+    def user_transformer(schema: JsonSchema) -> JsonSchema:
+        schema["x-model-type"] = "user"
+        return schema
+
+    @manager.schema_transformer("Product", "1.0.0")
+    def product_transformer(schema: JsonSchema) -> JsonSchema:
+        schema["x-model-type"] = "product"
+        return schema
+
+    user_schema = manager.get_schema("User", "1.0.0")
+    product_schema = manager.get_schema("Product", "1.0.0")
+
+    assert user_schema["x-model-type"] == "user"
+    assert product_schema["x-model-type"] == "product"
+
+
+def test_callable_generator_and_transformer(manager: ModelManager) -> None:
+    """Test callable generator works with transformers."""
+    manager.set_default_schema_generator(simple_callable_generator)
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        name: str
+
+    @manager.schema_transformer("User", "1.0.0")
+    def add_metadata(schema: JsonSchema) -> JsonSchema:
+        schema["x-transformed"] = True
+        return schema
+
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["x-simple"] is True
+    assert schema["x-transformed"] is True

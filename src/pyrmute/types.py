@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, TypeAlias, TypeVar
+from typing import Any, Literal, TypeAlias, TypeVar
 
 from pydantic import BaseModel
 
@@ -16,9 +16,10 @@ JsonValue: TypeAlias = (
     int | float | str | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
 )
 JsonSchema: TypeAlias = dict[str, JsonValue]
+JsonSchemaMode = Literal["validation", "serialization"]
 JsonSchemaDefinitions: TypeAlias = dict[str, JsonValue]
 JsonSchemaGenerator: TypeAlias = Callable[[type[BaseModel]], JsonSchema]
-SchemaGenerators: TypeAlias = dict[ModelVersion, JsonSchemaGenerator]
+SchemaTransformer = Callable[[JsonSchema], JsonSchema]
 
 ModelData: TypeAlias = dict[str, Any]
 MigrationFunc: TypeAlias = Callable[[ModelData], ModelData]
