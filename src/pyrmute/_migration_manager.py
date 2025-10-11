@@ -114,6 +114,9 @@ class MigrationManager:
         Raises:
             ModelNotFoundError: If the model or versions don't exist.
         """
+        if (from_ver, to_ver) in self.registry._migrations.get(name, {}):
+            return [from_ver, to_ver]
+
         versions = sorted(self.registry.get_versions(name))
 
         if from_ver not in versions:
