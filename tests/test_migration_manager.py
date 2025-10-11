@@ -504,6 +504,182 @@ def test_find_migration_path_invalid_to_version(
         )
 
 
+def test_find_migration_path_direct_when_available(
+    manager: ModelManager,
+) -> None:
+    """Test that find_migration_path returns direct path when migration exists."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.model("User", "3.0.0")
+    class UserV3(BaseModel):
+        name: str
+        email: str
+        age: int
+
+    @manager.migration("User", "1.0.0", "3.0.0")
+    def migrate_direct(data: ModelData) -> ModelData:
+        return data
+
+    path = manager._migration_manager.find_migration_path(
+        "User",
+        ModelVersion(1, 0, 0),
+        ModelVersion(3, 0, 0),
+    )
+
+    # Should return direct path, not sequential
+    assert path == [ModelVersion(1, 0, 0), ModelVersion(3, 0, 0)]
+
+
+def test_find_migration_path_sequential_when_no_direct(
+    manager: ModelManager,
+) -> None:
+    """Test find_migration_path returns sequential when no direct migration exists."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.model("User", "3.0.0")
+    class UserV3(BaseModel):
+        name: str
+        email: str
+        age: int
+
+    path = manager._migration_manager.find_migration_path(
+        "User",
+        ModelVersion(1, 0, 0),
+        ModelVersion(3, 0, 0),
+    )
+
+    assert path == [
+        ModelVersion(1, 0, 0),
+        ModelVersion(2, 0, 0),
+        ModelVersion(3, 0, 0),
+    ]
+
+
+def test_find_migration_path_direct_backward(
+    manager: ModelManager,
+) -> None:
+    """Test that find_migration_path finds direct backward migration."""
+
+    @manager.model("Config", "1.0.0")
+    class ConfigV1(BaseModel):
+        value: str
+
+    @manager.model("Config", "2.0.0")
+    class ConfigV2(BaseModel):
+        value: str
+        extra: str
+
+    # Register direct backward migration
+    @manager.migration("Config", "2.0.0", "1.0.0")
+    def downgrade(data: ModelData) -> ModelData:
+        return {"value": data["value"]}
+
+    path = manager._migration_manager.find_migration_path(
+        "Config",
+        ModelVersion(2, 0, 0),
+        ModelVersion(1, 0, 0),
+    )
+
+    assert path == [ModelVersion(2, 0, 0), ModelVersion(1, 0, 0)]
+
+
+def test_find_migration_path_prefers_direct_over_sequential_backward(
+    manager: ModelManager,
+) -> None:
+    """Test that direct path is preferred even for backward migration."""
+
+    @manager.model("Schema", "1.0.0")
+    class SchemaV1(BaseModel):
+        a: str
+
+    @manager.model("Schema", "2.0.0")
+    class SchemaV2(BaseModel):
+        a: str
+        b: str
+
+    @manager.model("Schema", "3.0.0")
+    class SchemaV3(BaseModel):
+        a: str
+        b: str
+        c: str
+
+    # Register direct 3->1 migration
+    @manager.migration("Schema", "3.0.0", "1.0.0")
+    def downgrade_direct(data: ModelData) -> ModelData:
+        return {"a": data["a"]}
+
+    path = manager._migration_manager.find_migration_path(
+        "Schema",
+        ModelVersion(3, 0, 0),
+        ModelVersion(1, 0, 0),
+    )
+
+    # Should return direct path, skipping v2
+    assert path == [ModelVersion(3, 0, 0), ModelVersion(1, 0, 0)]
+
+
+def test_find_migration_path_multiple_direct_options(
+    manager: ModelManager,
+) -> None:
+    """Test path finding when multiple direct jumps are available."""
+
+    @manager.model("Data", "1.0.0")
+    class DataV1(BaseModel):
+        x: int
+
+    @manager.model("Data", "2.0.0")
+    class DataV2(BaseModel):
+        x: int
+        y: int
+
+    @manager.model("Data", "3.0.0")
+    class DataV3(BaseModel):
+        x: int
+        y: int
+        z: int
+
+    @manager.model("Data", "4.0.0")
+    class DataV4(BaseModel):
+        x: int
+        y: int
+        z: int
+        w: int
+
+    @manager.migration("Data", "1.0.0", "3.0.0")
+    def jump_1_to_3(data: ModelData) -> ModelData:
+        return {**data, "y": 0, "z": 0}
+
+    @manager.migration("Data", "3.0.0", "4.0.0")
+    def jump_3_to_4(data: ModelData) -> ModelData:
+        return {**data, "w": 0}
+
+    path = manager._migration_manager.find_migration_path(
+        "Data",
+        ModelVersion(1, 0, 0),
+        ModelVersion(4, 0, 0),
+    )
+
+    assert len(path) >= 2  # noqa: PLR2004
+    assert path[0] == ModelVersion(1, 0, 0)
+    assert path[-1] == ModelVersion(4, 0, 0)
+
+
 # Field value migration tests
 def test_migrate_field_value_none(
     populated_migration_manager: MigrationManager,
