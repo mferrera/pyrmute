@@ -1,5 +1,6 @@
 # pyrmute
 [![ci](https://img.shields.io/github/actions/workflow/status/mferrera/pyrmute/ci.yml?branch=main&logo=github&label=ci)](https://github.com/mferrera/pyrmute/actions?query=event%3Apush+branch%3Amain+workflow%3Aci)
+[![codecov](https://codecov.io/gh/mferrera/pyrmute/graph/badge.svg?token=4J9G3CEZQF)](https://codecov.io/gh/mferrera/pyrmute)
 [![pypi](https://img.shields.io/pypi/v/pyrmute.svg)](https://pypi.python.org/pypi/pyrmute)
 [![versions](https://img.shields.io/pypi/pyversions/pyrmute.svg)](https://github.com/mferrera/pyrmute)
 [![license](https://img.shields.io/github/license/mferrera/pyrmute.svg)](https://github.com/mferrera/pyrmute/blob/main/LICENSE)
