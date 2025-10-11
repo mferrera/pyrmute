@@ -1,5 +1,7 @@
 """pytest fixtures."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import BaseModel, Field
 
@@ -7,6 +9,12 @@ from pyrmute import ModelData, ModelManager
 from pyrmute._migration_manager import MigrationManager
 from pyrmute._registry import Registry
 from pyrmute._schema_manager import SchemaManager
+
+
+@pytest.fixture(scope="session")
+def source_root(request: pytest.FixtureRequest) -> Path:
+    """Returns the root of the project."""
+    return request.config.rootpath
 
 
 @pytest.fixture
