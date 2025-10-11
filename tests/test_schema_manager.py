@@ -1,23 +1,28 @@
 """Tests SchemaManager."""
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
+from pydantic.json_schema import GenerateJsonSchema
 
 from pyrmute import (
+    JsonSchema,
+    JsonSchemaMode,
     ModelNotFoundError,
     ModelVersion,
     NestedModelInfo,
     Registry,
     SchemaManager,
 )
+from pyrmute.schema_config import SchemaConfig
 
 if TYPE_CHECKING:
-    from pyrmute.types import JsonSchema, JsonSchemaDefinitions
+    from pyrmute.types import JsonSchemaDefinitions
 
 
 # Initialization tests
@@ -63,23 +68,6 @@ def test_get_schema_with_kwargs(
     schema = populated_schema_manager.get_schema("User", "1.0.0", by_alias=True)
     assert isinstance(schema, dict)
     assert "properties" in schema
-
-
-def test_get_schema_with_custom_generator(
-    registry: Registry,
-    user_v1: type[BaseModel],
-) -> None:
-    """Test getting schema with custom schema generator."""
-
-    def custom_generator(model: type[BaseModel]) -> dict[str, Any]:
-        return {"custom": True, "model": model.__name__}
-
-    registry.register("User", "1.0.0", schema_generator=custom_generator)(user_v1)
-    manager = SchemaManager(registry)
-
-    schema = manager.get_schema("User", "1.0.0")
-    assert schema["custom"] is True
-    assert schema["model"] == "UserV1"
 
 
 def test_get_schema_multiple_versions(
@@ -820,3 +808,630 @@ def test_get_model_type_from_field_dict(
     field_info = FieldInfo(annotation=dict[str, Any])
     model_type = schema_manager._get_model_type_from_field(field_info)
     assert model_type is None
+
+
+# Custom generators for testing
+class CustomGenerator(GenerateJsonSchema):
+    """Custom generator that adds metadata."""
+
+    def generate(
+        self, schema: Mapping[str, Any], mode: JsonSchemaMode = "validation"
+    ) -> JsonSchema:
+        """Generate."""
+        json_schema = super().generate(schema, mode=mode)
+        json_schema["x-custom-generator"] = True
+        json_schema["x-mode"] = mode
+        return json_schema
+
+
+class AnotherGenerator(GenerateJsonSchema):
+    """Another generator for testing overrides."""
+
+    def generate(
+        self, schema: Mapping[str, Any], mode: JsonSchemaMode = "validation"
+    ) -> JsonSchema:
+        """Generate."""
+        json_schema = super().generate(schema, mode=mode)
+        json_schema["x-another-generator"] = True
+        return json_schema
+
+
+def callable_generator(model: type[BaseModel]) -> JsonSchema:
+    """Callable generator for testing."""
+    schema = model.model_json_schema()
+    schema["x-callable"] = True
+    return schema
+
+
+# Default config initialization tests
+def test_schema_manager_default_config_initialization(
+    registry: Registry,
+) -> None:
+    """Test SchemaManager initializes with default config."""
+    config = SchemaConfig(mode="serialization")
+    manager = SchemaManager(registry, default_config=config)
+
+    assert manager.default_config == config
+
+
+def test_schema_manager_no_default_config(
+    registry: Registry,
+) -> None:
+    """Test SchemaManager creates default config when none provided."""
+    manager = SchemaManager(registry)
+
+    assert manager.default_config is not None
+    assert manager.default_config.mode == "validation"
+
+
+# set_default_schema_generator tests
+def test_set_default_schema_generator_with_class(
+    schema_manager: SchemaManager,
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test setting default generator with GenerateJsonSchema class."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+    manager.set_default_schema_generator(CustomGenerator)
+
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["x-custom-generator"] is True
+
+
+def test_set_default_schema_generator_with_callable(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test setting default generator with callable."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+    manager.set_default_schema_generator(callable_generator)
+
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["x-callable"] is True
+
+
+def test_set_default_schema_generator_applies_to_all_schemas(
+    user_v1: type[BaseModel],
+    user_v2: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test default generator applies to all schemas."""
+    registry.register("User", "1.0.0")(user_v1)
+    registry.register("User", "2.0.0")(user_v2)
+    manager = SchemaManager(registry)
+    manager.set_default_schema_generator(CustomGenerator)
+
+    schema_v1 = manager.get_schema("User", "1.0.0")
+    schema_v2 = manager.get_schema("User", "2.0.0")
+
+    assert schema_v1["x-custom-generator"] is True
+    assert schema_v2["x-custom-generator"] is True
+
+
+# get_schema with config tests
+def test_get_schema_with_config_overrides_default(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test config parameter overrides default config."""
+    registry.register("User", "1.0.0")(user_v1)
+    default_config = SchemaConfig(schema_generator=CustomGenerator)
+    manager = SchemaManager(registry, default_config=default_config)
+
+    override_config = SchemaConfig(schema_generator=AnotherGenerator)
+    schema = manager.get_schema("User", "1.0.0", config=override_config)
+
+    assert "x-another-generator" in schema
+    assert "x-custom-generator" not in schema
+
+
+def test_get_schema_with_mode_override(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test mode can be overridden via config."""
+    registry.register("User", "1.0.0")(user_v1)
+    default_config = SchemaConfig(schema_generator=CustomGenerator, mode="validation")
+    manager = SchemaManager(registry, default_config=default_config)
+
+    override_config = SchemaConfig(mode="serialization")
+    schema = manager.get_schema("User", "1.0.0", config=override_config)
+
+    assert schema["x-mode"] == "serialization"
+
+
+def test_get_schema_kwargs_override_config(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test kwargs override config parameters."""
+    registry.register("User", "1.0.0")(user_v1)
+    config = SchemaConfig(by_alias=True)
+    manager = SchemaManager(registry, default_config=config)
+
+    # by_alias kwarg should override config
+    schema = manager.get_schema("User", "1.0.0", by_alias=False)
+
+    assert isinstance(schema, dict)
+
+
+def test_get_schema_with_callable_generator_in_config(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test using callable generator via config."""
+    registry.register("User", "1.0.0")(user_v1)
+    config = SchemaConfig(schema_generator=callable_generator)
+    manager = SchemaManager(registry)
+
+    schema = manager.get_schema("User", "1.0.0", config=config)
+
+    assert schema["x-callable"] is True
+
+
+# Schema transformer tests
+def test_register_transformer(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test registering a schema transformer."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+
+    def add_metadata(schema: JsonSchema) -> JsonSchema:
+        schema["x-transformed"] = True
+        return schema
+
+    manager.register_transformer("User", "1.0.0", add_metadata)
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["x-transformed"] is True
+
+
+def test_register_multiple_transformers(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test registering multiple transformers for same model."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+
+    def transformer1(schema: JsonSchema) -> JsonSchema:
+        schema["x-transform-1"] = True
+        return schema
+
+    def transformer2(schema: JsonSchema) -> JsonSchema:
+        schema["x-transform-2"] = True
+        return schema
+
+    manager.register_transformer("User", "1.0.0", transformer1)
+    manager.register_transformer("User", "1.0.0", transformer2)
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["x-transform-1"] is True
+    assert schema["x-transform-2"] is True
+
+
+def test_transformers_applied_in_order(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test transformers are applied in registration order."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+
+    def transformer1(schema: JsonSchema) -> JsonSchema:
+        schema["x-counter"] = 1
+        return schema
+
+    def transformer2(schema: JsonSchema) -> JsonSchema:
+        schema["x-counter"] = schema["x-counter"] + 1  # type: ignore[operator]
+        return schema
+
+    manager.register_transformer("User", "1.0.0", transformer1)
+    manager.register_transformer("User", "1.0.0", transformer2)
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["x-counter"] == 2  # noqa: PLR2004
+
+
+def test_transformer_with_model_version(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test transformer with ModelVersion object."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+
+    def add_metadata(schema: JsonSchema) -> JsonSchema:
+        schema["x-transformed"] = True
+        return schema
+
+    manager.register_transformer("User", ModelVersion(1, 0, 0), add_metadata)
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["x-transformed"] is True
+
+
+def test_transformer_only_affects_specific_version(
+    user_v1: type[BaseModel],
+    user_v2: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test transformer only affects the specific version."""
+    registry.register("User", "1.0.0")(user_v1)
+    registry.register("User", "2.0.0")(user_v2)
+    manager = SchemaManager(registry)
+
+    def add_metadata(schema: JsonSchema) -> JsonSchema:
+        schema["x-v1-only"] = True
+        return schema
+
+    manager.register_transformer("User", "1.0.0", add_metadata)
+    schema_v1 = manager.get_schema("User", "1.0.0")
+    schema_v2 = manager.get_schema("User", "2.0.0")
+
+    assert schema_v1["x-v1-only"] is True
+    assert "x-v1-only" not in schema_v2
+
+
+def test_transformer_with_generator(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test transformer works with custom generator."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+    manager.set_default_schema_generator(CustomGenerator)
+
+    def add_metadata(schema: JsonSchema) -> JsonSchema:
+        schema["x-transformed"] = True
+        return schema
+
+    manager.register_transformer("User", "1.0.0", add_metadata)
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["x-custom-generator"] is True
+    assert schema["x-transformed"] is True
+
+
+def test_get_schema_skip_transformers(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test skipping transformers with apply_transformers=False."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+
+    def add_metadata(schema: JsonSchema) -> JsonSchema:
+        schema["x-transformed"] = True
+        return schema
+
+    manager.register_transformer("User", "1.0.0", add_metadata)
+    schema = manager.get_schema("User", "1.0.0", apply_transformers=False)
+
+    assert "x-transformed" not in schema
+
+
+# get_transformers tests
+def test_get_transformers_empty(
+    schema_manager: SchemaManager,
+) -> None:
+    """Test getting transformers when none registered."""
+    transformers = schema_manager.get_transformers("User", "1.0.0")
+
+    assert transformers == []
+
+
+def test_get_transformers_returns_all(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test getting all registered transformers."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+
+    def transformer1(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    def transformer2(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    manager.register_transformer("User", "1.0.0", transformer1)
+    manager.register_transformer("User", "1.0.0", transformer2)
+
+    transformers = manager.get_transformers("User", "1.0.0")
+
+    assert len(transformers) == 2  # noqa: PLR2004
+    assert transformer1 in transformers
+    assert transformer2 in transformers
+
+
+def test_get_transformers_with_model_version(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test getting transformers with ModelVersion object."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+
+    def transformer(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    manager.register_transformer("User", "1.0.0", transformer)
+
+    transformers = manager.get_transformers("User", ModelVersion(1, 0, 0))
+
+    assert len(transformers) == 1
+    assert transformer in transformers
+
+
+# clear_transformers tests
+def test_clear_transformers_all(
+    user_v1: type[BaseModel],
+    user_v2: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test clearing all transformers."""
+    registry.register("User", "1.0.0")(user_v1)
+    registry.register("User", "2.0.0")(user_v2)
+    manager = SchemaManager(registry)
+
+    def transformer(schema: JsonSchema) -> JsonSchema:
+        schema["x-transformed"] = True
+        return schema
+
+    manager.register_transformer("User", "1.0.0", transformer)
+    manager.register_transformer("User", "2.0.0", transformer)
+
+    manager.clear_transformers()
+
+    assert manager.get_transformers("User", "1.0.0") == []
+    assert manager.get_transformers("User", "2.0.0") == []
+
+
+def test_clear_transformers_by_model(
+    user_v1: type[BaseModel],
+    address_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test clearing transformers for specific model."""
+    registry.register("User", "1.0.0")(user_v1)
+    registry.register("Address", "1.0.0")(address_v1)
+    manager = SchemaManager(registry)
+
+    def transformer(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    manager.register_transformer("User", "1.0.0", transformer)
+    manager.register_transformer("Address", "1.0.0", transformer)
+
+    manager.clear_transformers("User")
+
+    assert manager.get_transformers("User", "1.0.0") == []
+    assert len(manager.get_transformers("Address", "1.0.0")) == 1
+
+
+def test_clear_transformers_by_version(
+    user_v1: type[BaseModel],
+    user_v2: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test clearing transformers for specific version."""
+    registry.register("User", "1.0.0")(user_v1)
+    registry.register("User", "2.0.0")(user_v2)
+    manager = SchemaManager(registry)
+
+    def transformer(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    manager.register_transformer("User", "1.0.0", transformer)
+    manager.register_transformer("User", "2.0.0", transformer)
+
+    manager.clear_transformers("User", "1.0.0")
+
+    assert manager.get_transformers("User", "1.0.0") == []
+    assert len(manager.get_transformers("User", "2.0.0")) == 1
+
+
+def test_clear_transformers_with_model_version(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test clearing transformers with ModelVersion object."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+
+    def transformer(schema: JsonSchema) -> JsonSchema:
+        return schema
+
+    manager.register_transformer("User", "1.0.0", transformer)
+
+    manager.clear_transformers("User", ModelVersion(1, 0, 0))
+
+    assert manager.get_transformers("User", "1.0.0") == []
+
+
+# dump_schemas with config tests
+def test_dump_schemas_with_config(
+    user_v1: type[BaseModel],
+    registry: Registry,
+    tmp_path: Path,
+) -> None:
+    """Test dump_schemas uses provided config."""
+    registry.register("User", "1.0.0")(user_v1)
+    config = SchemaConfig(schema_generator=CustomGenerator)
+    manager = SchemaManager(registry)
+
+    manager.dump_schemas(tmp_path, config=config)
+
+    with open(tmp_path / "User_v1.0.0.json") as f:
+        data = json.load(f)
+
+    assert data["x-custom-generator"] is True
+
+
+def test_dump_schemas_with_default_config(
+    user_v1: type[BaseModel],
+    registry: Registry,
+    tmp_path: Path,
+) -> None:
+    """Test dump_schemas uses default config when none provided."""
+    registry.register("User", "1.0.0")(user_v1)
+    default_config = SchemaConfig(schema_generator=CustomGenerator)
+    manager = SchemaManager(registry, default_config=default_config)
+
+    manager.dump_schemas(tmp_path)
+
+    with open(tmp_path / "User_v1.0.0.json") as f:
+        data = json.load(f)
+
+    assert data["x-custom-generator"] is True
+
+
+def test_dump_schemas_config_overrides_default(
+    user_v1: type[BaseModel],
+    registry: Registry,
+    tmp_path: Path,
+) -> None:
+    """Test dump_schemas config parameter overrides default."""
+    registry.register("User", "1.0.0")(user_v1)
+    default_config = SchemaConfig(schema_generator=CustomGenerator)
+    manager = SchemaManager(registry, default_config=default_config)
+
+    override_config = SchemaConfig(schema_generator=AnotherGenerator)
+    manager.dump_schemas(tmp_path, config=override_config)
+
+    with open(tmp_path / "User_v1.0.0.json") as f:
+        data = json.load(f)
+
+    assert "x-another-generator" in data
+    assert "x-custom-generator" not in data
+
+
+def test_dump_schemas_includes_transformers(
+    user_v1: type[BaseModel],
+    registry: Registry,
+    tmp_path: Path,
+) -> None:
+    """Test dump_schemas includes transformer modifications."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+
+    def add_metadata(schema: JsonSchema) -> JsonSchema:
+        schema["x-export-version"] = "1.0"
+        return schema
+
+    manager.register_transformer("User", "1.0.0", add_metadata)
+    manager.dump_schemas(tmp_path)
+
+    with open(tmp_path / "User_v1.0.0.json") as f:
+        data = json.load(f)
+
+    assert data["x-export-version"] == "1.0"
+
+
+# get_schema_with_separate_defs with config tests
+def test_get_schema_with_separate_defs_with_config(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test get_schema_with_separate_defs uses config."""
+    registry.register("User", "1.0.0")(user_v1)
+    config = SchemaConfig(schema_generator=CustomGenerator)
+    manager = SchemaManager(registry)
+
+    schema = manager.get_schema_with_separate_defs("User", "1.0.0", config=config)
+
+    assert schema["x-custom-generator"] is True
+
+
+# Integration tests
+def test_generator_and_transformer_integration(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test generator and transformer work together correctly."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+    manager.set_default_schema_generator(CustomGenerator)
+
+    def add_examples(schema: JsonSchema) -> JsonSchema:
+        schema["examples"] = [{"name": "Alice"}]
+        return schema
+
+    def add_version(schema: JsonSchema) -> JsonSchema:
+        schema["x-schema-version"] = "1.0"
+        return schema
+
+    manager.register_transformer("User", "1.0.0", add_examples)
+    manager.register_transformer("User", "1.0.0", add_version)
+
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["x-custom-generator"] is True
+    assert schema["examples"] == [{"name": "Alice"}]
+    assert schema["x-schema-version"] == "1.0"
+
+
+def test_complex_configuration_hierarchy(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test complex configuration with default, config, and kwargs."""
+    registry.register("User", "1.0.0")(user_v1)
+
+    default_config = SchemaConfig(
+        schema_generator=CustomGenerator,
+        mode="validation",
+        by_alias=True,
+    )
+    manager = SchemaManager(registry, default_config=default_config)
+
+    # Override mode via config
+    call_config = SchemaConfig(mode="serialization")
+    # Override by_alias via kwargs
+    schema = manager.get_schema("User", "1.0.0", config=call_config, by_alias=False)
+    assert schema["x-custom-generator"] is True
+    assert schema["x-mode"] == "serialization"
+
+
+def test_transformer_modifies_nested_properties(
+    user_v1: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test transformer can modify nested schema properties."""
+    registry.register("User", "1.0.0")(user_v1)
+    manager = SchemaManager(registry)
+
+    def add_field_metadata(schema: JsonSchema) -> JsonSchema:
+        for field_name, field_schema in schema.get("properties", {}).items():  # type: ignore[union-attr]
+            field_schema["x-field-name"] = field_name  # type: ignore[index,call-overload]
+        return schema
+
+    manager.register_transformer("User", "1.0.0", add_field_metadata)
+
+    schema = manager.get_schema("User", "1.0.0")
+
+    assert schema["properties"]["name"]["x-field-name"] == "name"  # type: ignore
+
+
+def test_get_all_schemas_with_config(
+    user_v1: type[BaseModel],
+    user_v2: type[BaseModel],
+    registry: Registry,
+) -> None:
+    """Test get_all_schemas applies config to all versions."""
+    registry.register("User", "1.0.0")(user_v1)
+    registry.register("User", "2.0.0")(user_v2)
+    config = SchemaConfig(schema_generator=CustomGenerator)
+    manager = SchemaManager(registry)
+
+    schemas = manager.get_all_schemas("User", config=config)
+
+    for schema in schemas.values():
+        assert schema["x-custom-generator"] is True

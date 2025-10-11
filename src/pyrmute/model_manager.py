@@ -1,4 +1,4 @@
-"""Model manager."""
+"""ModelManager class."""
 
 from collections.abc import Callable, Iterable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Self
 
 from pydantic import BaseModel
+from pydantic.json_schema import GenerateJsonSchema
 
 from ._migration_manager import MigrationManager
 from ._registry import Registry
@@ -19,6 +20,7 @@ from .migration_testing import (
 )
 from .model_diff import ModelDiff
 from .model_version import ModelVersion
+from .schema_config import SchemaConfig
 from .types import (
     DecoratedBaseModel,
     JsonSchema,
@@ -26,20 +28,16 @@ from .types import (
     MigrationFunc,
     ModelData,
     NestedModelInfo,
+    SchemaTransformer,
 )
 
 
 class ModelManager:
-    """High-level interface for versioned model management.
+    """High-level interface for versioned model management and schema generation.
 
     ModelManager provides a unified API for managing schema evolution across different
     versions of Pydantic models. It handles model registration, automatic migration
-    between versions, schema generation, and batch processing operations.
-
-    Attributes:
-        registry: Registry instance managing all registered model versions.
-        migration_manager: MigrationManager instance handling migration logic and paths.
-        schema_manager: SchemaManager instance for JSON schema generation and export.
+    between versions, customizable schema generation, and batch processing operations.
 
     Basic Usage:
         >>> manager = ModelManager()
@@ -64,6 +62,56 @@ class ModelManager:
         >>> user = manager.migrate(old_data, "User", "1.0.0", "2.0.0")
         >>> # Result: UserV2(name="Alice", email="unknown@example.com")
 
+    Custom Schema Generation:
+        >>> from pydantic.json_schema import GenerateJsonSchema
+        >>>
+        >>> class CustomSchemaGenerator(GenerateJsonSchema):
+        ...     '''Add custom metadata to all schemas.'''
+        ...     def generate(
+        ...         self,
+        ...         schema: Mapping[str, Any],
+        ...         mode: JsonSchemaMode = "validation"
+        ...     ) -> JsonSchema:
+        ...         json_schema = super().generate(schema, mode=mode)
+        ...         json_schema["x-company"] = "Acme"
+        ...         json_schema["$schema"] = self.schema_dialect
+        ...         return json_schema
+        >>>
+        >>> # Set at manager level (applies to all schemas)
+        >>> manager = ModelManager(
+        ...     default_schema_config=SchemaConfig(
+        ...         schema_generator=CustomSchemaGenerator,
+        ...         mode="validation",
+        ...         by_alias=True
+        ...     )
+        ... )
+        >>>
+        >>> @manager.model("User", "1.0.0")
+        ... class User(BaseModel):
+        ...     name: str = Field(title="Full Name")
+        ...     email: str
+        >>>
+        >>> # Get schema with default config
+        >>> schema = manager.get_schema("User", "1.0.0")
+        >>> # Will include x-company: 'Acme'
+
+    Schema Transformers:
+        >>> manager = ModelManager()
+        >>>
+        >>> @manager.model("Product", "1.0.0")
+        ... class Product(BaseModel):
+        ...     name: str
+        ...     price: float
+        >>>
+        >>> # Add transformer for specific model
+        >>> @manager.schema_transformer("Product", "1.0.0")
+        ... def add_examples(schema: JsonSchema) -> JsonSchema:
+        ...     schema["examples"] = [{"name": "Widget", "price": 9.99}]
+        ...     return schema
+        >>>
+        >>> schema = manager.get_schema("Product", "1.0.0")
+        >>> # Will include examples
+
     Advanced Features:
         >>> # Batch migration with parallel processing
         >>> users = manager.migrate_batch(
@@ -72,7 +120,9 @@ class ModelManager:
         ... )
         >>>
         >>> # Stream large datasets efficiently
-        >>> for user in manager.migrate_batch_streaming(large_dataset, "User", "1.0.0", "2.0.0"):
+        >>> for user in manager.migrate_batch_streaming(
+        ...     large_dataset, "User", "1.0.0", "2.0.0"
+        ...  ):
         ...     save_to_database(user)
         >>>
         >>> # Compare versions and export schemas
@@ -84,23 +134,32 @@ class ModelManager:
         >>> results = manager.test_migration(
         ...     "User", "1.0.0", "2.0.0",
         ...     test_cases=[
-        ...         ({"name": "Alice"}, {"name": "Alice", "email": "unknown@example.com"})
+        ...         (
+        ...              {"name": "Alice"},
+        ...              {"name": "Alice", "email": "unknown@example.com"}
+        ...         )
         ...     ]
         ... )
         >>> results.assert_all_passed()
-    """  # noqa: E501
+    """
 
-    def __init__(self: Self) -> None:
-        """Initialize the versioned model manager."""
+    def __init__(self: Self, default_schema_config: SchemaConfig | None = None) -> None:
+        """Initialize the versioned model manager.
+
+        Args:
+            default_schema_config: Default configuration for schema generation
+                applied to all schema operations unless overridden.
+        """
         self._registry = Registry()
         self._migration_manager = MigrationManager(self._registry)
-        self._schema_manager = SchemaManager(self._registry)
+        self._schema_manager = SchemaManager(
+            self._registry, default_config=default_schema_config
+        )
 
     def model(
         self: Self,
         name: str,
         version: str | ModelVersion,
-        schema_generator: JsonSchemaGenerator | None = None,
         enable_ref: bool = False,
         backward_compatible: bool = False,
     ) -> Callable[[type[DecoratedBaseModel]], type[DecoratedBaseModel]]:
@@ -109,7 +168,6 @@ class ModelManager:
         Args:
             name: Name of the model.
             version: Semantic version.
-            schema_generator: Optional custom schema generator.
             enable_ref: If True, this model can be referenced via $ref in separate
                 schema files. If False, it will always be inlined.
             backward_compatible: If True, this model does not need a migration function
@@ -130,9 +188,7 @@ class ModelManager:
             ... class CityV1(BaseModel):
             ...     city: City
         """
-        return self._registry.register(
-            name, version, schema_generator, enable_ref, backward_compatible
-        )
+        return self._registry.register(name, version, enable_ref, backward_compatible)
 
     def migration(
         self: Self,
@@ -309,27 +365,12 @@ class ModelManager:
             from_version: Source version.
             to_version: Target version.
             parallel: If True, use parallel processing.
-            max_workers: Maximum number of workers for parallel processing.  Defaults to
-                None (uses executor default).
+            max_workers: Maximum number of workers for parallel processing.
             use_processes: If True, use ProcessPoolExecutor instead of
-                ThreadPoolExecutor. Useful for CPU-intensive migrations.
+                ThreadPoolExecutor.
 
         Returns:
             List of migrated BaseModel instances.
-
-        Example:
-            >>> legacy_users = [
-            ...     {"name": "Alice"},
-            ...     {"name": "Bob"},
-            ...     {"name": "Charlie"}
-            ... ]
-            >>> users = manager.migrate_batch(
-            ...     legacy_users,
-            ...     "User",
-            ...     from_version="1.0.0",
-            ...     to_version="3.0.0",
-            ...     parallel=True
-            ... )
         """
         data_list = list(data_list)
 
@@ -372,15 +413,6 @@ class ModelManager:
 
         Returns:
             List of raw migrated dictionaries.
-
-        Example:
-            >>> legacy_data = [{"name": "Alice"}, {"name": "Bob"}]
-            >>> migrated_data = manager.migrate_batch_data(
-            ...     legacy_data,
-            ...     "User",
-            ...     from_version="1.0.0",
-            ...     to_version="2.0.0"
-            ... )
         """
         data_list = list(data_list)
 
@@ -411,9 +443,6 @@ class ModelManager:
     ) -> Iterable[BaseModel]:
         """Migrate data in chunks, yielding results as they complete.
 
-        Useful for large datasets where you want to start processing results before all
-        migrations complete.
-
         Args:
             data_list: Iterable of data dictionaries to migrate.
             name: Name of the model.
@@ -423,17 +452,6 @@ class ModelManager:
 
         Yields:
             Migrated BaseModel instances.
-
-        Example:
-            >>> legacy_users = load_large_dataset()
-            >>> for user in manager.migrate_batch_streaming(
-            ...     legacy_users,
-            ...     "User",
-            ...     from_version="1.0.0",
-            ...     to_version="3.0.0"
-            ... ):
-            ...     # Process each user as it's migrated
-            ...     save_to_database(user)
         """
         chunk = []
 
@@ -457,9 +475,6 @@ class ModelManager:
     ) -> Iterable[ModelData]:
         """Migrate data in chunks, yielding raw dictionaries as they complete.
 
-        Useful for large datasets where you want to start processing results before all
-        migrations complete, without the validation overhead.
-
         Args:
             data_list: Iterable of data dictionaries to migrate.
             name: Name of the model.
@@ -469,17 +484,6 @@ class ModelManager:
 
         Yields:
             Raw migrated dictionaries.
-
-        Example:
-            >>> legacy_data = load_large_dataset()
-            >>> for data in manager.migrate_batch_data_streaming(
-            ...     legacy_data,
-            ...     "User",
-            ...     from_version="1.0.0",
-            ...     to_version="3.0.0"
-            ... ):
-            ...     # Process raw data as it's migrated
-            ...     bulk_insert_to_database(data)
         """
         chunk = []
 
@@ -503,9 +507,6 @@ class ModelManager:
     ) -> ModelDiff:
         """Get a detailed diff between two model versions.
 
-        Compares field names, types, requirements, and default values to provide a
-        comprehensive view of what changed between versions.
-
         Args:
             name: Name of the model.
             from_version: Source version.
@@ -513,12 +514,6 @@ class ModelManager:
 
         Returns:
             ModelDiff with detailed change information.
-
-        Example:
-            >>> diff = manager.diff("User", "1.0.0", "2.0.0")
-            >>> print(diff.to_markdown())
-            >>> print(f"Added: {diff.added_fields}")
-            >>> print(f"Removed: {diff.removed_fields}")
         """
         from_ver_str = str(
             ModelVersion.parse(from_version)
@@ -542,10 +537,136 @@ class ModelManager:
             to_version=to_ver_str,
         )
 
+    def set_default_schema_generator(
+        self: Self, generator: JsonSchemaGenerator | type[GenerateJsonSchema]
+    ) -> None:
+        """Set the default schema generator for all schemas.
+
+        This is a convenience method that updates the default schema configuration.
+
+        Args:
+            generator: Custom schema generator - either a callable or GenerateJsonSchema
+                class.
+
+        Example (Callable):
+            >>> def my_generator(model: type[BaseModel]) -> JsonSchema:
+            ...     schema = model.model_json_schema()
+            ...     schema["x-custom"] = True
+            ...     return schema
+            >>>
+            >>> manager = ModelManager()
+            >>> manager.set_default_schema_generator(my_generator)
+
+        Example (Class - Recommended):
+            >>> from pydantic.json_schema import GenerateJsonSchema
+            >>>
+            >>> class MyGenerator(GenerateJsonSchema):
+            ...     def generate(
+            ...         self,
+            ...         schema: Mapping[str, Any],
+            ...         mode: JsonSchemaMode = "validation"
+            ...     ) -> JsonSchema:
+            ...         json_schema = super().generate(schema, mode=mode)
+            ...         json_schema["x-custom"] = True
+            ...         json_schema["$schema"] = self.schema_dialect
+            ...         return json_schema
+            >>>
+            >>> manager = ModelManager()
+            >>> manager.set_default_schema_generator(MyGenerator)
+            >>>
+            >>> # All subsequent schema calls will use MyGenerator
+            >>> schema = manager.get_schema("User", "1.0.0")
+        """
+        self._schema_manager.set_default_schema_generator(generator)
+
+    def schema_transformer(
+        self: Self,
+        name: str,
+        version: str | ModelVersion,
+    ) -> Callable[[SchemaTransformer], SchemaTransformer]:
+        """Decorator to register a schema transformer for a model version.
+
+        Transformers are simple functions that modify a schema after generation.
+        They're useful for model-specific customizations that don't require deep
+        integration with Pydantic's generation process.
+
+        Args:
+            name: Name of the model.
+            version: Model version.
+
+        Returns:
+            Decorator function.
+
+        Example:
+            >>> @manager.schema_transformer("User", "1.0.0")
+            ... def add_auth_metadata(schema: JsonSchema) -> JsonSchema:
+            ...     schema["x-requires-auth"] = True
+            ...     schema["x-auth-level"] = 'admin'
+            ...     return schema
+            >>>
+            >>> @manager.schema_transformer("Product", "2.0.0")
+            ... def add_product_examples(schema: JsonSchema) -> JsonSchema:
+            ...     schema["examples"] = [
+            ...         {"name": "Widget", "price": 9.99},
+            ...         {"name": "Gadget", "price": 19.99}
+            ...     ]
+            ...     return schema
+        """
+
+        def decorator(func: SchemaTransformer) -> SchemaTransformer:
+            self._schema_manager.register_transformer(name, version, func)
+            return func
+
+        return decorator
+
+    def get_schema_transformers(
+        self: Self,
+        name: str,
+        version: str | ModelVersion,
+    ) -> list[SchemaTransformer]:
+        """Get all transformers for a model version.
+
+        Args:
+            name: Name of the model.
+            version: Model version.
+
+        Returns:
+            List of transformer functions.
+
+        Example:
+            >>> transformers = manager.get_schema_transformers("User", "1.0.0")
+            >>> print(f"Found {len(transformers)} transformers")
+        """
+        return self._schema_manager.get_transformers(name, version)
+
+    def clear_schema_transformers(
+        self: Self,
+        name: str | None = None,
+        version: str | ModelVersion | None = None,
+    ) -> None:
+        """Clear schema transformers.
+
+        Args:
+            name: Optional model name. If None, clears all.
+            version: Optional version. If None, clears all versions of model.
+
+        Example:
+            >>> # Clear all transformers
+            >>> manager.clear_schema_transformers()
+            >>>
+            >>> # Clear User transformers
+            >>> manager.clear_schema_transformers("User")
+            >>>
+            >>> # Clear specific version
+            >>> manager.clear_schema_transformers("User", "1.0.0")
+        """
+        self._schema_manager.clear_transformers(name, version)
+
     def get_schema(
         self: Self,
         name: str,
         version: str | ModelVersion,
+        config: SchemaConfig | None = None,
         **kwargs: Any,
     ) -> JsonSchema:
         """Get JSON schema for a specific version.
@@ -553,12 +674,25 @@ class ModelManager:
         Args:
             name: Name of the model.
             version: Semantic version.
-            **kwargs: Additional schema generation arguments.
+            config: Optional schema configuration (overrides default).
+            **kwargs: Additional schema generation arguments (e.g.,
+                mode="serialization").
 
         Returns:
             JSON schema dictionary.
+
+        Example:
+            >>> # Use default config
+            >>> schema = manager.get_schema("User", "1.0.0")
+            >>>
+            >>> # Override with custom config
+            >>> config = SchemaConfig(mode="serialization")
+            >>> schema = manager.get_schema("User", "1.0.0", config=config)
+            >>>
+            >>> # Quick override with kwargs
+            >>> schema = manager.get_schema("User", "1.0.0", mode="serialization")
         """
-        return self._schema_manager.get_schema(name, version, **kwargs)
+        return self._schema_manager.get_schema(name, version, config=config, **kwargs)
 
     def list_models(self: Self) -> list[str]:
         """Get list of all registered models.
@@ -585,6 +719,7 @@ class ModelManager:
         indent: int = 2,
         separate_definitions: bool = False,
         ref_template: str | None = None,
+        config: SchemaConfig | None = None,
     ) -> None:
         """Export all schemas to JSON files.
 
@@ -592,27 +727,30 @@ class ModelManager:
             output_dir: Directory path for output.
             indent: JSON indentation level.
             separate_definitions: If True, create separate schema files for nested
-                models and use $ref to reference them. Only applies to models with
-                'enable_ref=True'.
+                models and use $ref to reference them.
             ref_template: Template for $ref URLs when separate_definitions=True.
-                Defaults to relative file references if not provided.
+            config: Optional schema configuration for all exported schemas.
 
         Example:
-            >>> # Inline definitions (default)
-            >>> manager.dump_schemas("schemas/")
+            >>> # Export with custom generator
+            >>> config = SchemaConfig(
+            ...     schema_generator=CustomGenerator,
+            ...     mode="validation"
+            ... )
+            >>> manager.dump_schemas("schemas/", config=config)
             >>>
-            >>> # Separate sub-schemas with relative refs
-            >>> manager.dump_schemas("schemas/", separate_definitions=True)
-            >>>
-            >>> # Separate sub-schemas with absolute URLs
+            >>> # Export validation and serialization schemas separately
             >>> manager.dump_schemas(
-            ...     "schemas/",
-            ...     separate_definitions=True,
-            ...     ref_template="https://example.com/schemas/{model}_v{version}.json"
+            ...     "schemas/validation/",
+            ...     config=SchemaConfig(mode="validation")
+            ... )
+            >>> manager.dump_schemas(
+            ...     "schemas/serialization/",
+            ...     config=SchemaConfig(mode="serialization")
             ... )
         """
         self._schema_manager.dump_schemas(
-            output_dir, indent, separate_definitions, ref_template
+            output_dir, indent, separate_definitions, ref_template, config=config
         )
 
     def get_nested_models(
@@ -640,54 +778,15 @@ class ModelManager:
     ) -> MigrationTestResults:
         """Test a migration with multiple test cases.
 
-        Executes a migration on multiple test inputs and validates the outputs match
-        expected values. Useful for regression testing and validating migration logic.
-
         Args:
             name: Name of the model.
             from_version: Source version to migrate from.
             to_version: Target version to migrate to.
-            test_cases: List of test cases, either as (source, target) tuples or
-                MigrationTestCase objects. If target is None, only verifies the
-                migration completes without errors.
+            test_cases: List of test cases.
 
         Returns:
             MigrationTestResults containing individual results for each test case.
-
-        Example:
-            >>> # Using tuples (source, target)
-            >>> results = manager.test_migration(
-            ...     "User", "1.0.0", "2.0.0",
-            ...     test_cases=[
-            ...         ({"name": "Alice"}, {"name": "Alice", "email": "alice@example.com"}),
-            ...         ({"name": "Bob"}, {"name": "Bob", "email": "bob@example.com"})
-            ...     ]
-            ... )
-            >>> assert results.all_passed
-            >>>
-            >>> # Using MigrationTestCase objects
-            >>> results = manager.test_migration(
-            ...     "User", "1.0.0", "2.0.0",
-            ...     test_cases=[
-            ...         MigrationTestCase(
-            ...             source={"name": "Alice"},
-            ...             target={"name": "Alice", "email": "alice@example.com"},
-            ...             description="Standard user migration"
-            ...         )
-            ...     ]
-            ... )
-            >>>
-            >>> # Use in pytest
-            >>> def test_user_migration():
-            ...     results = manager.test_migration("User", "1.0.0", "2.0.0", test_cases)
-            ...     results.assert_all_passed()  # Raises AssertionError with details if failed
-            >>>
-            >>> # Inspect failures
-            >>> if not results.all_passed:
-            ...     for failure in results.failures:
-            ...         print(f"Failed: {failure.test_case.description}")
-            ...         print(f"  Error: {failure.error}")
-        """  # noqa: E501
+        """
         results = []
 
         for test_case_input in test_cases:

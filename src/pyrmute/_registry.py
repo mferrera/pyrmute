@@ -10,11 +10,9 @@ from .exceptions import ModelNotFoundError
 from .model_version import ModelVersion
 from .types import (
     DecoratedBaseModel,
-    JsonSchemaGenerator,
     MigrationMap,
     ModelMetadata,
     ModelName,
-    SchemaGenerators,
     VersionedModels,
 )
 
@@ -28,7 +26,6 @@ class Registry:
     Attributes:
         _models: Dictionary mapping model names to version-model mappings.
         _migrations: Dictionary storing migration functions between versions.
-        _schema_generators: Dictionary storing custom schema generators.
         _model_metadata: Dictionary mapping model classes to (name, version).
         _ref_enabled: Dictionary tracking which models have enable_ref=True.
     """
@@ -37,7 +34,6 @@ class Registry:
         """Initialize the model registry."""
         self._models: dict[ModelName, VersionedModels] = defaultdict(dict)
         self._migrations: dict[ModelName, MigrationMap] = defaultdict(dict)
-        self._schema_generators: dict[ModelName, SchemaGenerators] = defaultdict(dict)
         self._model_metadata: dict[type[BaseModel], ModelMetadata] = {}
         self._ref_enabled: dict[ModelName, set[ModelVersion]] = defaultdict(set)
         self._backward_compatible_enabled: dict[ModelName, set[ModelVersion]] = (
@@ -48,7 +44,6 @@ class Registry:
         self: Self,
         name: ModelName,
         version: str | ModelVersion,
-        schema_generator: JsonSchemaGenerator | None = None,
         enable_ref: bool = False,
         backward_compatible: bool = False,
     ) -> Callable[[type[DecoratedBaseModel]], type[DecoratedBaseModel]]:
@@ -57,7 +52,6 @@ class Registry:
         Args:
             name: Name of the model.
             version: Semantic version string or ModelVersion instance.
-            schema_generator: Optional custom schema generator function.
             enable_ref: If True, this model can be referenced via $ref in separate
                 schema files. If False, it will always be inlined.
             backward_compatible: If True, this model does not need a migration function
@@ -78,8 +72,6 @@ class Registry:
         def decorator(cls: type[DecoratedBaseModel]) -> type[DecoratedBaseModel]:
             self._models[name][ver] = cls
             self._model_metadata[cls] = (name, ver)
-            if schema_generator:
-                self._schema_generators[name][ver] = schema_generator
             if enable_ref:
                 self._ref_enabled[name].add(ver)
             if backward_compatible:
