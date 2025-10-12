@@ -327,6 +327,39 @@ class ModelManager:
         target_model = self.get(name, to_version)
         return target_model.model_validate(migrated_data)
 
+    def migrate_as(
+        self: Self,
+        data: ModelData,
+        name: str,
+        from_version: str | ModelVersion,
+        to_version: str | ModelVersion,
+        target_type: type[DecoratedBaseModel],
+    ) -> DecoratedBaseModel:
+        """Migrate data between versions with type safety.
+
+        This is a type-safe variant of migrate() that returns a specific model type when
+        you provide the target type explicitly.
+
+        Args:
+            data: Data dictionary to migrate.
+            name: Name of the model.
+            from_version: Source version.
+            to_version: Target version.
+            target_type: The expected model class type.
+
+        Returns:
+            Migrated model instance of the specified type.
+
+        Example:
+            >>> old_data = {"name": "Alice"}
+            >>> user: UserV2 = manager.migrate_as(
+            ...     old_data, "User", "1.0.0", "2.0.0", UserV2
+            ... )
+            >>> # Type checker knows user is UserV2, not just BaseModel
+        """
+        migrated_data = self.migrate_data(data, name, from_version, to_version)
+        return target_type.model_validate(migrated_data)
+
     def migrate_data(
         self: Self,
         data: ModelData,
@@ -386,6 +419,64 @@ class ModelManager:
         with executor_class(max_workers=max_workers) as executor:
             futures = [
                 executor.submit(self.migrate, item, name, from_version, to_version)
+                for item in data_list
+            ]
+            return [future.result() for future in futures]
+
+    def migrate_batch_as(  # noqa: PLR0913
+        self: Self,
+        data_list: Iterable[ModelData],
+        name: str,
+        from_version: str | ModelVersion,
+        to_version: str | ModelVersion,
+        target_type: type[DecoratedBaseModel],
+        parallel: bool = False,
+        max_workers: int | None = None,
+        use_processes: bool = False,
+    ) -> list[DecoratedBaseModel]:
+        """Migrate multiple data items between versions with type safety.
+
+        This is a type-safe variant of migrate_batch() that returns a specific model
+        type when you provide the target type explicitly.
+
+        Args:
+            data_list: Iterable of data dictionaries to migrate.
+            name: Name of the model.
+            from_version: Source version.
+            to_version: Target version.
+            target_type: The expected model class type.
+            parallel: If True, use parallel processing.
+            max_workers: Maximum number of workers for parallel processing.
+            use_processes: If True, use ProcessPoolExecutor instead of
+                ThreadPoolExecutor.
+
+        Returns:
+            List of migrated model instances of the specified type.
+
+        Example:
+            >>> old_users = [{"name": "Alice"}, {"name": "Bob"}]
+            >>> users: list[UserV2] = manager.migrate_batch_as(
+            ...     old_users, "User", "1.0.0", "2.0.0", UserV2,
+            ...     parallel=True, max_workers=4
+            ... )
+        """
+        data_list = list(data_list)
+
+        if not data_list:
+            return []
+
+        if not parallel:
+            return [
+                self.migrate_as(item, name, from_version, to_version, target_type)
+                for item in data_list
+            ]
+
+        executor_class = ProcessPoolExecutor if use_processes else ThreadPoolExecutor
+        with executor_class(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(
+                    self.migrate_as, item, name, from_version, to_version, target_type
+                )
                 for item in data_list
             ]
             return [future.result() for future in futures]
@@ -464,6 +555,53 @@ class ModelManager:
 
         if chunk:
             yield from self.migrate_batch(chunk, name, from_version, to_version)
+
+    def migrate_batch_streaming_as(  # noqa: PLR0913
+        self: Self,
+        data_list: Iterable[ModelData],
+        name: str,
+        from_version: str | ModelVersion,
+        to_version: str | ModelVersion,
+        target_type: type[DecoratedBaseModel],
+        chunk_size: int = 100,
+    ) -> Iterable[DecoratedBaseModel]:
+        """Migrate data in chunks with type safety, yielding results as they complete.
+
+        This is a type-safe variant of migrate_batch_streaming() that returns a specific
+        model type when you provide the target type explicitly.
+
+        Args:
+            data_list: Iterable of data dictionaries to migrate.
+            name: Name of the model.
+            from_version: Source version.
+            to_version: Target version.
+            target_type: The expected model class type.
+            chunk_size: Number of items to process in each chunk.
+
+        Yields:
+            Migrated model instances of the specified type.
+
+        Example:
+            >>> for user in manager.migrate_batch_streaming_as(
+            ...     large_dataset, "User", "1.0.0", "2.0.0", UserV2
+            ... ):
+            ...     save_to_database(user)  # user is typed as UserV2
+        """
+        chunk = []
+
+        for item in data_list:
+            chunk.append(item)
+
+            if len(chunk) >= chunk_size:
+                yield from self.migrate_batch_as(
+                    chunk, name, from_version, to_version, target_type
+                )
+                chunk = []
+
+        if chunk:
+            yield from self.migrate_batch_as(
+                chunk, name, from_version, to_version, target_type
+            )
 
     def migrate_batch_data_streaming(
         self: Self,
