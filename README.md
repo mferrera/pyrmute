@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/mferrera/pyrmute/main/logo.svg" width="120" height="120" alt="pyrmute logo">
+<img src="https://raw.githubusercontent.com/mferrera/pyrmute/main/docs/logo.svg" width="120" height="120" alt="pyrmute logo">
 
 # pyrmute
 
