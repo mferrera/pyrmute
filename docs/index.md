@@ -1,4 +1,4 @@
-<div align="center">
+<div align="center" markdown="1">
 
 <img src="https://raw.githubusercontent.com/mferrera/pyrmute/main/logo.svg" width="120" height="120" alt="pyrmute logo">
 
@@ -57,8 +57,8 @@ pyrmute is useful for handling schema evolution in production systems:
 - **Data archival** - Process historical data dumps with various schema
   versions
 
-See the [examples/](examples/) directory for complete, runnable code
-demonstrating these patterns.
+See the [examples](https://github.com/mferrera/pyrmute/tree/main/examples)
+directory for complete, runnable code demonstrating these patterns.
 
 ## When Not to Use
 
@@ -77,7 +77,7 @@ pyrmute may not be the right choice if you have:
 
 ## Help
 
-See [documentation](https://mferrera.github.io/pyrmute/) for complete guides
+See [documentation](https://pyrmute.readthedocs.io/) for complete guides
 and API reference.
 
 ## Installation
@@ -482,7 +482,8 @@ class InferenceService:
         )
 ```
 
-See [examples/](examples/) for complete runnable code:
+See [examples](https://github.com/mferrera/pyrmute/tree/main/examples) for
+runnable code.
 - `config_file_migration.py` - CLI/desktop app config file evolution
 - `message_queue_consumer.py` - Kafka/RabbitMQ/SQS consumer handling multiple
   schemas
@@ -495,7 +496,7 @@ See [examples/](examples/) for complete runnable code:
 
 For guidance on setting up a development environment and how to make a
 contribution to pyrmute, see [Contributing to
-pyrmute](https://mferrera.github.io/pyrmute/contributing/).
+pyrmute](https://pyrmute.readthedocs.io/contributing/).
 
 ## Reporting a Security Vulnerability
 

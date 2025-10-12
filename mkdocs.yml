@@ -1,0 +1,108 @@
+site_name: pyrmute
+site_description: Pydantic model migrations and schema management
+strict: true
+site_url: https://pyrmute.readthedocs.io/
+
+theme:
+  name: "material"
+  palette:
+    - media: "(prefers-color-scheme)"
+      primary: "#4f46e5"
+      accent: "#06b6d4"
+      toggle:
+        icon: material/lightbulb-auto
+        name: "Switch to light mode"
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: "#4f46e5"
+      accent: "#06b6d4"
+      toggle:
+        icon: material/lightbulb
+        name: "Switch to dark mode"
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: "#4f46e5"
+      accent: "#06b6d4"
+      toggle:
+        icon: material/lightbulb-outline
+        name: "Switch to system preference"
+  icon:
+    repo: fontawesome/brands/github-alt
+  features:
+    - content.tabs.link
+    - content.code.annotate
+    - content.code.copy
+    - announce.dismiss
+    - navigation.tabs
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.preview
+    - navigation.instant.progress
+    - navigation.path
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.suggest
+    - toc.follow
+  logo: "logo-white.svg"
+  favicon: "favicon-32x32.png"
+
+repo_name: mferrera/pyrmute
+repo_url: https://github.com/mferrera/pyrmute
+edit_uri: edit/main/docs/
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            extensions:
+              - griffe_typingdoc
+            show_root_heading: true
+            show_if_no_docstring: true
+            inherited_members: true
+            members_order: source
+            separate_signature: true
+            unwrap_annotated: true
+            filters:
+              - '!^_'
+            merge_init_into_class: true
+            docstring_section_style: spacy
+            signature_crossrefs: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+
+markdown_extensions:
+  - abbr
+  - attr_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.highlight:
+      line_spans: __span
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - admonition
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets
