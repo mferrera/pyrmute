@@ -39,108 +39,123 @@ class ModelManager:
     versions of Pydantic models. It handles model registration, automatic migration
     between versions, customizable schema generation, and batch processing operations.
 
-    Basic Usage:
-        >>> manager = ModelManager()
-        >>>
-        >>> # Register model versions
-        >>> @manager.model("User", "1.0.0")
-        ... class UserV1(BaseModel):
-        ...     name: str
-        >>>
-        >>> @manager.model("User", "2.0.0")
-        ... class UserV2(BaseModel):
-        ...     name: str
-        ...     email: str
-        >>>
-        >>> # Define migration between versions
-        >>> @manager.migration("User", "1.0.0", "2.0.0")
-        ... def migrate(data: ModelData) -> ModelData:
-        ...     return {**data, "email": "unknown@example.com"}
-        >>>
-        >>> # Migrate legacy data
-        >>> old_data = {"name": "Alice"}
-        >>> user = manager.migrate(old_data, "User", "1.0.0", "2.0.0")
-        >>> # Result: UserV2(name="Alice", email="unknown@example.com")
+    Example:
+        **Basic Usage**:
 
-    Custom Schema Generation:
-        >>> from pydantic.json_schema import GenerateJsonSchema
-        >>>
-        >>> class CustomSchemaGenerator(GenerateJsonSchema):
-        ...     '''Add custom metadata to all schemas.'''
-        ...     def generate(
-        ...         self,
-        ...         schema: Mapping[str, Any],
-        ...         mode: JsonSchemaMode = "validation"
-        ...     ) -> JsonSchema:
-        ...         json_schema = super().generate(schema, mode=mode)
-        ...         json_schema["x-company"] = "Acme"
-        ...         json_schema["$schema"] = self.schema_dialect
-        ...         return json_schema
-        >>>
-        >>> # Set at manager level (applies to all schemas)
-        >>> manager = ModelManager(
-        ...     default_schema_config=SchemaConfig(
-        ...         schema_generator=CustomSchemaGenerator,
-        ...         mode="validation",
-        ...         by_alias=True
-        ...     )
-        ... )
-        >>>
-        >>> @manager.model("User", "1.0.0")
-        ... class User(BaseModel):
-        ...     name: str = Field(title="Full Name")
-        ...     email: str
-        >>>
-        >>> # Get schema with default config
-        >>> schema = manager.get_schema("User", "1.0.0")
-        >>> # Will include x-company: 'Acme'
+        ```python
+        from pyrmute import ModelManager, ModelData
 
-    Schema Transformers:
-        >>> manager = ModelManager()
-        >>>
-        >>> @manager.model("Product", "1.0.0")
-        ... class Product(BaseModel):
-        ...     name: str
-        ...     price: float
-        >>>
-        >>> # Add transformer for specific model
-        >>> @manager.schema_transformer("Product", "1.0.0")
-        ... def add_examples(schema: JsonSchema) -> JsonSchema:
-        ...     schema["examples"] = [{"name": "Widget", "price": 9.99}]
-        ...     return schema
-        >>>
-        >>> schema = manager.get_schema("Product", "1.0.0")
-        >>> # Will include examples
+        manager = ModelManager()
 
-    Advanced Features:
-        >>> # Batch migration with parallel processing
-        >>> users = manager.migrate_batch(
-        ...     legacy_users, "User", "1.0.0", "2.0.0",
-        ...     parallel=True, max_workers=4
-        ... )
-        >>>
-        >>> # Stream large datasets efficiently
-        >>> for user in manager.migrate_batch_streaming(
-        ...     large_dataset, "User", "1.0.0", "2.0.0"
-        ...  ):
-        ...     save_to_database(user)
-        >>>
-        >>> # Compare versions and export schemas
-        >>> diff = manager.diff("User", "1.0.0", "2.0.0")
-        >>> print(diff.to_markdown())
-        >>> manager.dump_schemas("schemas/", separate_definitions=True)
-        >>>
-        >>> # Test migrations with validation
-        >>> results = manager.test_migration(
-        ...     "User", "1.0.0", "2.0.0",
-        ...     test_cases=[
-        ...         (
-        ...              {"name": "Alice"},
-        ...              {"name": "Alice", "email": "unknown@example.com"}
-        ...         )
-        ...     ]
-        ... )
-        >>> results.assert_all_passed()
+        # Register model versions
+        @manager.model("User", "1.0.0")
+        class UserV1(BaseModel):
+            name: str
+
+        @manager.model("User", "2.0.0")
+        class UserV2(BaseModel):
+            name: str
+            email: str
+
+        # Define migration between versions
+        @manager.migration("User", "1.0.0", "2.0.0")
+        def migrate(data: ModelData) -> ModelData:
+            return {**data, "email": "unknown@example.com"}
+
+        # Migrate legacy data
+        old_data = {"name": "Alice"}
+        user = manager.migrate(old_data, "User", "1.0.0", "2.0.0")
+        # Result: UserV2(name="Alice", email="unknown@example.com")
+        ```
+
+        **Custom Schema Generation**:
+
+        ```python
+        from pydantic.json_schema import GenerateJsonSchema
+
+        class CustomSchemaGenerator(GenerateJsonSchema):
+            '''Add custom metadata to all schemas.'''
+            def generate(
+                self,
+                schema: Mapping[str, Any],
+                mode: JsonSchemaMode = "validation"
+            ) -> JsonSchema:
+                json_schema = super().generate(schema, mode=mode)
+                json_schema["x-company"] = "Acme"
+                json_schema["$schema"] = self.schema_dialect
+                return json_schema
+
+        # Set at manager level (applies to all schemas)
+        manager = ModelManager(
+            default_schema_config=SchemaConfig(
+                schema_generator=CustomSchemaGenerator,
+                mode="validation",
+                by_alias=True
+            )
+        )
+
+        @manager.model("User", "1.0.0")
+        class User(BaseModel):
+            name: str = Field(title="Full Name")
+            email: str
+
+        # Get schema with default config
+        schema = manager.get_schema("User", "1.0.0")
+        # Will include x-company: "Acme"
+        ```
+
+        **Advanced Features**:
+
+        ```python
+        # Batch migration with parallel processing
+        users = manager.migrate_batch(
+            legacy_users, "User", "1.0.0", "2.0.0",
+            parallel=True, max_workers=4
+        )
+
+        # Stream large datasets efficiently
+        for user in manager.migrate_batch_streaming(
+            large_dataset, "User", "1.0.0", "2.0.0"
+         ):
+            save_to_database(user)
+
+        # Compare versions and export schemas
+        diff = manager.diff("User", "1.0.0", "2.0.0")
+        print(diff.to_markdown())
+        manager.dump_schemas("schemas/", separate_definitions=True)
+
+        # Test migrations with validation
+        results = manager.test_migration(
+            "User", "1.0.0", "2.0.0",
+            test_cases=[
+                (
+                     {"name": "Alice"},
+                     {"name": "Alice", "email": "unknown@example.com"}
+                )
+            ]
+        )
+        results.assert_all_passed()
+        ```
+
+        **Schema Transformers**:
+
+        ```python
+        manager = ModelManager()
+
+        @manager.model("Product", "1.0.0")
+        class Product(BaseModel):
+            name: str
+            price: float
+
+        # Add transformer for specific model
+        @manager.schema_transformer("Product", "1.0.0")
+        def add_examples(schema: JsonSchema) -> JsonSchema:
+            schema["examples"] = [{"name": "Widget", "price": 9.99}]
+            return schema
+
+        schema = manager.get_schema("Product", "1.0.0")
+        # Will include examples
+        ```
     """
 
     def __init__(self: Self, default_schema_config: SchemaConfig | None = None) -> None:
@@ -178,15 +193,17 @@ class ModelManager:
             Decorator function for model class.
 
         Example:
-            >>> # Model that will be inlined (default)
-            >>> @manager.model("Address", "1.0.0")
-            ... class AddressV1(BaseModel):
-            ...     street: str
-            >>>
-            >>> # Model that can be a separate schema with $ref
-            >>> @manager.model("City", "1.0.0", enable_ref=True)
-            ... class CityV1(BaseModel):
-            ...     city: City
+            ```python
+            # Model that will be inlined (default)
+            @manager.model("Address", "1.0.0")
+            class AddressV1(BaseModel):
+                street: str
+
+            # Model that can be a separate schema with $ref
+            @manager.model("City", "1.0.0", enable_ref=True)
+            class CityV1(BaseModel):
+                city: City
+            ```
         """
         return self._registry.register(name, version, enable_ref, backward_compatible)
 
@@ -250,10 +267,12 @@ class ModelManager:
             True if a migration path exists, False otherwise.
 
         Example:
-            >>> if manager.has_migration_path("User", "1.0.0", "3.0.0"):
-            ...     users = manager.migrate_batch(old_users, "User", "1.0.0", "3.0.0")
-            ... else:
-            ...     logger.error("Cannot migrate users to v3.0.0")
+            ```python
+            if manager.has_migration_path("User", "1.0.0", "3.0.0"):
+                users = manager.migrate_batch(old_users, "User", "1.0.0", "3.0.0")
+            else:
+                logger.error("Cannot migrate users to v3.0.0")
+            ```
         """
         from_ver = (
             ModelVersion.parse(from_version)
@@ -291,12 +310,14 @@ class ModelManager:
             True if data is valid for the model version, False otherwise.
 
         Example:
-            >>> data = {"name": "Alice"}
-            >>> is_valid = manager.validate_data(data, "User", "1.0.0")
-            >>> # Returns: True
-            >>>
-            >>> is_valid = manager.validate_data(data, "User", "2.0.0")
-            >>> # Returns: False, missing required field 'email'
+            ```python
+            data = {"name": "Alice"}
+            is_valid = manager.validate_data(data, "User", "1.0.0")
+            # Returns: True
+
+            is_valid = manager.validate_data(data, "User", "2.0.0")
+            # Returns: False, missing required field 'email'
+            ```
         """
         try:
             model = self.get(name, version)
@@ -351,11 +372,13 @@ class ModelManager:
             Migrated model instance of the specified type.
 
         Example:
-            >>> old_data = {"name": "Alice"}
-            >>> user: UserV2 = manager.migrate_as(
-            ...     old_data, "User", "1.0.0", "2.0.0", UserV2
-            ... )
-            >>> # Type checker knows user is UserV2, not just BaseModel
+            ```python
+            old_data = {"name": "Alice"}
+            user: UserV2 = manager.migrate_as(
+                old_data, "User", "1.0.0", "2.0.0", UserV2
+            )
+            # Type checker knows user is UserV2, not just BaseModel
+            ```
         """
         migrated_data = self.migrate_data(data, name, from_version, to_version)
         return target_type.model_validate(migrated_data)
@@ -454,11 +477,13 @@ class ModelManager:
             List of migrated model instances of the specified type.
 
         Example:
-            >>> old_users = [{"name": "Alice"}, {"name": "Bob"}]
-            >>> users: list[UserV2] = manager.migrate_batch_as(
-            ...     old_users, "User", "1.0.0", "2.0.0", UserV2,
-            ...     parallel=True, max_workers=4
-            ... )
+            ```python
+            old_users = [{"name": "Alice"}, {"name": "Bob"}]
+            users: list[UserV2] = manager.migrate_batch_as(
+                old_users, "User", "1.0.0", "2.0.0", UserV2,
+                parallel=True, max_workers=4
+            )
+            ```
         """
         data_list = list(data_list)
 
@@ -582,10 +607,12 @@ class ModelManager:
             Migrated model instances of the specified type.
 
         Example:
-            >>> for user in manager.migrate_batch_streaming_as(
-            ...     large_dataset, "User", "1.0.0", "2.0.0", UserV2
-            ... ):
-            ...     save_to_database(user)  # user is typed as UserV2
+            ```python
+            for user in manager.migrate_batch_streaming_as(
+                large_dataset, "User", "1.0.0", "2.0.0", UserV2
+            ):
+                save_to_database(user)  # user is typed as UserV2
+            ```
         """
         chunk = []
 
@@ -686,34 +713,42 @@ class ModelManager:
             generator: Custom schema generator - either a callable or GenerateJsonSchema
                 class.
 
-        Example (Callable):
-            >>> def my_generator(model: type[BaseModel]) -> JsonSchema:
-            ...     schema = model.model_json_schema()
-            ...     schema["x-custom"] = True
-            ...     return schema
-            >>>
-            >>> manager = ModelManager()
-            >>> manager.set_default_schema_generator(my_generator)
+        Example:
+            **Class**:
 
-        Example (Class - Recommended):
-            >>> from pydantic.json_schema import GenerateJsonSchema
-            >>>
-            >>> class MyGenerator(GenerateJsonSchema):
-            ...     def generate(
-            ...         self,
-            ...         schema: Mapping[str, Any],
-            ...         mode: JsonSchemaMode = "validation"
-            ...     ) -> JsonSchema:
-            ...         json_schema = super().generate(schema, mode=mode)
-            ...         json_schema["x-custom"] = True
-            ...         json_schema["$schema"] = self.schema_dialect
-            ...         return json_schema
-            >>>
-            >>> manager = ModelManager()
-            >>> manager.set_default_schema_generator(MyGenerator)
-            >>>
-            >>> # All subsequent schema calls will use MyGenerator
-            >>> schema = manager.get_schema("User", "1.0.0")
+            ```python
+            from pydantic.json_schema import GenerateJsonSchema
+
+
+            class MyGenerator(GenerateJsonSchema):
+                def generate(
+                    self,
+                    schema: Mapping[str, Any],
+                    mode: JsonSchemaMode = "validation"
+                ) -> JsonSchema:
+                    json_schema = super().generate(schema, mode=mode)
+                    json_schema["x-custom"] = True
+                    json_schema["$schema"] = self.schema_dialect
+                    return json_schema
+
+            manager = ModelManager()
+            manager.set_default_schema_generator(MyGenerator)
+
+            # All subsequent schema calls will use MyGenerator
+            schema = manager.get_schema("User", "1.0.0")
+            ```
+
+            **Callable**:
+
+            ```python
+            def my_generator(model: type[BaseModel]) -> JsonSchema:
+                schema = model.model_json_schema()
+                schema["x-custom"] = True
+                return schema
+
+            manager = ModelManager()
+            manager.set_default_schema_generator(my_generator)
+            ```
         """
         self._schema_manager.set_default_schema_generator(generator)
 
@@ -736,19 +771,21 @@ class ModelManager:
             Decorator function.
 
         Example:
-            >>> @manager.schema_transformer("User", "1.0.0")
-            ... def add_auth_metadata(schema: JsonSchema) -> JsonSchema:
-            ...     schema["x-requires-auth"] = True
-            ...     schema["x-auth-level"] = 'admin'
-            ...     return schema
-            >>>
-            >>> @manager.schema_transformer("Product", "2.0.0")
-            ... def add_product_examples(schema: JsonSchema) -> JsonSchema:
-            ...     schema["examples"] = [
-            ...         {"name": "Widget", "price": 9.99},
-            ...         {"name": "Gadget", "price": 19.99}
-            ...     ]
-            ...     return schema
+            ```python
+            @manager.schema_transformer("User", "1.0.0")
+            def add_auth_metadata(schema: JsonSchema) -> JsonSchema:
+                schema["x-requires-auth"] = True
+                schema["x-auth-level"] = 'admin'
+                return schema
+
+            @manager.schema_transformer("Product", "2.0.0")
+            def add_product_examples(schema: JsonSchema) -> JsonSchema:
+                schema["examples"] = [
+                    {"name": "Widget", "price": 9.99},
+                    {"name": "Gadget", "price": 19.99}
+                ]
+                return schema
+            ```
         """
 
         def decorator(func: SchemaTransformer) -> SchemaTransformer:
@@ -772,8 +809,10 @@ class ModelManager:
             List of transformer functions.
 
         Example:
-            >>> transformers = manager.get_schema_transformers("User", "1.0.0")
-            >>> print(f"Found {len(transformers)} transformers")
+            ```python
+            transformers = manager.get_schema_transformers("User", "1.0.0")
+            print(f"Found {len(transformers)} transformers")
+            ```
         """
         return self._schema_manager.get_transformers(name, version)
 
@@ -789,14 +828,16 @@ class ModelManager:
             version: Optional version. If None, clears all versions of model.
 
         Example:
-            >>> # Clear all transformers
-            >>> manager.clear_schema_transformers()
-            >>>
-            >>> # Clear User transformers
-            >>> manager.clear_schema_transformers("User")
-            >>>
-            >>> # Clear specific version
-            >>> manager.clear_schema_transformers("User", "1.0.0")
+            ```python
+            # Clear all transformers
+            manager.clear_schema_transformers()
+
+            # Clear User transformers
+            manager.clear_schema_transformers("User")
+
+            # Clear specific version
+            manager.clear_schema_transformers("User", "1.0.0")
+            ```
         """
         self._schema_manager.clear_transformers(name, version)
 
@@ -820,15 +861,17 @@ class ModelManager:
             JSON schema dictionary.
 
         Example:
-            >>> # Use default config
-            >>> schema = manager.get_schema("User", "1.0.0")
-            >>>
-            >>> # Override with custom config
-            >>> config = SchemaConfig(mode="serialization")
-            >>> schema = manager.get_schema("User", "1.0.0", config=config)
-            >>>
-            >>> # Quick override with kwargs
-            >>> schema = manager.get_schema("User", "1.0.0", mode="serialization")
+            ```python
+            # Use default config
+            schema = manager.get_schema("User", "1.0.0")
+
+            # Override with custom config
+            config = SchemaConfig(mode="serialization")
+            schema = manager.get_schema("User", "1.0.0", config=config)
+
+            # Quick override with kwargs
+            schema = manager.get_schema("User", "1.0.0", mode="serialization")
+            ```
         """
         return self._schema_manager.get_schema(name, version, config=config, **kwargs)
 
@@ -870,22 +913,24 @@ class ModelManager:
             config: Optional schema configuration for all exported schemas.
 
         Example:
-            >>> # Export with custom generator
-            >>> config = SchemaConfig(
-            ...     schema_generator=CustomGenerator,
-            ...     mode="validation"
-            ... )
-            >>> manager.dump_schemas("schemas/", config=config)
-            >>>
-            >>> # Export validation and serialization schemas separately
-            >>> manager.dump_schemas(
-            ...     "schemas/validation/",
-            ...     config=SchemaConfig(mode="validation")
-            ... )
-            >>> manager.dump_schemas(
-            ...     "schemas/serialization/",
-            ...     config=SchemaConfig(mode="serialization")
-            ... )
+            ```python
+            # Export with custom generator
+            config = SchemaConfig(
+                schema_generator=CustomGenerator,
+                mode="validation"
+            )
+            manager.dump_schemas("schemas/", config=config)
+
+            # Export validation and serialization schemas separately
+            manager.dump_schemas(
+                "schemas/validation/",
+                config=SchemaConfig(mode="validation")
+            )
+            manager.dump_schemas(
+                "schemas/serialization/",
+                config=SchemaConfig(mode="serialization")
+            )
+            ```
         """
         self._schema_manager.dump_schemas(
             output_dir, indent, separate_definitions, ref_template, config=config

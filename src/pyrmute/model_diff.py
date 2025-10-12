@@ -31,9 +31,11 @@ class ModelDiff:
             Formatted markdown string showing the differences.
 
         Example:
-            >>> diff.to_markdown(header_depth=1)  # Default: # Title, ## Sections
-            >>> diff.to_markdown(header_depth=2)  # ## Title, ### Sections
-            >>> diff.to_markdown(header_depth=3)  # ### Title, #### Sections
+            ```python
+            diff.to_markdown(header_depth=1)  # Default: # Title, ## Sections
+            diff.to_markdown(header_depth=2)  # ## Title, ### Sections
+            diff.to_markdown(header_depth=3)  # ### Title, #### Sections
+            ```
         """
         header_depth = max(1, min(6, header_depth))
 

@@ -21,11 +21,13 @@ class MigrationTestCase:
         description: Optional description of what this test case validates.
 
     Example:
-        >>> test_case = MigrationTestCase(
-        ...     source={"name": "Alice"},
-        ...     target={"name": "Alice", "email": "alice@example.com"},
-        ...     description="Adds default email field"
-        ... )
+        ```python
+        test_case = MigrationTestCase(
+            source={"name": "Alice"},
+            target={"name": "Alice", "email": "alice@example.com"},
+            description="Adds default email field"
+        )
+        ```
     """
 
     source: ModelData
@@ -46,12 +48,14 @@ class MigrationTestResult:
         error: Error message if test failed, None if passed.
 
     Example:
-        >>> result = MigrationTestResult(
-        ...     test_case=test_case,
-        ...     actual={"name": "Alice", "email": "alice@example.com"},
-        ...     passed=True,
-        ...     error=None
-        ... )
+        ```python
+        result = MigrationTestResult(
+            test_case=test_case,
+            actual={"name": "Alice", "email": "alice@example.com"},
+            passed=True,
+            error=None
+        )
+        ```
     """
 
     test_case: MigrationTestCase
@@ -85,13 +89,15 @@ class MigrationTestResults:
         results: List of individual test results.
 
     Example:
-        >>> results = MigrationTestResults([result1, result2, result3])
-        >>> if results.all_passed:
-        ...     print("All tests passed!")
-        >>> else:
-        ...     print(f"{len(results.failures)} test(s) failed")
-        ...     for failure in results.failures:
-        ...         print(failure)
+        ```python
+        results = MigrationTestResults([result1, result2, result3])
+        if results.all_passed:
+            print("All tests passed!")
+        else:
+            print(f"{len(results.failures)} test(s) failed")
+            for failure in results.failures:
+                print(failure)
+        ```
     """
 
     def __init__(self: Self, results: list[MigrationTestResult]) -> None:
@@ -127,10 +133,12 @@ class MigrationTestResults:
             AssertionError: If any tests failed, with details about failures.
 
         Example:
-            >>> # Use in pytest
-            >>> def test_user_migration():
-            ...     res = manager.test_migration("User", "1.0.0", "2.0.0", test_cases)
-            ...     res.assert_all_passed()
+            ```python
+            # Use in pytest
+            def test_user_migration():
+                res = manager.test_migration("User", "1.0.0", "2.0.0", test_cases)
+                res.assert_all_passed()
+            ```
         """
         if not self.all_passed:
             messages = [str(f) for f in self.failures]

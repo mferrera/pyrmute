@@ -28,35 +28,42 @@ class SchemaConfig:
         ref_template: Template for JSON schema $ref URIs.
         extra_kwargs: Additional arguments to pass to model_json_schema().
 
-    Example (Callable Generator):
-        >>> def custom_generator(model: type[BaseModel]) -> JsonSchema:
-        ...     schema = model.model_json_schema()
-        ...     schema["x-custom"] = "metadata"
-        ...     return schema
-        >>>
-        >>> config = SchemaConfig(
-        ...     schema_generator=custom_generator,
-        ...     mode="validation"
-        ... )
+    Example:
+        **GenerateJsonSchema Class**:
 
-    Example (GenerateJsonSchema Class):
-        >>> from pydantic.json_schema import GenerateJsonSchema
-        >>>
-        >>> class CustomSchemaGenerator(GenerateJsonSchema):
-        ...     def generate(
-        ...         self,
-        ...         schema: Mapping[str, Any],
-        ...         mode: JsonSchemaMode = "validation"
-        ...     ) -> JsonSchema:
-        ...         json_schema = super().generate(schema, mode=mode)
-        ...         json_schema["x-custom"] = "metadata"
-        ...         return json_schema
-        >>>
-        >>> config = SchemaConfig(
-        ...     schema_generator=CustomSchemaGenerator,
-        ...     mode="validation",
-        ...     by_alias=True
-        ... )
+        ```python
+        from pydantic.json_schema import GenerateJsonSchema
+
+        class CustomSchemaGenerator(GenerateJsonSchema):
+            def generate(
+                self,
+                schema: Mapping[str, Any],
+                mode: JsonSchemaMode = "validation"
+            ) -> JsonSchema:
+                json_schema = super().generate(schema, mode=mode)
+                json_schema["x-custom"] = "metadata"
+                return json_schema
+
+        config = SchemaConfig(
+            schema_generator=CustomSchemaGenerator,
+            mode="validation",
+            by_alias=True
+        )
+        ```
+
+        **Callable Generator**:
+
+        ```python
+        def custom_generator(model: type[BaseModel]) -> JsonSchema:
+            schema = model.model_json_schema()
+            schema["x-custom"] = "metadata"
+            return schema
+
+        config = SchemaConfig(
+            schema_generator=custom_generator,
+            mode="validation"
+        )
+        ```
     """
 
     schema_generator: JsonSchemaGenerator | type[GenerateJsonSchema] | None = None
