@@ -28,7 +28,7 @@ keywords = ["pydantic", "migration", "versioning", "schema"]
 dynamic = ["version"]
 dependencies = ["pydantic"]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "hypothesis",
     "mypy",
