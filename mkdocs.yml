@@ -63,21 +63,24 @@ plugins:
       handlers:
         python:
           options:
+            docstring_section_style: spacy
+            docstring_style: google
             extensions:
               - griffe_typingdoc
-            show_root_heading: true
-            show_if_no_docstring: true
-            inherited_members: true
-            members_order: source
-            separate_signature: true
-            unwrap_annotated: true
             filters:
               - '!^_'
+            inherited_members: true
+            members_order: source
             merge_init_into_class: true
-            docstring_section_style: spacy
-            signature_crossrefs: true
+            separate_signature: true
+            show_docstring_examples: true
+            show_if_no_docstring: true
+            show_root_heading: true
+            show_source: true
             show_symbol_type_heading: true
             show_symbol_type_toc: true
+            signature_crossrefs: true
+            unwrap_annotated: true
 
 markdown_extensions:
   - abbr
@@ -106,3 +109,35 @@ markdown_extensions:
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.snippets
+
+nav:
+- Get Started:
+  - Welcome to pyrmute: index.md
+  - Installation: get-started/install.md
+  - Core Concepts: get-started/core-concepts.md
+  - First Migration: get-started/first-migration.md
+  # - Version Policy: version-policy.md
+  # - Contributing: contributing.md
+  # - Changelog: changelog.md
+- User Guide:
+  - Registering Models: user-guide/registering-models.md
+  - Writing Migrations: user-guide/writing-migrations.md
+  - Testing Migrations: user-guide/testing-migrations.md
+  - Auto-Migrations: user-guide/auto-migrations.md
+  - Nested Models: user-guide/nested-models.md
+  - Batch Processing: user-guide/batch-processing.md
+  - Schema Generation: user-guide/schema-generation.md
+- API Reference:
+  - ModelManager: reference/model-manager.md
+  - ModelVersion: reference/model-version.md
+  - ModelDiff: reference/model-diff.md
+  - Migration Testing: reference/migration-testing.md
+  - Exceptions: reference/exceptions.md
+  - SchemaConfig: reference/schema-config.md
+  - Types: reference/types.md
+- Advanced:
+  - Discriminated Unions: advanced/discriminated-unions.md
+  - Custom Schema Generators: advanced/custom-generators.md
+  - Schema Transformers: advanced/schema-transformers.md
+- Best Practices:
+  - Versoning Strategy: best-practices/versioning-strategy.md
