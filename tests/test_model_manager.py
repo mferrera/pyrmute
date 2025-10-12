@@ -170,6 +170,67 @@ def test_get_latest_model(
     assert model == user_v2
 
 
+# Type-safe migration tests
+def test_migrate_as_returns_correct_type(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_as returns instance of specified type."""
+    result = registered_manager.migrate_as(
+        {"name": "Alice"}, "User", "1.0.0", "2.0.0", user_v2
+    )
+    assert isinstance(result, user_v2)
+    assert result.name == "Alice"  # type: ignore
+    assert result.email == "unknown@example.com"  # type: ignore
+
+
+def test_migrate_as_with_model_versions(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_as with ModelVersion objects."""
+    result = registered_manager.migrate_as(
+        {"name": "Bob"},
+        "User",
+        ModelVersion(1, 0, 0),
+        ModelVersion(2, 0, 0),
+        user_v2,
+    )
+    assert isinstance(result, user_v2)
+    assert result.name == "Bob"  # type: ignore
+
+
+def test_migrate_as_validates_data(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_as validates data against target type."""
+
+    @registered_manager.migration("User", "1.0.0", "2.0.0")
+    def bad_migration(data: ModelData) -> ModelData:
+        return {"name": data["name"]}  # Missing required 'email'
+
+    with pytest.raises(ValidationError):
+        registered_manager.migrate_as(
+            {"name": "Invalid"}, "User", "1.0.0", "2.0.0", user_v2
+        )
+
+
+def test_migrate_as_consistency_with_migrate(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_as produces same result as migrate."""
+    data = {"name": "Consistency"}
+
+    result_migrate = registered_manager.migrate(data, "User", "1.0.0", "2.0.0")
+    result_migrate_as = registered_manager.migrate_as(
+        data, "User", "1.0.0", "2.0.0", user_v2
+    )
+
+    assert result_migrate.model_dump() == result_migrate_as.model_dump()
+
+
 # Migration data tests
 def test_migrate_data_returns_dict(
     registered_manager: ModelManager,
@@ -366,6 +427,128 @@ def test_migrate_batch_stops_on_first_validation_error(
 
     with pytest.raises(ValidationError):
         registered_manager.migrate_batch(data, "User", "1.0.0", "2.0.0")
+
+
+# Type-safe batch migration tests
+def test_migrate_batch_as_empty_list(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_batch_as with empty list returns empty list."""
+    result = registered_manager.migrate_batch_as([], "User", "1.0.0", "2.0.0", user_v2)
+    assert result == []
+
+
+def test_migrate_batch_as_single_item(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_batch_as with single item."""
+    result = registered_manager.migrate_batch_as(
+        [{"name": "Alice"}],
+        "User",
+        "1.0.0",
+        "2.0.0",
+        user_v2,
+    )
+    assert len(result) == 1
+    assert isinstance(result[0], user_v2)
+    assert result[0].name == "Alice"  # type: ignore
+
+
+def test_migrate_batch_as_multiple_items(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_batch_as with multiple items."""
+    data = [
+        {"name": "Alice"},
+        {"name": "Bob"},
+        {"name": "Charlie"},
+    ]
+    result = registered_manager.migrate_batch_as(
+        data, "User", "1.0.0", "2.0.0", user_v2
+    )
+    assert len(result) == 3  # noqa: PLR2004
+    assert all(isinstance(item, user_v2) for item in result)
+    assert result[0].name == "Alice"  # type: ignore
+    assert result[1].name == "Bob"  # type: ignore
+    assert result[2].name == "Charlie"  # type: ignore
+
+
+def test_migrate_batch_as_parallel(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_batch_as with parallel processing."""
+    data = [{"name": f"User{i}"} for i in range(5)]
+    result = registered_manager.migrate_batch_as(
+        data,
+        "User",
+        "1.0.0",
+        "2.0.0",
+        user_v2,
+        parallel=True,
+    )
+    assert len(result) == 5  # noqa: PLR2004
+    assert all(isinstance(item, user_v2) for item in result)
+
+
+def test_migrate_batch_as_parallel_with_max_workers(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_batch_as with parallel and max_workers."""
+    data = [{"name": f"User{i}"} for i in range(10)]
+    result = registered_manager.migrate_batch_as(
+        data,
+        "User",
+        "1.0.0",
+        "2.0.0",
+        user_v2,
+        parallel=True,
+        max_workers=2,
+    )
+    assert len(result) == 10  # noqa: PLR2004
+    assert all(isinstance(item, user_v2) for item in result)
+
+
+def test_migrate_batch_as_parallel_with_processes(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_batch_as with process-based parallelism."""
+    data = [{"name": f"User{i}"} for i in range(5)]
+    result = registered_manager.migrate_batch_as(
+        data,
+        "User",
+        "1.0.0",
+        "2.0.0",
+        user_v2,
+        parallel=True,
+        use_processes=True,
+    )
+    assert len(result) == 5  # noqa: PLR2004
+    assert all(isinstance(item, user_v2) for item in result)
+
+
+def test_migrate_batch_as_consistency_with_migrate_batch(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_batch_as produces same results as migrate_batch."""
+    data = [{"name": "Alice"}, {"name": "Bob"}]
+
+    result_migrate_batch = registered_manager.migrate_batch(
+        data, "User", "1.0.0", "2.0.0"
+    )
+    result_migrate_batch_as = registered_manager.migrate_batch_as(
+        data, "User", "1.0.0", "2.0.0", user_v2
+    )
+
+    assert len(result_migrate_batch) == len(result_migrate_batch_as)
+    for item1, item2 in zip(result_migrate_batch, result_migrate_batch_as, strict=True):
+        assert item1.model_dump() == item2.model_dump()
 
 
 # Parallel migration tests
@@ -891,6 +1074,127 @@ def test_migrate_batch_streaming_and_data_streaming_consistency(
     assert len(dict_results) == len(model_results)
     for dict_result, model_result in zip(dict_results, model_results, strict=False):
         assert model_result.model_dump() == dict_result
+
+
+# Type-safe streaming migration tests
+def test_migrate_batch_streaming_as_empty_list(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_batch_streaming_as with empty list."""
+    result = list(
+        registered_manager.migrate_batch_streaming_as(
+            [], "User", "1.0.0", "2.0.0", user_v2
+        )
+    )
+    assert result == []
+
+
+def test_migrate_batch_streaming_as_single_chunk(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_batch_streaming_as with data smaller than chunk size."""
+    data = [{"name": f"User{i}"} for i in range(5)]
+    result = list(
+        registered_manager.migrate_batch_streaming_as(
+            data,
+            "User",
+            "1.0.0",
+            "2.0.0",
+            user_v2,
+            chunk_size=10,
+        )
+    )
+    assert len(result) == 5  # noqa: PLR2004
+    assert all(isinstance(item, user_v2) for item in result)
+
+
+def test_migrate_batch_streaming_as_multiple_chunks(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test migrate_batch_streaming_as with multiple chunks."""
+    data = [{"name": f"User{i}"} for i in range(25)]
+    result = list(
+        registered_manager.migrate_batch_streaming_as(
+            data,
+            "User",
+            "1.0.0",
+            "2.0.0",
+            user_v2,
+            chunk_size=10,
+        )
+    )
+    assert len(result) == 25  # noqa: PLR2004
+    assert all(isinstance(item, user_v2) for item in result)
+
+
+def test_migrate_batch_streaming_as_preserves_order(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test that streaming_as migration preserves input order."""
+    data = [{"name": f"User{i}"} for i in range(30)]
+    result = list(
+        registered_manager.migrate_batch_streaming_as(
+            data,
+            "User",
+            "1.0.0",
+            "2.0.0",
+            user_v2,
+            chunk_size=10,
+        )
+    )
+    for i, item in enumerate(result):
+        assert item.name == f"User{i}"  # type: ignore
+
+
+def test_migrate_batch_streaming_as_with_generator(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test streaming_as with generator input."""
+
+    def data_generator() -> Iterable[dict[str, str]]:
+        for i in range(15):
+            yield {"name": f"User{i}"}
+
+    result = list(
+        registered_manager.migrate_batch_streaming_as(
+            data_generator(),
+            "User",
+            "1.0.0",
+            "2.0.0",
+            user_v2,
+            chunk_size=5,
+        )
+    )
+    assert len(result) == 15  # noqa: PLR2004
+    assert all(isinstance(item, user_v2) for item in result)
+
+
+def test_migrate_batch_streaming_as_consistency_with_streaming(
+    registered_manager: ModelManager,
+    user_v2: type[BaseModel],
+) -> None:
+    """Test consistency between streaming_as and streaming variants."""
+    data = [{"name": f"User{i}"} for i in range(10)]
+
+    result_streaming = list(
+        registered_manager.migrate_batch_streaming(
+            data, "User", "1.0.0", "2.0.0", chunk_size=3
+        )
+    )
+    result_streaming_as = list(
+        registered_manager.migrate_batch_streaming_as(
+            data, "User", "1.0.0", "2.0.0", user_v2, chunk_size=3
+        )
+    )
+
+    assert len(result_streaming) == len(result_streaming_as)
+    for item1, item2 in zip(result_streaming, result_streaming_as, strict=True):
+        assert item1.model_dump() == item2.model_dump()
 
 
 # Migration tests
