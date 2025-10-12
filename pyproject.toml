@@ -38,6 +38,12 @@ dev = [
     "pytest-xdist",
     "ruff",
 ]
+docs = [
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+    "griffe-typingdoc",
+]
 
 [project.urls]
 Homepage = "https://github.com/mferrera/pyrmute"
