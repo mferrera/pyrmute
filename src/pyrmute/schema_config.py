@@ -81,9 +81,11 @@ class SchemaConfig:
             schema_generator=other.schema_generator or self.schema_generator,
             mode=other.mode if other.mode != "validation" else self.mode,
             by_alias=other.by_alias if not other.by_alias else self.by_alias,
-            ref_template=other.ref_template
-            if other.ref_template != "#/$defs/{model}"
-            else self.ref_template,
+            ref_template=(
+                other.ref_template
+                if other.ref_template != "#/$defs/{model}"
+                else self.ref_template
+            ),
             extra_kwargs={**self.extra_kwargs, **other.extra_kwargs},
         )
 
