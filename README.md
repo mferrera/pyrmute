@@ -25,6 +25,9 @@ make changes without breaking your production systems. Version your models,
 define transformations, and let pyrmute automatically migrate legacy data
 through multiple versions.
 
+pyrmute is to Pydantic models what Alembic is to SQLAlchemy. It offers a
+structured, composable way to evolve and migrate schemas across versions.
+
 **Key Features**
 
 - **Version your models** - Track schema evolution with semantic versioning
