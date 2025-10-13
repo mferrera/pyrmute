@@ -29,13 +29,15 @@ through multiple versions.
 
 - **Version your models** - Track schema evolution with semantic versioning
 - **Automatic migration chains** - Transform data across multiple versions
-  (1.0.0 → 2.0.0 → 3.0.0) in a single call
+    (1.0.0 → 2.0.0 → 3.0.0) in a single call
 - **Type-safe transformations** - Migrations return validated Pydantic models,
-  catching errors before they reach production
+    catching errors before they reach production
+- **Migration hooks** - Observe migrations with built-in metrics tracking or
+    custom hooks for logging, monitoring, and validation
 - **Flexible schema export** - Generate JSON schemas for all versions with
-  support for `$ref`, custom generators, and nested models
+    support for `$ref`, custom generators, and nested models
 - **Production-ready** - Batch processing, parallel execution, and streaming
-  support for large datasets
+    support for large datasets
 - **Only one dependency** - Pydantic
 
 ## When to Use pyrmute
@@ -43,19 +45,19 @@ through multiple versions.
 pyrmute is useful for handling schema evolution in production systems:
 
 - **Configuration files** - Upgrade user config files as your CLI/desktop app
-  evolves (`.apprc`, `config.json`, `settings.yaml`)
+    evolves (`.apprc`, `config.json`, `settings.yaml`)
 - **Message queues & event streams** - Handle messages from multiple service
-  versions publishing different schemas (Kafka, RabbitMQ, SQS)
+    versions publishing different schemas (Kafka, RabbitMQ, SQS)
 - **ETL & data imports** - Import CSV/JSON/Excel files exported over years
-  with evolving structures
+    with evolving structures
 - **ML model serving** - Manage feature schema evolution across model versions
-  and A/B tests
+    and A/B tests
 - **API versioning** - Support multiple API versions with automatic
-  request/response migration
+    request/response migration
 - **Database migrations** - Transparently migrate legacy data on read without
-  downtime
+    downtime
 - **Data archival** - Process historical data dumps with various schema
-  versions
+    versions
 
 See the [examples/](examples/) directory for complete, runnable code
 demonstrating these patterns.
@@ -65,15 +67,15 @@ demonstrating these patterns.
 pyrmute may not be the right choice if you have:
 
 - **High-throughput systems** - Runtime migration adds latency to hot paths.
-  Use upfront batch migrations instead.
+    Use upfront batch migrations instead.
 - **Multi-language services** - Python-only. Use Protobuf, Avro, or JSON
-  Schema for polyglot architectures.
+    Schema for polyglot architectures.
 - **Existing schema registries** - Already using Confluent/AWS Glue? Stick
-  with them for compatibility enforcement and governance.
+    with them for compatibility enforcement and governance.
 - **Stable schemas** - Models rarely change? Traditional migration tools are
-  simpler and more maintainable.
+    simpler and more maintainable.
 - **Database DDL changes** - pyrmute transforms data, not database schemas.
-  Alembic/Flyway or other ORMs may still be needed to alter tables.
+    Alembic/Flyway or other ORMs may still be needed to alter tables.
 
 ## Help
 
@@ -351,6 +353,59 @@ config = manager.migrate({"timeout": 60}, "Config", "1.0.0", "2.0.0")
 # ConfigV2(timeout=60, retries=3)
 ```
 
+### Migration Hooks
+
+```python
+from pyrmute import MetricsHook
+
+# Track migration performance and success rates
+metrics = MetricsHook()
+manager.add_hook(metrics)
+
+# Hooks observe migrations without modifying data
+users = manager.migrate_batch(legacy_users, "User", "1.0.0", "3.0.0")
+
+print(f"Migrations: {metrics.total_count}")
+print(f"Success rate: {metrics.success_rate:.1%}")
+print(f"Per model: {metrics.migrations_by_model}")
+
+
+# Create custom hooks for logging, monitoring, auditing
+class LoggingHook(MigrationHook):
+
+    def before_migrate(
+        self,
+        name: str,
+        from_version: ModelVersion,
+        to_version: ModelVersion,
+        data: Mapping[str, Any],
+    ) -> None:
+        logger.info(f"Migrating {name} {from_version} → {to_version}")
+
+    def after_migrate(
+        self,
+        name: str,
+        from_version: ModelVersion,
+        to_version: ModelVersion,
+        original_data: Mapping[str, Any],
+        migrated_data: Mapping[str, Any],
+    ) -> None:
+        logger.info(f"Migration completed successfully")
+
+    def on_error(
+        self,
+        name: str,
+        from_version: ModelVersion,
+        to_version: ModelVersion,
+        data: Mapping[str, Any],
+        error: Exception,
+    ) -> None:
+        logger.error(f"Migration failed: {error}")
+
+
+manager.add_hook(LoggingHook())
+```
+
 ## Real-World Examples
 
 ### Configuration File Evolution
@@ -483,13 +538,14 @@ class InferenceService:
 ```
 
 See [examples/](examples/) for complete runnable code:
+
 - `config_file_migration.py` - CLI/desktop app config file evolution
 - `message_queue_consumer.py` - Kafka/RabbitMQ/SQS consumer handling multiple
-  schemas
+    schemas
 - `etl_data_import.py` - CSV/JSON/Excel import pipeline with historical data
 - `ml_inference_pipeline.py` - ML model serving with feature evolution
 - `advanced_features.py` - Complex Pydantic features (unions, nested models,
-  validators)
+    validators)
 
 ## Contributing
 

@@ -52,7 +52,7 @@ repo_url: https://github.com/mferrera/pyrmute
 edit_uri: edit/main/docs/
 
 watch:
-  - src/
+  - src
 
 validation:
   omitted_files: warn
@@ -135,11 +135,13 @@ nav:
   - ModelVersion: reference/model-version.md
   - ModelDiff: reference/model-diff.md
   - Migration Testing: reference/migration-testing.md
+  - Migration Hooks: reference/migration-hooks.md
   - Exceptions: reference/exceptions.md
   - SchemaConfig: reference/schema-config.md
   - Types: reference/types.md
 - Advanced:
   - Discriminated Unions: advanced/discriminated-unions.md
+  - Migration Hooks: advanced/migration-hooks.md
   - Custom Schema Generators: advanced/custom-generators.md
   - Schema Transformers: advanced/schema-transformers.md
 - Best Practices:

@@ -1,5 +1,6 @@
 """Tests MigrationManager."""
 
+from collections.abc import Mapping
 from typing import Annotated, Any, Literal, Union, get_origin
 
 import pytest
@@ -9,6 +10,7 @@ from pydantic_core import PydanticUndefined
 
 from pyrmute import (
     MigrationError,
+    MigrationHook,
     ModelData,
     ModelManager,
     ModelNotFoundError,
@@ -3314,3 +3316,527 @@ def test_complex_nested_discriminated_union_migration(
     dog = result["inventory"][1]
     assert dog["petType"] == "dog"
     assert dog["collarColor"] == "blue"
+
+
+class TrackingHook(MigrationHook):
+    """Hook that tracks all method calls."""
+
+    def __init__(self) -> None:
+        """Initialize tracking lists."""
+        self.before_calls: list[tuple[str, ModelVersion, ModelVersion]] = []
+        self.after_calls: list[tuple[str, ModelVersion, ModelVersion]] = []
+        self.error_calls: list[tuple[str, ModelVersion, ModelVersion]] = []
+
+    def before_migrate(
+        self,
+        name: str,
+        from_version: ModelVersion,
+        to_version: ModelVersion,
+        data: Mapping[str, Any],
+    ) -> None:
+        """Track before_migrate call."""
+        self.before_calls.append((name, from_version, to_version))
+
+    def after_migrate(
+        self,
+        name: str,
+        from_version: ModelVersion,
+        to_version: ModelVersion,
+        original_data: Mapping[str, Any],
+        migrated_data: Mapping[str, Any],
+    ) -> None:
+        """Track after_migrate call."""
+        self.after_calls.append((name, from_version, to_version))
+
+    def on_error(
+        self,
+        name: str,
+        from_version: ModelVersion,
+        to_version: ModelVersion,
+        data: Mapping[str, Any],
+        error: Exception,
+    ) -> None:
+        """Track on_error call."""
+        self.error_calls.append((name, from_version, to_version))
+
+
+@pytest.fixture
+def registry() -> Registry:
+    """Create a registry for testing."""
+    return Registry()
+
+
+@pytest.fixture
+def migration_manager(registry: Registry) -> MigrationManager:
+    """Create a migration manager for testing."""
+    return MigrationManager(registry)
+
+
+# Hook management tests
+def test_migration_manager_initializes_with_empty_hooks(
+    migration_manager: MigrationManager,
+) -> None:
+    """Test MigrationManager initializes with empty hooks list."""
+    assert migration_manager._hooks == []
+
+
+def test_migration_manager_add_hook(migration_manager: MigrationManager) -> None:
+    """Test adding a hook to MigrationManager."""
+    hook = TrackingHook()
+    migration_manager.add_hook(hook)
+
+    assert len(migration_manager._hooks) == 1
+    assert migration_manager._hooks[0] is hook
+
+
+def test_migration_manager_add_multiple_hooks(
+    migration_manager: MigrationManager,
+) -> None:
+    """Test adding multiple hooks."""
+    hook1 = TrackingHook()
+    hook2 = TrackingHook()
+    hook3 = TrackingHook()
+
+    migration_manager.add_hook(hook1)
+    migration_manager.add_hook(hook2)
+    migration_manager.add_hook(hook3)
+
+    assert len(migration_manager._hooks) == 3  # noqa: PLR2004
+    assert migration_manager._hooks[0] is hook1
+    assert migration_manager._hooks[1] is hook2
+    assert migration_manager._hooks[2] is hook3
+
+
+def test_migration_manager_remove_hook(migration_manager: MigrationManager) -> None:
+    """Test removing a hook from MigrationManager."""
+    hook1 = TrackingHook()
+    hook2 = TrackingHook()
+
+    migration_manager.add_hook(hook1)
+    migration_manager.add_hook(hook2)
+    migration_manager.remove_hook(hook1)
+
+    assert len(migration_manager._hooks) == 1
+    assert migration_manager._hooks[0] is hook2
+
+
+def test_migration_manager_remove_hook_not_present(
+    migration_manager: MigrationManager,
+) -> None:
+    """Test removing a hook that wasn't added does nothing."""
+    hook1 = TrackingHook()
+    hook2 = TrackingHook()
+
+    migration_manager.add_hook(hook1)
+    migration_manager.remove_hook(hook2)  # Not present
+
+    assert len(migration_manager._hooks) == 1
+    assert migration_manager._hooks[0] is hook1
+
+
+def test_migration_manager_clear_hooks(migration_manager: MigrationManager) -> None:
+    """Test clearing all hooks."""
+    hook1 = TrackingHook()
+    hook2 = TrackingHook()
+
+    migration_manager.add_hook(hook1)
+    migration_manager.add_hook(hook2)
+    migration_manager.clear_hooks()
+
+    assert migration_manager._hooks == []
+
+
+def test_migration_manager_clear_hooks_when_empty(
+    migration_manager: MigrationManager,
+) -> None:
+    """Test clearing hooks when none are registered."""
+    migration_manager.clear_hooks()
+    assert migration_manager._hooks == []
+
+
+# Hook execution tests
+def test_migration_manager_calls_before_hook(
+    registry: Registry, migration_manager: MigrationManager
+) -> None:
+    """Test before_migrate hook is called during migration."""
+    hook = TrackingHook()
+    migration_manager.add_hook(hook)
+
+    # Register models
+    @registry.register("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @registry.register("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    # Register migration
+    @migration_manager.register_migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    # Migrate
+    migration_manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+
+    assert len(hook.before_calls) == 1
+    name, from_v, to_v = hook.before_calls[0]
+    assert name == "User"
+    assert from_v == ModelVersion(1, 0, 0)
+    assert to_v == ModelVersion(2, 0, 0)
+
+
+def test_migration_manager_calls_after_hook(
+    registry: Registry, migration_manager: MigrationManager
+) -> None:
+    """Test after_migrate hook is called after successful migration."""
+    hook = TrackingHook()
+    migration_manager.add_hook(hook)
+
+    @registry.register("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @registry.register("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @migration_manager.register_migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    migration_manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+
+    assert len(hook.after_calls) == 1
+    name, from_v, to_v = hook.after_calls[0]
+    assert name == "User"
+    assert from_v == ModelVersion(1, 0, 0)
+    assert to_v == ModelVersion(2, 0, 0)
+
+
+def test_migration_manager_calls_error_hook(
+    registry: Registry, migration_manager: MigrationManager
+) -> None:
+    """Test on_error hook is called when migration fails."""
+    hook = TrackingHook()
+    migration_manager.add_hook(hook)
+
+    @registry.register("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @registry.register("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @migration_manager.register_migration("User", "1.0.0", "2.0.0")
+    def bad_migrate(data: ModelData) -> ModelData:
+        raise ValueError("Migration failed")
+
+    with pytest.raises(Exception):  # noqa: B017
+        migration_manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+
+    assert len(hook.error_calls) == 1
+    assert len(hook.after_calls) == 0  # After hook should not be called
+
+
+def test_migration_manager_hooks_called_in_order(
+    registry: Registry, migration_manager: MigrationManager
+) -> None:
+    """Test hooks are called in the order they were added."""
+
+    class OrderHook(MigrationHook):
+        def __init__(self, order_list: list[int], hook_id: int) -> None:
+            self.order_list = order_list
+            self.hook_id = hook_id
+
+        def before_migrate(
+            self,
+            name: str,
+            from_version: ModelVersion,
+            to_version: ModelVersion,
+            data: Mapping[str, Any],
+        ) -> None:
+            self.order_list.append(self.hook_id)
+
+    order: list[int] = []
+    hook1 = OrderHook(order, 1)
+    hook2 = OrderHook(order, 2)
+    hook3 = OrderHook(order, 3)
+
+    migration_manager.add_hook(hook1)
+    migration_manager.add_hook(hook2)
+    migration_manager.add_hook(hook3)
+
+    @registry.register("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @registry.register("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @migration_manager.register_migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    migration_manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+
+    assert order == [1, 2, 3]
+
+
+def test_migration_manager_no_hooks_called_for_same_version(
+    registry: Registry, migration_manager: MigrationManager
+) -> None:
+    """Test hooks are not called when from and to versions are the same."""
+    hook = TrackingHook()
+    migration_manager.add_hook(hook)
+
+    @registry.register("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    result = migration_manager.migrate({"name": "Alice"}, "User", "1.0.0", "1.0.0")
+
+    assert len(hook.before_calls) == 0
+    assert len(hook.after_calls) == 0
+    assert len(hook.error_calls) == 0
+    assert result == {"name": "Alice"}
+
+
+def test_migration_manager_hooks_with_chained_migrations(
+    registry: Registry, migration_manager: MigrationManager
+) -> None:
+    """Test hooks are called once for entire migration chain."""
+    hook = TrackingHook()
+    migration_manager.add_hook(hook)
+
+    @registry.register("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @registry.register("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @registry.register("User", "3.0.0")
+    class UserV3(BaseModel):
+        name: str
+        email: str
+        age: int
+
+    @migration_manager.register_migration("User", "1.0.0", "2.0.0")
+    def migrate_1_to_2(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    @migration_manager.register_migration("User", "2.0.0", "3.0.0")
+    def migrate_2_to_3(data: ModelData) -> ModelData:
+        return {**data, "age": 25}
+
+    migration_manager.migrate({"name": "Alice"}, "User", "1.0.0", "3.0.0")
+
+    # Hooks called once for the entire migration, not per step
+    assert len(hook.before_calls) == 1
+    assert len(hook.after_calls) == 1
+    assert hook.before_calls[0] == (
+        "User",
+        ModelVersion(1, 0, 0),
+        ModelVersion(3, 0, 0),
+    )
+    assert hook.after_calls[0] == ("User", ModelVersion(1, 0, 0), ModelVersion(3, 0, 0))
+
+
+def test_migration_manager_hook_receives_original_and_migrated_data(
+    registry: Registry, migration_manager: MigrationManager
+) -> None:
+    """Test after_migrate hook receives both original and migrated data."""
+
+    class DataCapturingHook(MigrationHook):
+        def __init__(self) -> None:
+            self.original: Mapping[str, Any] | None = None
+            self.migrated: Mapping[str, Any] | None = None
+
+        def after_migrate(
+            self,
+            name: str,
+            from_version: ModelVersion,
+            to_version: ModelVersion,
+            original_data: Mapping[str, Any],
+            migrated_data: Mapping[str, Any],
+        ) -> None:
+            self.original = dict(original_data)
+            self.migrated = dict(migrated_data)
+
+    hook = DataCapturingHook()
+    migration_manager.add_hook(hook)
+
+    @registry.register("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @registry.register("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @migration_manager.register_migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "alice@example.com"}
+
+    migration_manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+
+    assert hook.original == {"name": "Alice"}
+    assert hook.migrated == {"name": "Alice", "email": "alice@example.com"}
+
+
+def test_migration_manager_hook_error_receives_correct_data(
+    registry: Registry, migration_manager: MigrationManager
+) -> None:
+    """Test on_error hook receives correct error information."""
+
+    class ErrorCapturingHook(MigrationHook):
+        def __init__(self) -> None:
+            self.error: Exception | None = None
+            self.data: Mapping[str, Any] | None = None
+
+        def on_error(
+            self,
+            name: str,
+            from_version: ModelVersion,
+            to_version: ModelVersion,
+            data: Mapping[str, Any],
+            error: Exception,
+        ) -> None:
+            self.data = dict(data)
+            self.error = error
+
+    hook = ErrorCapturingHook()
+    migration_manager.add_hook(hook)
+
+    @registry.register("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @registry.register("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @migration_manager.register_migration("User", "1.0.0", "2.0.0")
+    def bad_migrate(data: ModelData) -> ModelData:
+        raise ValueError("Test error message")
+
+    with pytest.raises(MigrationError):
+        migration_manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+
+    assert hook.data == {"name": "Alice"}
+    assert isinstance(hook.error, MigrationError)
+    assert str(hook.error) == (
+        "Migration failed for 'User': 1.0.0 → 2.0.0\n"
+        "Reason: Migration function raised: ValueError: Test error message"
+    )
+
+
+def test_migration_manager_hook_exception_propagates(
+    registry: Registry, migration_manager: MigrationManager
+) -> None:
+    """Test that exceptions are still raised after error hook is called."""
+    hook = TrackingHook()
+    migration_manager.add_hook(hook)
+
+    @registry.register("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @registry.register("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @migration_manager.register_migration("User", "1.0.0", "2.0.0")
+    def bad_migrate(data: ModelData) -> ModelData:
+        raise ValueError("Migration failed")
+
+    with pytest.raises(MigrationError):
+        migration_manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+
+    assert len(hook.error_calls) == 1
+
+
+def test_migration_manager_hook_can_raise_in_after_migrate(
+    registry: Registry, migration_manager: MigrationManager
+) -> None:
+    """Test that hooks can raise exceptions for validation."""
+
+    class ValidatingHook(MigrationHook):
+        def after_migrate(
+            self,
+            name: str,
+            from_version: ModelVersion,
+            to_version: ModelVersion,
+            original_data: Mapping[str, Any],
+            migrated_data: Mapping[str, Any],
+        ) -> None:
+            if "email" not in migrated_data:
+                raise ValueError("Email is required")
+
+    hook = ValidatingHook()
+    migration_manager.add_hook(hook)
+
+    @registry.register("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @registry.register("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @migration_manager.register_migration("User", "1.0.0", "2.0.0")
+    def bad_migrate(data: ModelData) -> ModelData:
+        # Forget to add email
+        return data
+
+    with pytest.raises(ValueError, match="Email is required"):
+        migration_manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+
+
+def test_migration_manager_multiple_hooks_all_called(
+    registry: Registry, migration_manager: MigrationManager
+) -> None:
+    """Test that all registered hooks are called."""
+    hook1 = TrackingHook()
+    hook2 = TrackingHook()
+    hook3 = TrackingHook()
+
+    migration_manager.add_hook(hook1)
+    migration_manager.add_hook(hook2)
+    migration_manager.add_hook(hook3)
+
+    @registry.register("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @registry.register("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @migration_manager.register_migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    migration_manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+
+    assert len(hook1.before_calls) == 1
+    assert len(hook2.before_calls) == 1
+    assert len(hook3.before_calls) == 1
+
+    assert len(hook1.after_calls) == 1
+    assert len(hook2.after_calls) == 1
+    assert len(hook3.after_calls) == 1

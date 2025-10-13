@@ -1,7 +1,7 @@
 # Migration Testing
 
 Here's the reference information for the migration testing classes, with all
-its parameters, attributes and methods.
+their parameters, attributes and methods.
 
 You can import these classes directly from `pyrmute`:
 

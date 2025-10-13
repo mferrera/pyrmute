@@ -12,6 +12,7 @@ from ._migration_manager import MigrationManager
 from ._registry import Registry
 from ._schema_manager import SchemaManager
 from .exceptions import MigrationError, ModelNotFoundError
+from .migration_hooks import MigrationHook
 from .migration_testing import (
     MigrationTestCase,
     MigrationTestCases,
@@ -226,6 +227,50 @@ class ModelManager:
         return self._migration_manager.register_migration(
             name, from_version, to_version
         )
+
+    def add_hook(self: Self, hook: MigrationHook) -> None:
+        """Register a migration hook for observability/logging.
+
+        Args:
+            hook: Migration hook instance to register.
+
+        Example:
+            ```python
+            from pyrmute import MetricsHook, MigrationHook
+            import logging
+
+            # Use built-in metrics hook
+            metrics = MetricsHook()
+            manager.add_hook(metrics)
+
+            # Add custom logging hook
+            class LoggingHook(MigrationHook):
+                def before_migrate(
+                    self,
+                    name: str,
+                    from_version: ModelVersion,
+                    to_version: ModelVersion,
+                    data: Mapping[str, Any],
+                ) -> None:
+                    logging.info(f"Starting migration: {name}")
+                    return data
+
+            manager.add_hook(LoggingHook())
+            ```
+        """
+        self._migration_manager.add_hook(hook)
+
+    def remove_hook(self: Self, hook: MigrationHook) -> None:
+        """Remove a previously registered hook.
+
+        Args:
+            hook: Migration hook instance to remove.
+        """
+        self._migration_manager.remove_hook(hook)
+
+    def clear_hooks(self: Self) -> None:
+        """Remove all registered hooks."""
+        self._migration_manager.clear_hooks()
 
     def get(self: Self, name: str, version: str | ModelVersion) -> type[BaseModel]:
         """Get a model by name and version.
