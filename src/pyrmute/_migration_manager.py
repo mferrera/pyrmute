@@ -11,6 +11,7 @@ from pydantic_core import PydanticUndefined
 
 from ._registry import Registry
 from .exceptions import MigrationError, ModelNotFoundError
+from .migration_hooks import MigrationHook
 from .model_version import ModelVersion
 from .types import MigrationFunc, ModelData, ModelName
 
@@ -32,6 +33,7 @@ class MigrationManager:
             registry: Registry instance to use.
         """
         self.registry = registry
+        self._hooks: list[MigrationHook] = []
 
     def register_migration(
         self: Self,
@@ -64,6 +66,56 @@ class MigrationManager:
 
         return decorator
 
+    def add_hook(self, hook: MigrationHook) -> None:
+        """Register a migration hook."""
+        self._hooks.append(hook)
+
+    def remove_hook(self, hook: MigrationHook) -> None:
+        """Remove a previously registered hook."""
+        if hook in self._hooks:
+            self._hooks.remove(hook)
+
+    def clear_hooks(self) -> None:
+        """Remove all registered hooks."""
+        self._hooks.clear()
+
+    def _run_before_hooks(
+        self: Self,
+        name: str,
+        from_version: ModelVersion,
+        to_version: ModelVersion,
+        data: ModelData,
+    ) -> None:
+        """Run all before_migrate hooks (read-only observation)."""
+        for hook in self._hooks:
+            hook.before_migrate(name, from_version, to_version, data)
+
+    def _run_after_hooks(
+        self: Self,
+        name: str,
+        from_version: ModelVersion,
+        to_version: ModelVersion,
+        original_data: ModelData,
+        migrated_data: ModelData,
+    ) -> None:
+        """Run all after_migrate hooks (read-only observation)."""
+        for hook in self._hooks:
+            hook.after_migrate(
+                name, from_version, to_version, original_data, migrated_data
+            )
+
+    def _run_error_hooks(
+        self: Self,
+        name: str,
+        from_version: ModelVersion,
+        to_version: ModelVersion,
+        data: ModelData,
+        error: Exception,
+    ) -> None:
+        """Run all on_error hooks."""
+        for hook in self._hooks:
+            hook.on_error(name, from_version, to_version, data, error)
+
     def migrate(
         self: Self,
         data: ModelData,
@@ -92,8 +144,18 @@ class MigrationManager:
         if from_ver == to_ver:
             return data
 
-        path = self.find_migration_path(name, from_ver, to_ver)
-        return self._execute_migration_path(data, name, path)
+        self._run_before_hooks(name, from_ver, to_ver, data)
+
+        try:
+            path = self.find_migration_path(name, from_ver, to_ver)
+            migrated_data = self._execute_migration_path(data, name, path)
+
+            self._run_after_hooks(name, from_ver, to_ver, data, migrated_data)
+            return migrated_data
+
+        except Exception as e:
+            self._run_error_hooks(name, from_ver, to_ver, data, e)
+            raise
 
     def find_migration_path(
         self: Self,

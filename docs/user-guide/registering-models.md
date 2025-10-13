@@ -715,6 +715,8 @@ Now that you understand model registration:
     models
 - [Discriminated Unions](../advanced/discriminated-unions.md) - Register
     polymorphic model types
+- [Migration Hooks](../advanced/migration-hooks.md) - Register
+    before, after, and on error migration hooks for observability
 
 **API Reference:**
 

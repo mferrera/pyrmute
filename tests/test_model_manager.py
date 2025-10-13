@@ -12,6 +12,7 @@ from pydantic.json_schema import GenerateJsonSchema
 from pyrmute import (
     JsonSchema,
     JsonSchemaMode,
+    MigrationHook,
     MigrationTestCase,
     ModelData,
     ModelManager,
@@ -3385,3 +3386,313 @@ def test_callable_generator_and_transformer(manager: ModelManager) -> None:
 
     assert schema["x-simple"] is True
     assert schema["x-transformed"] is True
+
+
+def test_hook_can_read_data_with_get(manager: ModelManager) -> None:
+    """Test hook can use .get() method on data."""
+
+    class GetTestHook(MigrationHook):
+        def __init__(self) -> None:
+            self.name_value: str | None = None
+            self.missing_value: str | None = None
+
+        def before_migrate(
+            self,
+            name: str,
+            from_version: ModelVersion,
+            to_version: ModelVersion,
+            data: Mapping[str, Any],
+        ) -> None:
+            self.name_value = data.get("name")
+            self.missing_value = data.get("missing", "default")
+
+    hook = GetTestHook()
+    manager.add_hook(hook)
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+
+    assert hook.name_value == "Alice"
+    assert hook.missing_value == "default"
+
+
+def test_hook_can_check_key_membership(manager: ModelManager) -> None:
+    """Test hook can use 'in' operator on data."""
+
+    class MembershipTestHook(MigrationHook):
+        def __init__(self) -> None:
+            self.has_name: bool = False
+            self.has_email: bool = False
+
+        def before_migrate(
+            self,
+            name: str,
+            from_version: ModelVersion,
+            to_version: ModelVersion,
+            data: Mapping[str, Any],
+        ) -> None:
+            self.has_name = "name" in data
+            self.has_email = "email" in data
+
+    hook = MembershipTestHook()
+    manager.add_hook(hook)
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+
+    assert hook.has_name is True
+    assert hook.has_email is False
+
+
+def test_hook_can_iterate_over_keys(manager: ModelManager) -> None:
+    """Test hook can iterate over data keys."""
+
+    class IterationTestHook(MigrationHook):
+        def __init__(self) -> None:
+            self.keys: list[str] = []
+
+        def before_migrate(
+            self,
+            name: str,
+            from_version: ModelVersion,
+            to_version: ModelVersion,
+            data: Mapping[str, Any],
+        ) -> None:
+            self.keys = list(data.keys())
+
+    hook = IterationTestHook()
+    manager.add_hook(hook)
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    manager.migrate({"name": "Alice", "age": 30}, "User", "1.0.0", "2.0.0")
+
+    assert set(hook.keys) == {"name", "age"}
+
+
+def test_hook_can_access_values(manager: ModelManager) -> None:
+    """Test hook can access data values."""
+
+    class ValueAccessTestHook(MigrationHook):
+        def __init__(self) -> None:
+            self.all_values: list[Any] = []
+
+        def before_migrate(
+            self,
+            name: str,
+            from_version: ModelVersion,
+            to_version: ModelVersion,
+            data: Mapping[str, Any],
+        ) -> None:
+            self.all_values = list(data.values())
+
+    hook = ValueAccessTestHook()
+    manager.add_hook(hook)
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    manager.migrate({"name": "Alice", "age": 30}, "User", "1.0.0", "2.0.0")
+
+    assert "Alice" in hook.all_values
+    assert 30 in hook.all_values  # noqa: PLR2004
+
+
+def test_hook_can_access_items(manager: ModelManager) -> None:
+    """Test hook can access data items (key-value pairs)."""
+
+    class ItemsTestHook(MigrationHook):
+        def __init__(self) -> None:
+            self.items: dict[str, Any] = {}
+
+        def before_migrate(
+            self,
+            name: str,
+            from_version: ModelVersion,
+            to_version: ModelVersion,
+            data: Mapping[str, Any],
+        ) -> None:
+            self.items = dict(data.items())
+
+    hook = ItemsTestHook()
+    manager.add_hook(hook)
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    manager.migrate({"name": "Alice", "age": 30}, "User", "1.0.0", "2.0.0")
+
+    assert hook.items == {"name": "Alice", "age": 30}
+
+
+def test_hook_can_get_length(manager: ModelManager) -> None:
+    """Test hook can get length of data."""
+
+    class LengthTestHook(MigrationHook):
+        def __init__(self) -> None:
+            self.length: int = 0
+
+        def before_migrate(
+            self,
+            name: str,
+            from_version: ModelVersion,
+            to_version: ModelVersion,
+            data: Mapping[str, Any],
+        ) -> None:
+            self.length = len(data)
+
+    hook = LengthTestHook()
+    manager.add_hook(hook)
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    manager.migrate(
+        {"name": "Alice", "age": 30, "city": "NYC"}, "User", "1.0.0", "2.0.0"
+    )
+
+    assert hook.length == 3  # noqa: PLR2004
+
+
+def test_hook_can_use_bracket_notation(manager: ModelManager) -> None:
+    """Test hook can access data with bracket notation."""
+
+    class BracketAccessTestHook(MigrationHook):
+        def __init__(self) -> None:
+            self.name_value: str | None = None
+
+        def before_migrate(
+            self,
+            name: str,
+            from_version: ModelVersion,
+            to_version: ModelVersion,
+            data: Mapping[str, Any],
+        ) -> None:
+            self.name_value = data["name"]
+
+    hook = BracketAccessTestHook()
+    manager.add_hook(hook)
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+
+    assert hook.name_value == "Alice"
+
+
+def test_hook_bracket_access_raises_keyerror_for_missing_key(
+    manager: ModelManager,
+) -> None:
+    """Test hook gets KeyError when accessing missing key with brackets."""
+
+    class BracketErrorTestHook(MigrationHook):
+        def __init__(self) -> None:
+            self.error_raised: bool = False
+
+        def before_migrate(
+            self,
+            name: str,
+            from_version: ModelVersion,
+            to_version: ModelVersion,
+            data: Mapping[str, Any],
+        ) -> None:
+            try:
+                _ = data["missing_key"]
+            except KeyError:
+                self.error_raised = True
+
+    hook = BracketErrorTestHook()
+    manager.add_hook(hook)
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    @manager.migration("User", "1.0.0", "2.0.0")
+    def migrate(data: ModelData) -> ModelData:
+        return {**data, "email": "unknown@example.com"}
+
+    manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
+
+    assert hook.error_raised is True

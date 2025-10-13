@@ -10,6 +10,7 @@ from .exceptions import (
     ModelNotFoundError,
     VersionedModelError,
 )
+from .migration_hooks import MetricsHook, MigrationHook
 from .migration_testing import (
     MigrationTestCase,
     MigrationTestCases,
@@ -32,8 +33,10 @@ __all__ = [
     "InvalidVersionError",
     "JsonSchema",
     "JsonSchemaMode",
+    "MetricsHook",
     "MigrationError",
     "MigrationFunc",
+    "MigrationHook",
     "MigrationManager",
     "MigrationTestCase",
     "MigrationTestCases",
