@@ -120,7 +120,7 @@ nav:
   - Core Concepts: get-started/core-concepts.md
   - First Migration: get-started/first-migration.md
   # - Version Policy: version-policy.md
-  # - Contributing: contributing.md
+  - Contributing: contributing.md
   # - Changelog: changelog.md
 - User Guide:
   - Registering Models: user-guide/registering-models.md
