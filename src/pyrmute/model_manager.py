@@ -11,6 +11,8 @@ from pydantic.json_schema import GenerateJsonSchema
 from ._migration_manager import MigrationManager
 from ._registry import Registry
 from ._schema_manager import SchemaManager
+from .avro_schema import AvroExporter
+from .avro_types import AvroRecordSchema
 from .exceptions import MigrationError, ModelNotFoundError
 from .migration_hooks import MigrationHook
 from .migration_testing import (
@@ -208,6 +210,64 @@ class ModelManager:
         """
         return self._registry.register(name, version, enable_ref, backward_compatible)
 
+    def get(self: Self, name: str, version: str | ModelVersion) -> type[BaseModel]:
+        """Get a model by name and version.
+
+        Args:
+            name: Name of the model.
+            version: Semantic version (returns latest if None).
+
+        Returns:
+            Model class.
+        """
+        return self._registry.get_model(name, version)
+
+    def get_latest(self: Self, name: str) -> type[BaseModel]:
+        """Get the latest version of a model by name.
+
+        Args:
+            name: Name of the model.
+
+        Returns:
+            Model class.
+        """
+        return self._registry.get_latest(name)
+
+    def get_nested_models(
+        self: Self,
+        name: str,
+        version: str | ModelVersion,
+    ) -> list[NestedModelInfo]:
+        """Get all nested models used by a model.
+
+        Args:
+            name: Name of the model.
+            version: Semantic version.
+
+        Returns:
+            List of NestedModelInfo.
+        """
+        return self._schema_manager.get_nested_models(name, version)
+
+    def list_models(self: Self) -> list[str]:
+        """Get list of all registered models.
+
+        Returns:
+            List of model names.
+        """
+        return self._registry.list_models()
+
+    def list_versions(self: Self, name: str) -> list[ModelVersion]:
+        """Get all versions for a model.
+
+        Args:
+            name: Name of the model.
+
+        Returns:
+            Sorted list of versions.
+        """
+        return self._registry.get_versions(name)
+
     def migration(
         self: Self,
         name: str,
@@ -271,29 +331,6 @@ class ModelManager:
     def clear_hooks(self: Self) -> None:
         """Remove all registered hooks."""
         self._migration_manager.clear_hooks()
-
-    def get(self: Self, name: str, version: str | ModelVersion) -> type[BaseModel]:
-        """Get a model by name and version.
-
-        Args:
-            name: Name of the model.
-            version: Semantic version (returns latest if None).
-
-        Returns:
-            Model class.
-        """
-        return self._registry.get_model(name, version)
-
-    def get_latest(self: Self, name: str) -> type[BaseModel]:
-        """Get the latest version of a model by name.
-
-        Args:
-            name: Name of the model.
-
-        Returns:
-            Model class.
-        """
-        return self._registry.get_latest(name)
 
     def has_migration_path(
         self: Self,
@@ -709,6 +746,61 @@ class ModelManager:
         if chunk:
             yield from self.migrate_batch_data(chunk, name, from_version, to_version)
 
+    def test_migration(
+        self: Self,
+        name: str,
+        from_version: str | ModelVersion,
+        to_version: str | ModelVersion,
+        test_cases: MigrationTestCases,
+    ) -> MigrationTestResults:
+        """Test a migration with multiple test cases.
+
+        Args:
+            name: Name of the model.
+            from_version: Source version to migrate from.
+            to_version: Target version to migrate to.
+            test_cases: List of test cases.
+
+        Returns:
+            MigrationTestResults containing individual results for each test case.
+        """
+        results = []
+
+        for test_case_input in test_cases:
+            if isinstance(test_case_input, tuple):
+                test_case = MigrationTestCase(
+                    source=test_case_input[0], target=test_case_input[1]
+                )
+            else:
+                test_case = test_case_input
+
+            try:
+                actual = self.migrate_data(
+                    test_case.source, name, from_version, to_version
+                )
+
+                if test_case.target is not None:
+                    passed = actual == test_case.target
+                    error = None if passed else "Output mismatch"
+                else:
+                    # Just verify it doesn't crash
+                    passed = True
+                    error = None
+
+                results.append(
+                    MigrationTestResult(
+                        test_case=test_case, actual=actual, passed=passed, error=error
+                    )
+                )
+            except Exception as e:
+                results.append(
+                    MigrationTestResult(
+                        test_case=test_case, actual={}, passed=False, error=str(e)
+                    )
+                )
+
+        return MigrationTestResults(results)
+
     def diff(
         self: Self,
         name: str,
@@ -920,25 +1012,6 @@ class ModelManager:
         """
         return self._schema_manager.get_schema(name, version, config=config, **kwargs)
 
-    def list_models(self: Self) -> list[str]:
-        """Get list of all registered models.
-
-        Returns:
-            List of model names.
-        """
-        return self._registry.list_models()
-
-    def list_versions(self: Self, name: str) -> list[ModelVersion]:
-        """Get all versions for a model.
-
-        Args:
-            name: Name of the model.
-
-        Returns:
-            Sorted list of versions.
-        """
-        return self._registry.get_versions(name)
-
     def dump_schemas(
         self: Self,
         output_dir: str | Path,
@@ -981,73 +1054,102 @@ class ModelManager:
             output_dir, indent, separate_definitions, ref_template, config=config
         )
 
-    def get_nested_models(
+    def get_avro_schema(
         self: Self,
         name: str,
         version: str | ModelVersion,
-    ) -> list[NestedModelInfo]:
-        """Get all nested models used by a model.
+        namespace: str | None = None,
+        include_docs: bool = True,
+    ) -> AvroRecordSchema:
+        """Get Avro schema for a specific model version.
 
         Args:
             name: Name of the model.
             version: Semantic version.
+            namespace: Avro namespace. If None, uses "com.example".
+            include_docs: Whether to include field descriptions.
 
         Returns:
-            List of NestedModelInfo.
-        """
-        return self._schema_manager.get_nested_models(name, version)
+            Avro schema typed dictionary.
 
-    def test_migration(
+        Example:
+            ```python
+            # Get Avro schema for a model
+            schema = manager.get_avro_schema("User", "1.0.0", namespace="com.myapp")
+
+            # Use with fastavro
+            import fastavro
+
+            with open("users.avro", "wb") as out:
+                fastavro.writer(out, schema, records)
+
+            # Use with Kafka
+            from confluent_kafka import avro
+
+            producer = avro.AvroProducer({
+                "bootstrap.servers": "localhost:9092",
+                "schema.registry.url": "http://localhost:8081"
+            }, default_value_schema=avro.loads(json.dumps(schema)))
+            ```
+        """
+        namespace = namespace or "com.example"
+        exporter = AvroExporter(
+            self._registry,
+            namespace=namespace,
+            include_docs=include_docs,
+        )
+        return exporter.export_schema(name, version)
+
+    def dump_avro_schemas(
         self: Self,
-        name: str,
-        from_version: str | ModelVersion,
-        to_version: str | ModelVersion,
-        test_cases: MigrationTestCases,
-    ) -> MigrationTestResults:
-        """Test a migration with multiple test cases.
+        output_dir: str | Path,
+        namespace: str | None = None,
+        indent: int = 2,
+        include_docs: bool = True,
+    ) -> dict[str, dict[str, AvroRecordSchema]]:
+        """Export all schemas as Apache Avro schemas.
+
+        Avro is commonly used in data engineering and event streaming, particularly with
+        Apache Kafka, Hadoop, and data lakes.
 
         Args:
-            name: Name of the model.
-            from_version: Source version to migrate from.
-            to_version: Target version to migrate to.
-            test_cases: List of test cases.
+            output_dir: Directory path for output.
+            namespace: Avro namespace (e.g., "com.mycompany.events").
+                If None, uses "com.example".
+            indent: JSON indentation level.
+            include_docs: Whether to include field descriptions in schemas.
 
         Returns:
-            MigrationTestResults containing individual results for each test case.
+            Dictionary mapping model names to versions to Avro schemas.
+
+        Example:
+            ```python
+            # Export all models as Avro schemas
+            manager.dump_avro_schemas(
+                "schemas/avro/",
+                namespace="com.mycompany.events",
+                include_docs=True
+            )
+
+            # Creates files like:
+            # schemas/avro/User_v1_0_0.avsc
+            # schemas/avro/User_v2_0_0.avsc
+            # schemas/avro/Order_v1_0_0.avsc
+
+            # Use with Kafka Schema Registry
+            from confluent_kafka.schema_registry import SchemaRegistryClient
+
+            client = SchemaRegistryClient({"url": "http://localhost:8081"})
+
+            with open("schemas/avro/User_v1_0_0.avsc") as f:
+                schema_str = f.read()
+                client.register_schema("user-value", schema_str)
+            ```
         """
-        results = []
-
-        for test_case_input in test_cases:
-            if isinstance(test_case_input, tuple):
-                test_case = MigrationTestCase(
-                    source=test_case_input[0], target=test_case_input[1]
-                )
-            else:
-                test_case = test_case_input
-
-            try:
-                actual = self.migrate_data(
-                    test_case.source, name, from_version, to_version
-                )
-
-                if test_case.target is not None:
-                    passed = actual == test_case.target
-                    error = None if passed else "Output mismatch"
-                else:
-                    # Just verify it doesn't crash
-                    passed = True
-                    error = None
-
-                results.append(
-                    MigrationTestResult(
-                        test_case=test_case, actual=actual, passed=passed, error=error
-                    )
-                )
-            except Exception as e:
-                results.append(
-                    MigrationTestResult(
-                        test_case=test_case, actual={}, passed=False, error=str(e)
-                    )
-                )
-
-        return MigrationTestResults(results)
+        namespace = namespace or "com.example"
+        exporter = AvroExporter(
+            self._registry,
+            namespace=namespace,
+            include_docs=include_docs,
+        )
+        return exporter.export_all_schemas(output_dir, indent)

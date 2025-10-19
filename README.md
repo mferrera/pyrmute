@@ -30,37 +30,37 @@ structured, composable way to evolve and migrate schemas across versions.
 
 **Key Features**
 
-- **Version your models** - Track schema evolution with semantic versioning
+- **Version your models** - Track schema evolution with semantic versioning.
 - **Automatic migration chains** - Transform data across multiple versions
-    (1.0.0 → 2.0.0 → 3.0.0) in a single call
+    (1.0.0 → 2.0.0 → 3.0.0) in a single call.
 - **Type-safe transformations** - Migrations return validated Pydantic models,
-    catching errors before they reach production
+    catching errors before they reach production.
 - **Migration hooks** - Observe migrations with built-in metrics tracking or
-    custom hooks for logging, monitoring, and validation
-- **Flexible schema export** - Generate JSON schemas for all versions with
-    support for `$ref`, custom generators, and nested models
+    custom hooks for logging, monitoring, and validation.
+- **Flexible schema export** - Generate JSON schemas or Avro schemas for all
+    versions with support for `$ref`, custom generators, and nested models.
 - **Production-ready** - Batch processing, parallel execution, and streaming
-    support for large datasets
-- **Only one dependency** - Pydantic
+    support for large datasets.
+- **Only one dependency** - Pydantic.
 
 ## When to Use pyrmute
 
 pyrmute is useful for handling schema evolution in production systems:
 
 - **Configuration files** - Upgrade user config files as your CLI/desktop app
-    evolves (`.apprc`, `config.json`, `settings.yaml`)
+    evolves (`.apprc`, `config.json`, `settings.yaml`).
 - **Message queues & event streams** - Handle messages from multiple service
-    versions publishing different schemas (Kafka, RabbitMQ, SQS)
+    versions publishing different schemas (Kafka, RabbitMQ, SQS).
 - **ETL & data imports** - Import CSV/JSON/Excel files exported over years
-    with evolving structures
+    with evolving structures.
 - **ML model serving** - Manage feature schema evolution across model versions
-    and A/B tests
+    and A/B tests.
 - **API versioning** - Support multiple API versions with automatic
-    request/response migration
+    request/response migration.
 - **Database migrations** - Transparently migrate legacy data on read without
-    downtime
+    downtime.
 - **Data archival** - Process historical data dumps with various schema
-    versions
+    versions.
 
 See the [examples/](https://github.com/mferrera/pyrmute/tree/main/examples)
 directory for complete, runnable code demonstrating these patterns.
@@ -71,8 +71,6 @@ pyrmute may not be the right choice if you have:
 
 - **High-throughput systems** - Runtime migration adds latency to hot paths.
     Use upfront batch migrations instead.
-- **Multi-language services** - Python-only. Use Protobuf, Avro, or JSON
-    Schema for polyglot architectures.
 - **Existing schema registries** - Already using Confluent/AWS Glue? Stick
     with them for compatibility enforcement and governance.
 - **Stable schemas** - Models rarely change? Traditional migration tools are

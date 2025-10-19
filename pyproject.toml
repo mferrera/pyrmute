@@ -30,6 +30,8 @@ dependencies = ["pydantic"]
 
 [dependency-groups]
 dev = [
+    "avro-python3",
+    "fastavro",
     "hypothesis",
     "mypy",
     "pytest",
