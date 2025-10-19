@@ -39,7 +39,7 @@ follow. Please be respectful and constructive in all interactions.
 2. **Clone your fork** locally:
    ```sh
    git clone https://github.com/YOUR_USERNAME/pyrmute.git
-   cd pyrmute-registry
+   cd pyrmute
    ```
 3. **Add upstream remote**:
    ```sh
@@ -110,7 +110,7 @@ pytest tests/test_registry.py::test_registry_initialization
 pytest -v
 
 # Run tests matching a pattern
-pytest -k "test_namespace"
+pytest -k "test_model_manager"
 ```
 
 ### Writing Tests
