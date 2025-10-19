@@ -4,6 +4,8 @@ from ._migration_manager import MigrationManager
 from ._registry import Registry
 from ._schema_manager import SchemaManager
 from ._version import __version__
+from .avro_schema import AvroExporter, AvroSchemaGenerator
+from .avro_types import AvroRecordSchema
 from .exceptions import (
     InvalidVersionError,
     MigrationError,
@@ -30,6 +32,9 @@ from .types import (
 )
 
 __all__ = [
+    "AvroExporter",
+    "AvroRecordSchema",
+    "AvroSchemaGenerator",
     "InvalidVersionError",
     "JsonSchema",
     "JsonSchemaMode",

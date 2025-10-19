@@ -130,6 +130,7 @@ nav:
   - Nested Models: user-guide/nested-models.md
   - Batch Processing: user-guide/batch-processing.md
   - Schema Generation: user-guide/schema-generation.md
+  - Avro Schemas: user-guide/avro-schemas.md
 - API Reference:
   - ModelManager: reference/model-manager.md
   - ModelVersion: reference/model-version.md
@@ -138,6 +139,7 @@ nav:
   - Migration Hooks: reference/migration-hooks.md
   - Exceptions: reference/exceptions.md
   - SchemaConfig: reference/schema-config.md
+  - Avro Schema: reference/avro-schema.md
   - Types: reference/types.md
 - Advanced:
   - Discriminated Unions: advanced/discriminated-unions.md
