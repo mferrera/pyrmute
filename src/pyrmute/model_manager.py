@@ -1060,6 +1060,7 @@ class ModelManager:
         version: str | ModelVersion,
         namespace: str | None = None,
         include_docs: bool = True,
+        versioned_namespace: bool = False,
     ) -> AvroRecordSchema:
         """Get Avro schema for a specific model version.
 
@@ -1068,6 +1069,7 @@ class ModelManager:
             version: Semantic version.
             namespace: Avro namespace. If None, uses "com.example".
             include_docs: Whether to include field descriptions.
+            versioned_namespace: Include model version in namespace. Default False.
 
         Returns:
             Avro schema typed dictionary.
@@ -1098,7 +1100,9 @@ class ModelManager:
             namespace=namespace,
             include_docs=include_docs,
         )
-        return exporter.export_schema(name, version)
+        return exporter.export_schema(
+            name, version, versioned_namespace=versioned_namespace
+        )
 
     def dump_avro_schemas(
         self: Self,
@@ -1106,6 +1110,7 @@ class ModelManager:
         namespace: str | None = None,
         indent: int = 2,
         include_docs: bool = True,
+        versioned_namespace: bool = False,
     ) -> dict[str, dict[str, AvroRecordSchema]]:
         """Export all schemas as Apache Avro schemas.
 
@@ -1118,6 +1123,7 @@ class ModelManager:
                 If None, uses "com.example".
             indent: JSON indentation level.
             include_docs: Whether to include field descriptions in schemas.
+            versioned_namespace: Include model versions in namespaces. Default False.
 
         Returns:
             Dictionary mapping model names to versions to Avro schemas.
@@ -1152,4 +1158,6 @@ class ModelManager:
             namespace=namespace,
             include_docs=include_docs,
         )
-        return exporter.export_all_schemas(output_dir, indent)
+        return exporter.export_all_schemas(
+            output_dir, indent, versioned_namespace=versioned_namespace
+        )

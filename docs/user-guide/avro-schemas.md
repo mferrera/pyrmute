@@ -54,7 +54,7 @@ Output:
 {
   "type": "record",
   "name": "User",
-  "namespace": "com.myapp.v1_0_0",
+  "namespace": "com.myapp",
   "fields": [
     {
       "name": "name",
@@ -257,19 +257,23 @@ Avro schema:
 
 ## Avro Namespaces
 
-Avro uses namespaces to organize schemas, similar to Java packages. pyrmute
-automatically creates versioned namespaces:
+Avro uses namespaces to organize schemas, similar to Java packages. Pyrmute
+does not automatically create versioned namespaces. They can be optionally
+enabled:
 
 ```python
 # Version is included in namespace
 schema = manager.get_avro_schema("User", "1.0.0", namespace="com.mycompany")
-# namespace: "com.mycompany.v1_0_0"
+# namespace: "com.mycompany"
 
-schema = manager.get_avro_schema("User", "2.0.0", namespace="com.mycompany")
+schema = manager.get_avro_schema(
+    "User", "2.0.0", namespace="com.mycompany", versioned_namespace=True
+)
 # namespace: "com.mycompany.v2_0_0"
 ```
 
-This ensures different versions don't conflict in schema registries.
+Versioned namespaces are useful if schema versions must be simultaneously
+accessible in code. Most schema registries **do not** require them.
 
 **Best practices:**
 
@@ -766,12 +770,11 @@ is_compatible = client.test_compatibility(
 ## Best Practices
 
 1. **Use consistent namespaces** - Follow your organization's naming conventions
-2. **Version namespaces automatically** - Let pyrmute handle `v1_0_0` suffixes
-3. **Add field descriptions** - Include documentation for data catalogs
-4. **Test schema validity** - Use fastavro to validate before deploying
-5. **Plan for evolution** - Make new fields optional with defaults
-6. **Use logical types** - Leverage UUID, datetime, etc. for better semantics
-7. **Export regularly** - Keep schema files in version control
+2. **Add field descriptions** - Include documentation for data catalogs
+3. **Test schema validity** - Use fastavro to validate before deploying
+4. **Plan for evolution** - Make new fields optional with defaults
+5. **Use logical types** - Leverage UUID, datetime, etc. for better semantics
+6. **Export regularly** - Keep schema files in version control
 
 ## Next Steps
 

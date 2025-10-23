@@ -44,7 +44,7 @@ def test_avro_schema_basic_types(manager: ModelManager) -> None:
 
     assert schema["type"] == "record"
     assert schema["name"] == "BasicTypes"
-    assert schema["namespace"] == "com.test.v1_0_0"
+    assert schema["namespace"] == "com.test"
     assert len(schema["fields"]) == 5
 
     field_types = {f["name"]: f["type"] for f in schema["fields"]}
@@ -599,7 +599,7 @@ def test_avro_schema_complex_example(manager: ModelManager) -> None:
 
     assert schema["type"] == "record"
     assert schema["name"] == "Order"
-    assert schema["namespace"] == "com.store.v1_0_0"
+    assert schema["namespace"] == "com.store"
     assert schema["doc"] == "Customer order."
     assert len(schema["fields"]) == 9
 
@@ -642,9 +642,11 @@ def test_avro_schema_version_in_namespace(manager: ModelManager) -> None:
         email: str
 
     schema_v1 = manager.get_avro_schema("User", "1.0.0", namespace="com.myapp")
-    schema_v2 = manager.get_avro_schema("User", "2.0.0", namespace="com.myapp")
+    schema_v2 = manager.get_avro_schema(
+        "User", "2.0.0", namespace="com.myapp", versioned_namespace=True
+    )
 
-    assert schema_v1["namespace"] == "com.myapp.v1_0_0"
+    assert schema_v1["namespace"] == "com.myapp"
     assert schema_v2["namespace"] == "com.myapp.v2_0_0"
 
 
@@ -656,9 +658,11 @@ def test_avro_generator_namespace_formatting(
     class TestModel(BaseModel):
         name: str
 
-    schema = avro_generator.generate_avro_schema(TestModel, "Test", "1.2.3")
+    schema = avro_generator.generate_avro_schema(TestModel, "Test")
+    schema_versioned = avro_generator.generate_avro_schema(TestModel, "Test", "1.2.3")
 
-    assert schema["namespace"] == "com.test.v1_2_3"
+    assert schema["namespace"] == "com.test"
+    assert schema_versioned["namespace"] == "com.test.v1_2_3"
 
 
 def test_avro_schema_multiple_versions_different_schemas(manager: ModelManager) -> None:
@@ -679,8 +683,8 @@ def test_avro_schema_multiple_versions_different_schemas(manager: ModelManager) 
 
     assert len(schema_v1["fields"]) == 1
     assert len(schema_v2["fields"]) == 3
-    assert schema_v1["namespace"] == "com.test.v1_0_0"
-    assert schema_v2["namespace"] == "com.test.v2_0_0"
+    assert schema_v1["namespace"] == "com.test"
+    assert schema_v2["namespace"] == "com.test"
 
 
 # ============================================================================
@@ -722,7 +726,7 @@ def test_dump_avro_schemas_creates_files(manager: ModelManager, tmp_path: Path) 
     # Check file content
     user_v1_content = json.loads((output_dir / "User_v1_0_0.avsc").read_text())
     assert user_v1_content["name"] == "User"
-    assert user_v1_content["namespace"] == "com.test.v1_0_0"
+    assert user_v1_content["namespace"] == "com.test"
 
 
 def test_dump_avro_schemas_custom_indent(manager: ModelManager, tmp_path: Path) -> None:
@@ -780,7 +784,7 @@ def test_avro_exporter_export_single_schema(
 
     # Check return value
     assert schema["name"] == "User"
-    assert schema["namespace"] == "com.app.v1_0_0"
+    assert schema["namespace"] == "com.app"
     assert len(schema["fields"]) == 2
 
     # Check file was created
@@ -802,7 +806,7 @@ def test_avro_exporter_export_without_file(manager: ModelManager) -> None:
     schema = exporter.export_schema("User", "1.0.0")
 
     assert schema["name"] == "User"
-    assert schema["namespace"] == "com.app.v1_0_0"
+    assert schema["namespace"] == "com.app"
 
 
 # ============================================================================
@@ -1184,7 +1188,7 @@ def test_avro_schema_kafka_integration_example(manager: ModelManager) -> None:
     # Verify it's a complete, valid Avro schema
     assert schema["type"] == "record"
     assert schema["name"] == "UserEvent"
-    assert schema["namespace"] == "com.myapp.events.v1_0_0"
+    assert schema["namespace"] == "com.myapp.events"
     assert schema["doc"] == "User lifecycle event for Kafka topic."
 
     fields = {f["name"]: f for f in schema["fields"]}
@@ -1245,7 +1249,9 @@ def test_avro_schema_full_workflow(manager: ModelManager, tmp_path: Path) -> Non
 
     # Export all schemas
     output_dir = tmp_path / "kafka_schemas"
-    schemas = manager.dump_avro_schemas(output_dir, namespace="com.taskapp", indent=2)
+    schemas = manager.dump_avro_schemas(
+        output_dir, namespace="com.taskapp", indent=2, versioned_namespace=True
+    )
 
     # Verify both versions exported
     assert "Task" in schemas
@@ -2102,7 +2108,7 @@ def test_avro_schema_kafka_event_with_all_features(manager: ModelManager) -> Non
     schema = manager.get_avro_schema("KafkaEvent", "1.0.0", namespace="com.events")
 
     assert schema["type"] == "record"
-    assert schema["namespace"] == "com.events.v1_0_0"
+    assert schema["namespace"] == "com.events"
     assert schema["doc"] is not None
 
     fields = {f["name"]: f for f in schema["fields"]}

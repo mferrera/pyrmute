@@ -268,7 +268,7 @@ def test_avro_schema_kafka_schema_registry_compatible(manager: ModelManager) -> 
     schema = manager.get_avro_schema("UserEvent", "1.0.0", namespace="com.events")
 
     fastavro.parse_schema(dict(schema))
-    assert "com.events.v1_0_0" in schema["namespace"]
+    assert schema["namespace"] == "com.events"
 
     schema_json = json.dumps(schema)
     assert len(schema_json) > 0
@@ -291,8 +291,12 @@ def test_avro_schema_multiple_versions_schema_registry(manager: ModelManager) ->
         email: str
         phone: str | None = None
 
-    schema_v1 = manager.get_avro_schema("User", "1.0.0", namespace="com.app")
-    schema_v2 = manager.get_avro_schema("User", "2.0.0", namespace="com.app")
+    schema_v1 = manager.get_avro_schema(
+        "User", "1.0.0", namespace="com.app", versioned_namespace=True
+    )
+    schema_v2 = manager.get_avro_schema(
+        "User", "2.0.0", namespace="com.app", versioned_namespace=True
+    )
 
     parsed_v1 = fastavro.parse_schema(dict(schema_v1))
     fastavro.parse_schema(dict(schema_v2))

@@ -74,14 +74,15 @@ class AvroSchemaGenerator:
         self: Self,
         model: type[BaseModel],
         name: str,
-        version: str | ModelVersion,
+        namespace_version: str | ModelVersion | None = None,
     ) -> AvroRecordSchema:
         """Generate an Avro schema from a Pydantic model.
 
         Args:
             model: Pydantic model class.
             name: Model name.
-            version: Model version.
+            namespace_version: Optional namespace version. This is often the model
+                version.
 
         Returns:
             Avro record schema.
@@ -99,6 +100,23 @@ class AvroSchemaGenerator:
                 metadata: dict[str, str] = Field(default_factory=dict)
 
             generator = AvroSchemaGenerator(namespace="com.events")
+            schema = generator.generate_avro_schema(Event, "Event")
+
+            # Returns proper Avro schema with logical types
+            # {
+            #   "type": "record",
+            #   "name": "Event",
+            #   "namespace": "com.events",
+            #   "doc": "Event record.",
+            #   "fields": [
+            #     {"name": "id", "type": {"type": "string", "logicalType": "uuid"}},
+            #     {"name": "name", "type": "string"},
+            #     {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-micros"}},
+            #     {"name": "metadata", "type": {"type": "map", "values": "string"}}
+            #   ]
+            # }
+
+            # When a version is provided
             schema = generator.generate_avro_schema(Event, "Event", "1.0.0")
 
             # Returns proper Avro schema with logical types
@@ -120,8 +138,10 @@ class AvroSchemaGenerator:
         # Mark the root type as seen to prevent infinite recursion
         self._types_seen.add(model.__name__)
 
-        version_str = str(version).replace(".", "_")
-        full_namespace = f"{self.namespace}.v{version_str}"
+        full_namespace = self.namespace
+        if namespace_version:
+            version_str = str(namespace_version).replace(".", "_")
+            full_namespace = f"{self.namespace}.v{version_str}"
 
         schema: AvroRecordSchema = {
             "type": "record",
@@ -630,6 +650,7 @@ class AvroExporter:
         name: str,
         version: str | ModelVersion,
         output_path: str | Path | None = None,
+        versioned_namespace: bool = False,
     ) -> AvroRecordSchema:
         """Export a single model version as an Avro schema.
 
@@ -637,6 +658,7 @@ class AvroExporter:
             name: Model name.
             version: Model version.
             output_path: Optional file path to save schema.
+            versioned_namespace: Include model version in namespace. Default False.
 
         Returns:
             Avro record schema.
@@ -649,12 +671,16 @@ class AvroExporter:
             schema = exporter.export_schema("User", "1.0.0", "schemas/user_v1.avsc")
 
             # Or just get the schema
-            schema = exporter.export_schema("User", "1.0.0")
+            schema = exporter.export_schema("User", "1.0.0", versioned_namespace=True)
             print(json.dumps(schema, indent=2))
             ```
         """
         model = self._registry.get_model(name, version)
-        schema = self.generator.generate_avro_schema(model, name, version)
+        schema = (
+            self.generator.generate_avro_schema(model, name, version)
+            if versioned_namespace
+            else self.generator.generate_avro_schema(model, name)
+        )
 
         if output_path:
             output_path = Path(output_path)
@@ -667,12 +693,14 @@ class AvroExporter:
         self: Self,
         output_dir: str | Path,
         indent: int = 2,
+        versioned_namespace: bool = False,
     ) -> dict[str, dict[str, AvroRecordSchema]]:
         """Export all registered models as Avro schemas.
 
         Args:
             output_dir: Directory to save schema files.
             indent: JSON indentation level.
+            versioned_namespace: Include model version in namespace. Default False.
 
         Returns:
             Dictionary mapping model names to version to schema.
@@ -699,7 +727,11 @@ class AvroExporter:
 
             for version in versions:
                 model = self._registry.get_model(model_name, version)
-                schema = self.generator.generate_avro_schema(model, model_name, version)
+                schema = (
+                    self.generator.generate_avro_schema(model, model_name, version)
+                    if versioned_namespace
+                    else self.generator.generate_avro_schema(model, model_name)
+                )
 
                 version_str = str(version).replace(".", "_")
                 filename = f"{model_name}_v{version_str}.avsc"
