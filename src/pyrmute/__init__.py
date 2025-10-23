@@ -22,6 +22,7 @@ from .migration_testing import (
 from .model_diff import ModelDiff
 from .model_manager import ModelManager
 from .model_version import ModelVersion
+from .protobuf_schema import ProtoExporter
 from .schema_config import SchemaConfig
 from .types import (
     JsonSchema,
@@ -53,6 +54,7 @@ __all__ = [
     "ModelNotFoundError",
     "ModelVersion",
     "NestedModelInfo",
+    "ProtoExporter",
     "Registry",
     "SchemaConfig",
     "SchemaManager",

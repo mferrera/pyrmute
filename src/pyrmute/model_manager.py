@@ -23,6 +23,7 @@ from .migration_testing import (
 )
 from .model_diff import ModelDiff
 from .model_version import ModelVersion
+from .protobuf_schema import ProtoExporter
 from .schema_config import SchemaConfig
 from .types import (
     DecoratedBaseModel,
@@ -1161,3 +1162,99 @@ class ModelManager:
         return exporter.export_all_schemas(
             output_dir, indent, versioned_namespace=versioned_namespace
         )
+
+    def get_proto_schema(
+        self: Self,
+        name: str,
+        version: str | ModelVersion,
+        package: str | None = None,
+        include_comments: bool = True,
+        use_proto3: bool = True,
+    ) -> str:
+        """Get Protocol Buffer schema for a specific model version.
+
+        Args:
+            name: Name of the model.
+            version: Semantic version.
+            package: Protobuf package name (e.g., "com.mycompany.users").
+                This is a namespace that remains consistent across versions.
+                Defaults to "com.example".
+            include_comments: Whether to include documentation as comments.
+            use_proto3: Use proto3 syntax (True) or proto2 (False).
+                Defaults to True (proto3 is recommended for new projects).
+
+        Returns:
+            Protocol Buffer file as a string.
+
+        Example:
+            ```python
+            # Get proto3 schema with custom package
+            schema = manager.get_proto_schema(
+                "User", "1.0.0",
+                package="com.mycompany.users"
+            )
+
+            # Use with protobuf compiler
+            # protoc --go_out=. schemas/protos/User_v1_0_0.proto
+            ```
+        """
+        package = package or "com.example"
+        exporter = ProtoExporter(
+            self._registry,
+            package=package,
+            include_comments=include_comments,
+            use_proto3=use_proto3,
+        )
+        return exporter.export_schema(name, version)
+
+    def dump_proto_schemas(
+        self: Self,
+        output_dir: str | Path,
+        package: str | None = None,
+        include_comments: bool = True,
+        use_proto3: bool = True,
+    ) -> dict[str, dict[str, str]]:
+        """Export all schemas as Protocol Buffer schemas.
+
+        Protocol Buffers are commonly used for gRPC, microservices communication,
+        and efficient binary serialization.
+
+        Args:
+            output_dir: Directory path for output.
+            package: Protobuf package name (e.g., "com.mycompany.events").
+                This namespace remains consistent across all versions.
+                Defaults to "com.example".
+            include_comments: Whether to include documentation as comments.
+            use_proto3: Use proto3 syntax (True) or proto2 (False).
+                Defaults to True (proto3 is recommended for new projects).
+
+        Returns:
+            Dictionary mapping model names to versions to Protocol Buffer schemas.
+
+        Example:
+            ```python
+            # Export all models as proto3 schemas
+            manager.dump_proto_schemas(
+                "schemas/protos/",
+                package="com.mycompany.events",
+                include_comments=True,
+                use_proto3=True,
+            )
+
+            # Creates files like:
+            # schemas/protos/User_v1_0_0.proto
+            # schemas/protos/User_v2_0_0.proto
+            # schemas/protos/Order_v1_0_0.proto
+
+            # Compile with protoc:
+            # protoc --go_out=. schemas/protos/*.proto
+            ```
+        """
+        package = package or "com.example"
+        exporter = ProtoExporter(
+            self._registry,
+            package=package,
+            include_comments=include_comments,
+            use_proto3=use_proto3,
+        )
+        return exporter.export_all_schemas(output_dir)
