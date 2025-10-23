@@ -99,6 +99,7 @@ addopts = "-n auto -m 'not examples' --cov --cov-report term-missing"
 testpaths = ["tests"]
 markers = [
     "examples: integration tests that run example scripts",
+    "integration: integration tests that are slow or rely on system packages",
 ]
 
 [tool.ruff]

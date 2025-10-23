@@ -20,6 +20,8 @@ from pyrmute import (
 )
 from pyrmute.schema_config import SchemaConfig
 
+# ruff: noqa: PLR2004
+
 
 # Initialization tests
 def test_manager_initialization(manager: ModelManager) -> None:
@@ -346,7 +348,7 @@ def test_migrate_batch_multiple_items(
         {"name": "Charlie"},
     ]
     result = registered_manager.migrate_batch(data, "User", "1.0.0", "2.0.0")
-    assert len(result) == 3  # noqa: PLR2004
+    assert len(result) == 3
     assert all(isinstance(item, user_v2) for item in result)
     assert result[0].name == "Alice"  # type: ignore
     assert result[1].name == "Bob"  # type: ignore
@@ -470,7 +472,7 @@ def test_migrate_batch_as_multiple_items(
     result = registered_manager.migrate_batch_as(
         data, "User", "1.0.0", "2.0.0", user_v2
     )
-    assert len(result) == 3  # noqa: PLR2004
+    assert len(result) == 3
     assert all(isinstance(item, user_v2) for item in result)
     assert result[0].name == "Alice"  # type: ignore
     assert result[1].name == "Bob"  # type: ignore
@@ -491,7 +493,7 @@ def test_migrate_batch_as_parallel(
         user_v2,
         parallel=True,
     )
-    assert len(result) == 5  # noqa: PLR2004
+    assert len(result) == 5
     assert all(isinstance(item, user_v2) for item in result)
 
 
@@ -510,7 +512,7 @@ def test_migrate_batch_as_parallel_with_max_workers(
         parallel=True,
         max_workers=2,
     )
-    assert len(result) == 10  # noqa: PLR2004
+    assert len(result) == 10
     assert all(isinstance(item, user_v2) for item in result)
 
 
@@ -529,7 +531,7 @@ def test_migrate_batch_as_parallel_with_processes(
         parallel=True,
         use_processes=True,
     )
-    assert len(result) == 5  # noqa: PLR2004
+    assert len(result) == 5
     assert all(isinstance(item, user_v2) for item in result)
 
 
@@ -566,7 +568,7 @@ def test_migrate_batch_parallel_basic(
         "2.0.0",
         parallel=True,
     )
-    assert len(result) == 5  # noqa: PLR2004
+    assert len(result) == 5
     assert all(isinstance(item, user_v2) for item in result)
 
 
@@ -583,7 +585,7 @@ def test_migrate_batch_parallel_with_max_workers(
         parallel=True,
         max_workers=2,
     )
-    assert len(result) == 10  # noqa: PLR2004
+    assert len(result) == 10
 
 
 def test_migrate_batch_parallel_with_processes(
@@ -599,7 +601,7 @@ def test_migrate_batch_parallel_with_processes(
         parallel=True,
         use_processes=True,
     )
-    assert len(result) == 5  # noqa: PLR2004
+    assert len(result) == 5
 
 
 def test_migrate_batch_parallel_preserves_order(
@@ -639,7 +641,7 @@ def test_migrate_batch_data_returns_dicts(
     """Test migrate_batch_data returns list of dictionaries."""
     data = [{"name": "Alice"}, {"name": "Bob"}]
     result = registered_manager.migrate_batch_data(data, "User", "1.0.0", "2.0.0")
-    assert len(result) == 2  # noqa: PLR2004
+    assert len(result) == 2
     assert all(isinstance(item, dict) for item in result)
     assert result[0] == {"name": "Alice", "email": "unknown@example.com"}
     assert result[1] == {"name": "Bob", "email": "unknown@example.com"}
@@ -697,7 +699,7 @@ def test_migrate_batch_data_parallel(
         "2.0.0",
         parallel=True,
     )
-    assert len(result) == 5  # noqa: PLR2004
+    assert len(result) == 5
     assert all(isinstance(item, dict) for item in result)
 
 
@@ -714,7 +716,7 @@ def test_migrate_batch_data_parallel_with_processes(
         parallel=True,
         use_processes=True,
     )
-    assert len(result) == 5  # noqa: PLR2004
+    assert len(result) == 5
 
 
 def test_migrate_batch_and_migrate_batch_data_consistency(
@@ -757,7 +759,7 @@ def test_migrate_batch_streaming_single_chunk(
             chunk_size=10,
         )
     )
-    assert len(result) == 5  # noqa: PLR2004
+    assert len(result) == 5
     assert all(isinstance(item, user_v2) for item in result)
 
 
@@ -775,7 +777,7 @@ def test_migrate_batch_streaming_multiple_chunks(
             chunk_size=10,
         )
     )
-    assert len(result) == 25  # noqa: PLR2004
+    assert len(result) == 25
 
 
 def test_migrate_batch_streaming_preserves_order(
@@ -810,7 +812,7 @@ def test_migrate_batch_streaming_exact_chunk_size(
             chunk_size=10,
         )
     )
-    assert len(result) == 10  # noqa: PLR2004
+    assert len(result) == 10
 
 
 def test_migrate_batch_streaming_with_generator(
@@ -831,7 +833,7 @@ def test_migrate_batch_streaming_with_generator(
             chunk_size=5,
         )
     )
-    assert len(result) == 15  # noqa: PLR2004
+    assert len(result) == 15
 
 
 def test_migrate_batch_streaming_custom_chunk_size(
@@ -848,7 +850,7 @@ def test_migrate_batch_streaming_custom_chunk_size(
             chunk_size=3,
         )
     )
-    assert len(result) == 7  # noqa: PLR2004
+    assert len(result) == 7
 
 
 def test_migrate_batch_streaming_with_model_versions(
@@ -875,7 +877,7 @@ def test_migrate_batch_large_dataset(
     """Test migrate_batch with larger dataset."""
     data = [{"name": f"User{i}"} for i in range(1000)]
     result = registered_manager.migrate_batch(data, "User", "1.0.0", "2.0.0")
-    assert len(result) == 1000  # noqa: PLR2004
+    assert len(result) == 1000
 
 
 def test_migrate_batch_parallel_large_dataset(
@@ -891,7 +893,7 @@ def test_migrate_batch_parallel_large_dataset(
         parallel=True,
         max_workers=4,
     )
-    assert len(result) == 1000  # noqa: PLR2004
+    assert len(result) == 1000
 
 
 def test_migrate_batch_streaming_large_dataset(
@@ -908,7 +910,7 @@ def test_migrate_batch_streaming_large_dataset(
             chunk_size=100,
         )
     )
-    assert len(result) == 1000  # noqa: PLR2004
+    assert len(result) == 1000
 
 
 def test_migrate_batch_data_streaming_empty_list(
@@ -935,7 +937,7 @@ def test_migrate_batch_data_streaming_returns_dicts(
             chunk_size=10,
         )
     )
-    assert len(result) == 5  # noqa: PLR2004
+    assert len(result) == 5
     assert all(isinstance(item, dict) for item in result)
     assert all(item["email"] == "unknown@example.com" for item in result)
 
@@ -954,7 +956,7 @@ def test_migrate_batch_data_streaming_multiple_chunks(
             chunk_size=10,
         )
     )
-    assert len(result) == 25  # noqa: PLR2004
+    assert len(result) == 25
     assert all(isinstance(item, dict) for item in result)
 
 
@@ -1017,7 +1019,7 @@ def test_migrate_batch_data_streaming_with_generator(
             chunk_size=5,
         )
     )
-    assert len(result) == 15  # noqa: PLR2004
+    assert len(result) == 15
     assert all(isinstance(item, dict) for item in result)
 
 
@@ -1035,7 +1037,7 @@ def test_migrate_batch_data_streaming_custom_chunk_size(
             chunk_size=3,
         )
     )
-    assert len(result) == 7  # noqa: PLR2004
+    assert len(result) == 7
 
 
 def test_migrate_batch_data_streaming_with_model_versions(
@@ -1107,7 +1109,7 @@ def test_migrate_batch_streaming_as_single_chunk(
             chunk_size=10,
         )
     )
-    assert len(result) == 5  # noqa: PLR2004
+    assert len(result) == 5
     assert all(isinstance(item, user_v2) for item in result)
 
 
@@ -1127,7 +1129,7 @@ def test_migrate_batch_streaming_as_multiple_chunks(
             chunk_size=10,
         )
     )
-    assert len(result) == 25  # noqa: PLR2004
+    assert len(result) == 25
     assert all(isinstance(item, user_v2) for item in result)
 
 
@@ -1171,7 +1173,7 @@ def test_migrate_batch_streaming_as_with_generator(
             chunk_size=5,
         )
     )
-    assert len(result) == 15  # noqa: PLR2004
+    assert len(result) == 15
     assert all(isinstance(item, user_v2) for item in result)
 
 
@@ -1320,7 +1322,7 @@ def test_list_versions_multiple(
     manager.model("User", "2.0.0")(user_v2)
 
     versions = manager.list_versions("User")
-    assert len(versions) == 2  # noqa: PLR2004
+    assert len(versions) == 2
     assert ModelVersion(1, 0, 0) in versions
     assert ModelVersion(2, 0, 0) in versions
 
@@ -1517,7 +1519,7 @@ def test_get_nested_models_returns_tuples(manager: ModelManager) -> None:
     nested = manager.get_nested_models("User", "1.0.0")
     for item in nested:
         assert isinstance(item, tuple)
-        assert len(item) == 2  # noqa: PLR2004
+        assert len(item) == 2
         assert isinstance(item[0], str)
         assert isinstance(item[1], ModelVersion)
 
@@ -2127,7 +2129,7 @@ def test_test_migration_with_tuples(registered_manager: ModelManager) -> None:
         ],
     )
 
-    assert len(results) == 2  # noqa: PLR2004
+    assert len(results) == 2
     assert results.all_passed is True
 
 
@@ -2167,7 +2169,7 @@ def test_test_migration_mixed_formats(registered_manager: ModelManager) -> None:
         ],
     )
 
-    assert len(results) == 2  # noqa: PLR2004
+    assert len(results) == 2
     assert results.all_passed is True
 
 
@@ -2343,7 +2345,7 @@ def test_test_migration_multiple_smoke_tests(
         ],
     )
 
-    assert len(results) == 3  # noqa: PLR2004
+    assert len(results) == 3
     assert results.all_passed is True
 
 
@@ -2361,7 +2363,7 @@ def test_test_migration_mixed_smoke_and_validation(
         ],
     )
 
-    assert len(results) == 2  # noqa: PLR2004
+    assert len(results) == 2
     assert results.all_passed is True
 
 
@@ -2455,7 +2457,7 @@ def test_test_migration_continues_after_exception(manager: ModelManager) -> None
         ],
     )
 
-    assert len(results) == 2  # noqa: PLR2004
+    assert len(results) == 2
     assert results.all_passed is False
     assert len(results.failures) == 1
 
@@ -2511,7 +2513,7 @@ def test_test_migration_multiple_passing(registered_manager: ModelManager) -> No
         ],
     )
 
-    assert len(results) == 3  # noqa: PLR2004
+    assert len(results) == 3
     assert results.all_passed is True
     assert len(results.failures) == 0
 
@@ -2543,9 +2545,9 @@ def test_test_migration_multiple_failures(manager: ModelManager) -> None:
         ],
     )
 
-    assert len(results) == 3  # noqa: PLR2004
+    assert len(results) == 3
     assert results.all_passed is False
-    assert len(results.failures) == 2  # noqa: PLR2004
+    assert len(results.failures) == 2
 
 
 def test_test_migration_mixed_pass_fail(manager: ModelManager) -> None:
@@ -2575,7 +2577,7 @@ def test_test_migration_mixed_pass_fail(manager: ModelManager) -> None:
         ],
     )
 
-    assert len(results) == 3  # noqa: PLR2004
+    assert len(results) == 3
     assert results.all_passed is False
     assert len(results.failures) == 1
 
@@ -3059,7 +3061,7 @@ def test_get_schema_transformers_returns_all(manager: ModelManager) -> None:
 
     transformers = manager.get_schema_transformers("User", "1.0.0")
 
-    assert len(transformers) == 2  # noqa: PLR2004
+    assert len(transformers) == 2
     assert transformer1 in transformers
     assert transformer2 in transformers
 
@@ -3540,7 +3542,7 @@ def test_hook_can_access_values(manager: ModelManager) -> None:
     manager.migrate({"name": "Alice", "age": 30}, "User", "1.0.0", "2.0.0")
 
     assert "Alice" in hook.all_values
-    assert 30 in hook.all_values  # noqa: PLR2004
+    assert 30 in hook.all_values
 
 
 def test_hook_can_access_items(manager: ModelManager) -> None:
@@ -3616,7 +3618,7 @@ def test_hook_can_get_length(manager: ModelManager) -> None:
         {"name": "Alice", "age": 30, "city": "NYC"}, "User", "1.0.0", "2.0.0"
     )
 
-    assert hook.length == 3  # noqa: PLR2004
+    assert hook.length == 3
 
 
 def test_hook_can_use_bracket_notation(manager: ModelManager) -> None:
@@ -3696,3 +3698,104 @@ def test_hook_bracket_access_raises_keyerror_for_missing_key(
     manager.migrate({"name": "Alice"}, "User", "1.0.0", "2.0.0")
 
     assert hook.error_raised is True
+
+
+def test_model_manager_get_proto_schema(manager: ModelManager) -> None:
+    """Test ModelManager.get_proto_schema returns proto schema."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        id: int
+        name: str
+
+    proto_file = manager.get_proto_schema(
+        "User", "1.0.0", package="com.test", use_proto3=True
+    )
+
+    assert "proto3" in proto_file
+    assert "com.test" in proto_file
+    assert "User" in proto_file
+
+
+def test_model_manager_get_proto_schema_with_defaults(manager: ModelManager) -> None:
+    """Test ModelManager.get_proto_schema uses default package."""
+
+    @manager.model("Product", "1.0.0")
+    class Product(BaseModel):
+        name: str
+        price: float
+
+    proto_file = manager.get_proto_schema("Product", "1.0.0")
+
+    assert "com.example" in proto_file
+    assert "proto3" in proto_file
+
+
+def test_model_manager_dump_proto_schemas(
+    tmp_path: Path, manager: ModelManager
+) -> None:
+    """Test ModelManager.dump_proto_schemas writes proto files."""
+    manager = ModelManager()
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        id: int
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        id: int
+        name: str
+        email: str
+
+    output_dir = tmp_path / "protos"
+    schemas = manager.dump_proto_schemas(
+        output_dir, package="com.test", use_proto3=True
+    )
+
+    assert "User" in schemas
+    assert "1.0.0" in schemas["User"]
+    assert "2.0.0" in schemas["User"]
+
+    v1_file = output_dir / "User_v1_0_0.proto"
+    v2_file = output_dir / "User_v2_0_0.proto"
+
+    assert v1_file.exists()
+    assert v2_file.exists()
+
+    v1_content = v1_file.read_text()
+    assert 'syntax = "proto3";' in v1_content
+    assert "package com.test;" in v1_content
+    assert "message User {" in v1_content
+
+
+def test_model_manager_dump_proto_schemas_multiple_models(
+    tmp_path: Path, manager: ModelManager
+) -> None:
+    """Test ModelManager.dump_proto_schemas with multiple models."""
+
+    @manager.model("User", "1.0.0")
+    class User(BaseModel):
+        id: int
+        name: str
+
+    @manager.model("Order", "1.0.0")
+    class Order(BaseModel):
+        order_id: int
+        total: float
+
+    output_dir = tmp_path / "protos"
+    schemas = manager.dump_proto_schemas(output_dir, package="com.myapp")
+
+    assert "User" in schemas
+    assert "Order" in schemas
+
+    user_file = output_dir / "User_v1_0_0.proto"
+    order_file = output_dir / "Order_v1_0_0.proto"
+
+    assert user_file.exists()
+    assert order_file.exists()
+
+    order_content = order_file.read_text()
+    assert "message Order {" in order_content
+    assert "order_id" in order_content

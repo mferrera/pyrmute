@@ -37,8 +37,9 @@ structured, composable way to evolve and migrate schemas across versions.
     catching errors before they reach production.
 - **Migration hooks** - Observe migrations with built-in metrics tracking or
     custom hooks for logging, monitoring, and validation.
-- **Flexible schema export** - Generate JSON schemas or Avro schemas for all
-    versions with support for `$ref`, custom generators, and nested models.
+- **Flexible schema export** - Generate JSON Schema, Apache Avro, or Protocol
+    Buffer schemas for all versions with support for `$ref`, custom
+    generators, and nested models.
 - **Production-ready** - Batch processing, parallel execution, and streaming
     support for large datasets.
 - **Only one dependency** - Pydantic.
@@ -80,8 +81,8 @@ pyrmute may not be the right choice if you have:
 
 ## Help
 
-See [documentation](https://mferrera.github.io/pyrmute/) for complete guides
-and API reference.
+See [documentation](https://pyrmute.readthedocs.io/en/latest/) for complete
+guides and API reference.
 
 ## Installation
 
@@ -319,7 +320,7 @@ class PaymentV1(BaseModel):
 # Migrations respect discriminated unions
 ```
 
-### Export JSON Schemas
+### Export Schemas
 
 ```python
 # Generate schemas for all versions
@@ -332,6 +333,12 @@ manager.dump_schemas(
     separate_definitions=True,
     ref_template="https://api.example.com/schemas/{model}_v{version}.json"
 )
+
+# Generate Avro or Protocol Buffer schemas
+manager.dump_avro_schemas("schemas/avro/")
+# Creates: User_v1.0.0.avsc, User_v2.0.0.avsc, User_v3.0.0.avsc
+manager.dump_proto_schemas("schemas/protos/")
+# Creates: User_v1_0_0.proto, User_v2_0_0.proto, User_v3_0_0.proto
 ```
 
 ### Auto-Migration
