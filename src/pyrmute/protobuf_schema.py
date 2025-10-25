@@ -54,7 +54,6 @@ class ProtoSchemaGenerator:
         self._types_seen: set[str] = set()
         self._required_imports: set[str] = set()
         self._field_counter = 1
-        self._oneof_counter = 1
         self._collected_enums: list[ProtoEnum] = []
         self._collected_nested_messages: list[ProtoMessage] = []
 
@@ -68,7 +67,6 @@ class ProtoSchemaGenerator:
         self._types_seen = set()
         self._required_imports = set()
         self._field_counter = 1
-        self._oneof_counter = 1
         self._collected_enums = []
         self._collected_nested_messages = []
 
