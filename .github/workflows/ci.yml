@@ -45,6 +45,9 @@ jobs:
             uv sync --all-extras --frozen
           fi
 
+      - name: Install protoc
+        run: sudo apt install protobuf-compiler -y
+
       - name: Ruff check
         run: uv run ruff check
 
