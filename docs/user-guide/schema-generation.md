@@ -128,10 +128,10 @@ manager.dump_schemas("schemas/", indent=2)
 Creates files like:
 ```
 schemas/
-├── User_v1.0.0.json
-├── User_v2.0.0.json
-├── Order_v1.0.0.json
-└── Product_v1.0.0.json
+├── User_v1_0_0.json
+├── User_v2_0_0.json
+├── Order_v1_0_0.json
+└── Product_v1_0_0.json
 ```
 
 ### Export with Configuration
@@ -177,8 +177,8 @@ manager.dump_schemas(
 Creates:
 ```
 schemas/
-├── User_v1.0.0.json      # Contains $ref to Address
-└── Address_v1.0.0.json   # Separate address schema
+├── User_v1_0_0.json      # Contains $ref to Address
+└── Address_v1_0_0.json   # Separate address schema
 ```
 
 User schema:
@@ -189,7 +189,7 @@ User schema:
   "properties": {
     "name": {"type": "string"},
     "address": {
-      "$ref": "https://api.example.com/schemas/Address_v1.0.0.json"
+      "$ref": "https://api.example.com/schemas/Address_v1_0_0.json"
     }
   }
 }

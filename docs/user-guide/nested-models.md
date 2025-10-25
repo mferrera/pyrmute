@@ -822,8 +822,8 @@ class UserV1(BaseModel):
 
 # When dumping schemas with separate_definitions=True:
 manager.dump_schemas("schemas/", separate_definitions=True)
-# Creates: User_v1.0.0.json (with $ref to Address)
-#          Address_v1.0.0.json (separate file)
+# Creates: User_v1_0_0.json (with $ref to Address)
+#          Address_v1_0_0.json (separate file)
 ```
 
 ### Flattening and Nesting

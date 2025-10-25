@@ -325,7 +325,7 @@ class PaymentV1(BaseModel):
 ```python
 # Generate schemas for all versions
 manager.dump_schemas("schemas/")
-# Creates: User_v1.0.0.json, User_v2.0.0.json, User_v3.0.0.json
+# Creates: User_v1_0_0.json, User_v2_0_0.json, User_v3_0_0.json
 
 # Use separate files with $ref for nested models with 'enable_ref=True'.
 manager.dump_schemas(
@@ -336,7 +336,7 @@ manager.dump_schemas(
 
 # Generate Avro or Protocol Buffer schemas
 manager.dump_avro_schemas("schemas/avro/")
-# Creates: User_v1.0.0.avsc, User_v2.0.0.avsc, User_v3.0.0.avsc
+# Creates: User_v1_0_0.avsc, User_v2_0_0.avsc, User_v3_0_0.avsc
 manager.dump_proto_schemas("schemas/protos/")
 # Creates: User_v1_0_0.proto, User_v2_0_0.proto, User_v3_0_0.proto
 ```

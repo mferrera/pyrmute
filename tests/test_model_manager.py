@@ -1374,7 +1374,7 @@ def test_dump_schemas_creates_files(manager: ModelManager, tmp_path: Path) -> No
 
     manager.dump_schemas(tmp_path)
 
-    schema_file = tmp_path / "User_v1.0.0.json"
+    schema_file = tmp_path / "User_v1_0_0.json"
     assert schema_file.exists()
 
 
@@ -1387,7 +1387,7 @@ def test_dump_schemas_valid_json(manager: ModelManager, tmp_path: Path) -> None:
 
     manager.dump_schemas(tmp_path)
 
-    schema_file = tmp_path / "User_v1.0.0.json"
+    schema_file = tmp_path / "User_v1_0_0.json"
     with open(schema_file) as f:
         data = json.load(f)
     assert isinstance(data, dict)
@@ -1402,7 +1402,7 @@ def test_dump_schemas_with_indent(manager: ModelManager, tmp_path: Path) -> None
 
     manager.dump_schemas(tmp_path, indent=4)
 
-    schema_file = tmp_path / "User_v1.0.0.json"
+    schema_file = tmp_path / "User_v1_0_0.json"
     content = schema_file.read_text()
     # Check that indentation is used (spaces in JSON)
     assert "    " in content
@@ -1417,7 +1417,7 @@ def test_dump_schemas_with_string_path(manager: ModelManager, tmp_path: Path) ->
 
     manager.dump_schemas(str(tmp_path))
 
-    schema_file = tmp_path / "User_v1.0.0.json"
+    schema_file = tmp_path / "User_v1_0_0.json"
     assert schema_file.exists()
 
 
@@ -1432,7 +1432,7 @@ def test_dump_schemas_separate_definitions(
 
     manager.dump_schemas(tmp_path, separate_definitions=True)
 
-    schema_file = tmp_path / "User_v1.0.0.json"
+    schema_file = tmp_path / "User_v1_0_0.json"
     assert schema_file.exists()
 
 
@@ -1449,7 +1449,7 @@ def test_dump_schemas_with_ref_template(manager: ModelManager, tmp_path: Path) -
         ref_template="https://example.com/schemas/{model}_v{version}.json",
     )
 
-    schema_file = tmp_path / "User_v1.0.0.json"
+    schema_file = tmp_path / "User_v1_0_0.json"
     assert schema_file.exists()
 
 
@@ -1466,8 +1466,8 @@ def test_dump_schemas_multiple_models(manager: ModelManager, tmp_path: Path) -> 
 
     manager.dump_schemas(tmp_path)
 
-    assert (tmp_path / "User_v1.0.0.json").exists()
-    assert (tmp_path / "Product_v1.0.0.json").exists()
+    assert (tmp_path / "User_v1_0_0.json").exists()
+    assert (tmp_path / "Product_v1_0_0.json").exists()
 
 
 def test_dump_schemas_multiple_versions(
@@ -1482,8 +1482,8 @@ def test_dump_schemas_multiple_versions(
 
     manager.dump_schemas(tmp_path)
 
-    assert (tmp_path / "User_v1.0.0.json").exists()
-    assert (tmp_path / "User_v2.0.0.json").exists()
+    assert (tmp_path / "User_v1_0_0.json").exists()
+    assert (tmp_path / "User_v2_0_0.json").exists()
 
 
 # Nested models tests
@@ -3213,7 +3213,7 @@ def test_dump_schemas_with_config(manager: ModelManager, tmp_path: Path) -> None
     config = SchemaConfig(schema_generator=CustomTestGenerator)
     manager.dump_schemas(tmp_path, config=config)
 
-    with open(tmp_path / "User_v1.0.0.json") as f:
+    with open(tmp_path / "User_v1_0_0.json") as f:
         data = json.load(f)
 
     assert data["x-test-generator"] is True
@@ -3230,7 +3230,7 @@ def test_dump_schemas_uses_default_config(tmp_path: Path) -> None:
 
     manager.dump_schemas(tmp_path)
 
-    with open(tmp_path / "User_v1.0.0.json") as f:
+    with open(tmp_path / "User_v1_0_0.json") as f:
         data = json.load(f)
 
     assert data["x-test-generator"] is True
@@ -3252,7 +3252,7 @@ def test_dump_schemas_includes_transformers(
 
     manager.dump_schemas(tmp_path)
 
-    with open(tmp_path / "User_v1.0.0.json") as f:
+    with open(tmp_path / "User_v1_0_0.json") as f:
         data = json.load(f)
 
     assert data["x-exported"] is True

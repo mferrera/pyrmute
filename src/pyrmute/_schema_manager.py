@@ -61,27 +61,31 @@ class SchemaManager:
                 class.
 
         Example (Callable):
-            >>> def custom_gen(model: type[BaseModel]) -> JsonSchema:
-            ...     schema = model.model_json_schema()
-            ...     schema["x-custom"] = True
-            ...     return schema
-            >>>
-            >>> manager.set_default_schema_generator(custom_gen)
+            ```python
+            def custom_gen(model: type[BaseModel]) -> JsonSchema:
+                schema = model.model_json_schema()
+                schema["x-custom"] = True
+                return schema
+
+            manager.set_default_schema_generator(custom_gen)
+            ```
 
         Example (Class):
-            >>> from pydantic.json_schema import GenerateJsonSchema
-            >>>
-            >>> class CustomGenerator(GenerateJsonSchema):
-            ...     def generate(
-            ...         self,
-            ...         schema: Mapping[str, Any],
-            ...         mode: JsonSchemaMode = "validation"
-            ...     ) -> JsonSchema:
-            ...         json_schema = super().generate(schema, mode=mode)
-            ...         json_schema["x-custom"] = True
-            ...         return json_schema
-            >>>
-            >>> manager.set_default_schema_generator(CustomGenerator)
+            ```python
+            from pydantic.json_schema import GenerateJsonSchema
+
+            class CustomGenerator(GenerateJsonSchema):
+                def generate(
+                    self,
+                    schema: Mapping[str, Any],
+                    mode: JsonSchemaMode = "validation"
+                ) -> JsonSchema:
+                    json_schema = super().generate(schema, mode=mode)
+                    json_schema["x-custom"] = True
+                    return json_schema
+
+            manager.set_default_schema_generator(CustomGenerator)
+            ```
         """
         self.default_config.schema_generator = generator
 
@@ -103,11 +107,13 @@ class SchemaManager:
             transformer: Function that takes and returns a JsonSchema.
 
         Example:
-            >>> def add_examples(schema: JsonSchema) -> JsonSchema:
-            ...     schema["examples"] = [{"name": "John", "age": 30}]
-            ...     return schema
-            >>>
-            >>> manager.register_transformer("User", "1.0.0", add_examples)
+            ```python
+            def add_examples(schema: JsonSchema) -> JsonSchema:
+                schema["examples"] = [{"name": "John", "age": 30}]
+                return schema
+
+            manager.register_transformer("User", "1.0.0", add_examples)
+            ```
         """
         ver = ModelVersion.parse(version) if isinstance(version, str) else version
         key = (name, ver)
@@ -140,21 +146,23 @@ class SchemaManager:
             JSON schema dictionary.
 
         Example:
-            >>> # Use default config
-            >>> schema = manager.get_schema("User", "1.0.0")
-            >>>
-            >>> # Override with custom config
-            >>> config = SchemaConfig(mode="serialization", by_alias=False)
-            >>> schema = manager.get_schema("User", "1.0.0", config=config)
-            >>>
-            >>> # Quick override with kwargs
-            >>> schema = manager.get_schema("User", "1.0.0", mode="serialization")
-            >>>
-            >>> # Get base schema without transformers
-            >>> base_schema = manager.get_schema(
-            ...     "User", "1.0.0",
-            ...     apply_transformers=False
-            ... )
+            ```python
+            # Use default config
+            schema = manager.get_schema("User", "1.0.0")
+
+            # Override with custom config
+            config = SchemaConfig(mode="serialization", by_alias=False)
+            schema = manager.get_schema("User", "1.0.0", config=config)
+
+            # Quick override with kwargs
+            schema = manager.get_schema("User", "1.0.0", mode="serialization")
+
+            # Get base schema without transformers
+            base_schema = manager.get_schema(
+                "User", "1.0.0",
+                apply_transformers=False
+            )
+            ```
         """
         ver = ModelVersion.parse(version) if isinstance(version, str) else version
         model = self.registry.get_model(name, ver)
@@ -213,14 +221,16 @@ class SchemaManager:
                 of that model.
 
         Example:
-            >>> # Clear all transformers
-            >>> manager.clear_transformers()
-            >>>
-            >>> # Clear all User transformers
-            >>> manager.clear_transformers("User")
-            >>>
-            >>> # Clear specific version
-            >>> manager.clear_transformers("User", "1.0.0")
+            ```python
+            # Clear all transformers
+            manager.clear_transformers()
+
+            # Clear all User transformers
+            manager.clear_transformers("User")
+
+            # Clear specific version
+            manager.clear_transformers("User", "1.0.0")
+            ```
         """
         if name is None:
             self._transformers.clear()
@@ -259,11 +269,13 @@ class SchemaManager:
             JSON schema dictionary with external $ref for nested models.
 
         Example:
-            >>> schema = manager.get_schema_with_separate_defs(
-            ...     "User", "2.0.0",
-            ...     ref_template="https://example.com/schemas/{model}_v{version}.json",
-            ...     mode="serialization"
-            ... )
+            ```python
+            schema = manager.get_schema_with_separate_defs(
+                "User", "2.0.0",
+                ref_template="https://example.com/schemas/{model}_v{version}.json",
+                mode="serialization"
+            )
+            ```
         """
         ver = ModelVersion.parse(version) if isinstance(version, str) else version
         schema = self.get_schema(name, ver, config=config, **schema_kwargs)
@@ -319,7 +331,8 @@ class SchemaManager:
                                 # Replace with external reference
                                 return {
                                     "$ref": ref_template.format(
-                                        model=model_name, version=str(model_version)
+                                        model=model_name,
+                                        version=str(model_version).replace(".", "_"),
                                     )
                                 }
                             # Keep as internal reference (will be inlined)
@@ -422,12 +435,14 @@ class SchemaManager:
             config: Optional schema configuration for all exported schemas.
 
         Example:
-            >>> # Export with custom schema generator
-            >>> config = SchemaConfig(
-            ...     schema_generator=CustomGenerator,
-            ...     mode="serialization"
-            ... )
-            >>> manager.dump_schemas("schemas/", config=config)
+            ```python
+            # Export with custom schema generator
+            config = SchemaConfig(
+                schema_generator=CustomGenerator,
+                mode="serialization"
+            )
+            manager.dump_schemas("schemas/", config=config)
+            ```
         """
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -437,7 +452,8 @@ class SchemaManager:
                 for version, schema in self.get_all_schemas(
                     name, config=config
                 ).items():
-                    file_path = output_path / f"{name}_v{version}.json"
+                    version_str = str(version).replace(".", "_")
+                    file_path = output_path / f"{name}_v{version_str}.json"
                     with open(file_path, "w", encoding="utf-8") as f:
                         json.dump(schema, f, indent=indent)
         else:
@@ -449,7 +465,8 @@ class SchemaManager:
                     schema = self.get_schema_with_separate_defs(
                         name, version, ref_template, config=config
                     )
-                    file_path = output_path / f"{name}_v{version}.json"
+                    version_str = str(version).replace(".", "_")
+                    file_path = output_path / f"{name}_v{version_str}.json"
                     with open(file_path, "w", encoding="utf-8") as f:
                         json.dump(schema, f, indent=indent)
 
