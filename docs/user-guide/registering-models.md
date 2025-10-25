@@ -229,8 +229,8 @@ class UserV1(BaseModel):
     address: AddressV1  # Will use $ref if separate_definitions=True
 
 # When exporting with separate_definitions=True:
-# User schema: {"name": "...", "address": {"$ref": "Address_v1.0.0.json"}}
-# Address schema: Separate Address_v1.0.0.json file
+# User schema: {"name": "...", "address": {"$ref": "Address_v1_0_0.json"}}
+# Address schema: Separate Address_v1_0_0.json file
 ```
 
 ### backward_compatible

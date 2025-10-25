@@ -228,7 +228,7 @@ def test_replace_refs_with_external_internal_ref(
     address = properties["address"]
     assert isinstance(address, dict)
     assert "$ref" in address
-    assert address["$ref"] == "Address_v1.0.0.json"
+    assert address["$ref"] == "Address_v1_0_0.json"
 
 
 def test_replace_refs_with_external_disabled_ref(
@@ -286,7 +286,7 @@ def test_replace_refs_with_external_nested_dict(
     address = properties["data"]["properties"]["address"]
     assert isinstance(address, dict)
     assert "$ref" in address
-    assert address["$ref"] == "Address_v1.0.0.json"
+    assert address["$ref"] == "Address_v1_0_0.json"
 
 
 def test_replace_refs_with_external_in_list(
@@ -316,7 +316,7 @@ def test_replace_refs_with_external_in_list(
     items = addresses["items"]
     assert isinstance(items, dict)
     assert "$ref" in items
-    assert items["$ref"] == "Address_v1.0.0.json"
+    assert items["$ref"] == "Address_v1_0_0.json"
 
 
 # Get remaining defs tests
@@ -488,8 +488,8 @@ def test_dump_schemas_creates_files(
     """Test dump_schemas creates JSON files."""
     populated_schema_manager.dump_schemas(tmp_path)
 
-    assert (tmp_path / "User_v1.0.0.json").exists()
-    assert (tmp_path / "User_v2.0.0.json").exists()
+    assert (tmp_path / "User_v1_0_0.json").exists()
+    assert (tmp_path / "User_v2_0_0.json").exists()
 
 
 def test_dump_schemas_valid_json(
@@ -499,7 +499,7 @@ def test_dump_schemas_valid_json(
     """Test dump_schemas creates valid JSON."""
     populated_schema_manager.dump_schemas(tmp_path)
 
-    with open(tmp_path / "User_v1.0.0.json") as f:
+    with open(tmp_path / "User_v1_0_0.json") as f:
         data = json.load(f)
     assert isinstance(data, dict)
 
@@ -511,7 +511,7 @@ def test_dump_schemas_with_indent(
     """Test dump_schemas respects indent parameter."""
     populated_schema_manager.dump_schemas(tmp_path, indent=4)
 
-    content = (tmp_path / "User_v1.0.0.json").read_text()
+    content = (tmp_path / "User_v1_0_0.json").read_text()
     assert "    " in content  # 4 spaces indentation
 
 
@@ -522,7 +522,7 @@ def test_dump_schemas_with_string_path(
     """Test dump_schemas accepts string path."""
     populated_schema_manager.dump_schemas(str(tmp_path))
 
-    assert (tmp_path / "User_v1.0.0.json").exists()
+    assert (tmp_path / "User_v1_0_0.json").exists()
 
 
 def test_dump_schemas_separate_definitions_false(
@@ -532,7 +532,7 @@ def test_dump_schemas_separate_definitions_false(
     """Test dump_schemas with separate_definitions=False (default)."""
     populated_schema_manager.dump_schemas(tmp_path, separate_definitions=False)
 
-    with open(tmp_path / "User_v1.0.0.json") as f:
+    with open(tmp_path / "User_v1_0_0.json") as f:
         data = json.load(f)
     assert isinstance(data, dict)
 
@@ -556,8 +556,8 @@ def test_dump_schemas_separate_definitions_true(
     manager = SchemaManager(registry)
     manager.dump_schemas(tmp_path, separate_definitions=True)
 
-    assert (tmp_path / "Address_v1.0.0.json").exists()
-    assert (tmp_path / "Person_v1.0.0.json").exists()
+    assert (tmp_path / "Address_v1_0_0.json").exists()
+    assert (tmp_path / "Person_v1_0_0.json").exists()
 
 
 def test_dump_schemas_with_ref_template(
@@ -578,7 +578,7 @@ def test_dump_schemas_with_ref_template(
         ref_template="https://example.com/schemas/{model}_v{version}.json",
     )
 
-    assert (tmp_path / "Address_v1.0.0.json").exists()
+    assert (tmp_path / "Address_v1_0_0.json").exists()
 
 
 def test_dump_schemas_default_ref_template(
@@ -595,7 +595,7 @@ def test_dump_schemas_default_ref_template(
     manager = SchemaManager(registry)
     manager.dump_schemas(tmp_path, separate_definitions=True)
 
-    assert (tmp_path / "Address_v1.0.0.json").exists()
+    assert (tmp_path / "Address_v1_0_0.json").exists()
 
 
 def test_dump_schemas_multiple_models(
@@ -616,8 +616,8 @@ def test_dump_schemas_multiple_models(
     manager = SchemaManager(registry)
     manager.dump_schemas(tmp_path)
 
-    assert (tmp_path / "User_v1.0.0.json").exists()
-    assert (tmp_path / "Product_v1.0.0.json").exists()
+    assert (tmp_path / "User_v1_0_0.json").exists()
+    assert (tmp_path / "Product_v1_0_0.json").exists()
 
 
 # Get nested models tests
@@ -1269,7 +1269,7 @@ def test_dump_schemas_with_config(
 
     manager.dump_schemas(tmp_path, config=config)
 
-    with open(tmp_path / "User_v1.0.0.json") as f:
+    with open(tmp_path / "User_v1_0_0.json") as f:
         data = json.load(f)
 
     assert data["x-custom-generator"] is True
@@ -1287,7 +1287,7 @@ def test_dump_schemas_with_default_config(
 
     manager.dump_schemas(tmp_path)
 
-    with open(tmp_path / "User_v1.0.0.json") as f:
+    with open(tmp_path / "User_v1_0_0.json") as f:
         data = json.load(f)
 
     assert data["x-custom-generator"] is True
@@ -1306,7 +1306,7 @@ def test_dump_schemas_config_overrides_default(
     override_config = SchemaConfig(schema_generator=AnotherGenerator)
     manager.dump_schemas(tmp_path, config=override_config)
 
-    with open(tmp_path / "User_v1.0.0.json") as f:
+    with open(tmp_path / "User_v1_0_0.json") as f:
         data = json.load(f)
 
     assert "x-another-generator" in data
@@ -1329,7 +1329,7 @@ def test_dump_schemas_includes_transformers(
     manager.register_transformer("User", "1.0.0", add_metadata)
     manager.dump_schemas(tmp_path)
 
-    with open(tmp_path / "User_v1.0.0.json") as f:
+    with open(tmp_path / "User_v1_0_0.json") as f:
         data = json.load(f)
 
     assert data["x-export-version"] == "1.0"
