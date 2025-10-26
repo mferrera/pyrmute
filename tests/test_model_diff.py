@@ -1,10 +1,13 @@
 """Tests the ModelDiff class."""
 
+import json
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from pyrmute import ModelManager, ModelVersion
+
+# ruff: noqa: PLR2004
 
 
 def multiple_breaking_warnings(markdown: str) -> bool:
@@ -481,3 +484,319 @@ def test_diff_markdown_is_valid_markdown(manager: ModelManager) -> None:
 
     assert "" in lines
     assert any(line.startswith("- ") for line in lines)
+
+
+def test_diff_to_dict_basic(manager: ModelManager) -> None:
+    """Test basic to_dict conversion."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+    result = diff.to_dict()
+
+    assert isinstance(result, dict)
+    assert result["model_name"] == "User"
+    assert result["from_version"] == "1.0.0"
+    assert result["to_version"] == "2.0.0"
+    assert "email" in result["added_fields"]
+    assert result["removed_fields"] == []
+
+
+def test_diff_to_dict_is_json_serializable(manager: ModelManager) -> None:
+    """Test that to_dict output can be serialized to JSON."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        age: int
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        age: str
+        email: str | None = None
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+    result = diff.to_dict()
+
+    json_str = json.dumps(result, indent=2)
+    assert isinstance(json_str, str)
+
+    parsed = json.loads(json_str)
+    assert parsed["model_name"] == "User"
+
+
+def test_diff_to_dict_converts_types_to_strings(manager: ModelManager) -> None:
+    """Test that type objects are converted to strings."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        age: int
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        age: str
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+    result = diff.to_dict()
+
+    type_change = result["modified_fields"]["age"]["type_changed"]
+    assert isinstance(type_change["from"], str)
+    assert isinstance(type_change["to"], str)
+    assert type_change["from"] == "int"
+    assert type_change["to"] == "str"
+
+
+def test_diff_to_dict_handles_optional_types(manager: ModelManager) -> None:
+    """Test that Optional types are converted to strings."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str | None = None
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+    result = diff.to_dict()
+
+    email_info = result["added_field_info"]["email"]
+    assert isinstance(email_info["type"], str)
+    assert "str" in email_info["type"] or "None" in email_info["type"]
+
+
+def test_diff_to_dict_handles_complex_types(manager: ModelManager) -> None:
+    """Test that complex type annotations are converted to strings."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        data: dict[str, Any]
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        data: list[str]
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+    result = diff.to_dict()
+
+    type_change = result["modified_fields"]["data"]["type_changed"]
+    assert isinstance(type_change["from"], str)
+    assert isinstance(type_change["to"], str)
+    assert not type_change["from"].startswith("typing.")
+    assert not type_change["to"].startswith("typing.")
+
+
+def test_diff_to_dict_preserves_structure(manager: ModelManager) -> None:
+    """Test that to_dict preserves the full diff structure."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        username: str
+        age: int
+        status: str = "active"
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+        age: str | None = None
+        role: str = "user"
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+    result = diff.to_dict()
+
+    assert "model_name" in result
+    assert "from_version" in result
+    assert "to_version" in result
+    assert "added_fields" in result
+    assert "removed_fields" in result
+    assert "modified_fields" in result
+    assert "added_field_info" in result
+    assert "unchanged_fields" in result
+
+
+def test_diff_to_dict_added_field_info(manager: ModelManager) -> None:
+    """Test that added_field_info is properly serialized."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+        age: int | None = None
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+    result = diff.to_dict()
+
+    assert "email" in result["added_field_info"]
+    email_info = result["added_field_info"]["email"]
+    assert email_info["required"] is True
+    assert isinstance(email_info["type"], str)
+
+    assert "age" in result["added_field_info"]
+    age_info = result["added_field_info"]["age"]
+    assert age_info["required"] is False
+    assert isinstance(age_info["type"], str)
+
+
+def test_diff_to_dict_modified_fields_all_changes(manager: ModelManager) -> None:
+    """Test that all types of field modifications are serialized."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        age: int
+        status: str = "active"
+        email: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        age: str
+        status: str = "pending"
+        email: str | None = None
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+    result = diff.to_dict()
+
+    assert "type_changed" in result["modified_fields"]["age"]
+    assert isinstance(result["modified_fields"]["age"]["type_changed"]["from"], str)
+
+    assert "default_changed" in result["modified_fields"]["status"]
+
+    assert "required_changed" in result["modified_fields"]["email"]
+    assert result["modified_fields"]["email"]["required_changed"]["from"] is True
+    assert result["modified_fields"]["email"]["required_changed"]["to"] is False
+
+
+def test_diff_to_dict_default_added_removed(manager: ModelManager) -> None:
+    """Test that default_added and default_removed are serialized."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        status: str
+        role: str = "user"
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        status: str = "active"
+        role: str
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+    result = diff.to_dict()
+
+    assert "default_added" in result["modified_fields"]["status"]
+    assert result["modified_fields"]["status"]["default_added"] == "active"
+
+    assert "default_removed" in result["modified_fields"]["role"]
+    assert result["modified_fields"]["role"]["default_removed"] == "user"
+
+
+def test_diff_to_dict_no_changes(manager: ModelManager) -> None:
+    """Test to_dict when there are no changes."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        email: str
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+    result = diff.to_dict()
+
+    assert result["added_fields"] == []
+    assert result["removed_fields"] == []
+    assert result["modified_fields"] == {}
+    assert len(result["unchanged_fields"]) == 2
+
+
+def test_diff_to_dict_with_field_validators(manager: ModelManager) -> None:
+    """Test to_dict works with Pydantic Field validators."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        age: int = Field(ge=0)
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        age: int = Field(ge=0, le=120)
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+    result = diff.to_dict()
+
+    json_str = json.dumps(result)
+    assert isinstance(json_str, str)
+
+
+def test_diff_to_dict_roundtrip(manager: ModelManager) -> None:
+    """Test that to_dict output can be JSON serialized and parsed back."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        age: int
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        age: str
+        email: str | None = None
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+
+    dict_result = diff.to_dict()
+    json_str = json.dumps(dict_result, indent=2)
+    parsed = json.loads(json_str)
+
+    assert parsed["model_name"] == "User"
+    assert parsed["from_version"] == "1.0.0"
+    assert parsed["to_version"] == "2.0.0"
+    assert "email" in parsed["added_fields"]
+    assert "age" in parsed["modified_fields"]
+    assert parsed["modified_fields"]["age"]["type_changed"]["from"] == "int"
+    assert parsed["modified_fields"]["age"]["type_changed"]["to"] == "str"
+
+
+def test_diff_to_dict_nested_structures(manager: ModelManager) -> None:
+    """Test that nested dict/list structures are properly serialized."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        status: str = "active"
+
+    @manager.model("User", "2.0.0")
+    class UserV2(BaseModel):
+        name: str
+        email: str
+        age: int | None = None
+        status: str = "pending"
+
+    diff = manager.diff("User", "1.0.0", "2.0.0")
+    result = diff.to_dict()
+
+    json_str = json.dumps(result, indent=2)
+    parsed = json.loads(json_str)
+
+    assert isinstance(parsed["modified_fields"], dict)
+    assert isinstance(parsed["modified_fields"]["status"], dict)
+    assert isinstance(parsed["modified_fields"]["status"]["default_changed"], dict)
+
+    assert isinstance(parsed["added_field_info"], dict)
+    assert isinstance(parsed["added_field_info"]["email"], dict)
+    assert "type" in parsed["added_field_info"]["email"]

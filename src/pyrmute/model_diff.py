@@ -1,7 +1,9 @@
 """Model diff class."""
 
-from dataclasses import dataclass
-from typing import Any, Self
+import json
+from dataclasses import asdict, dataclass
+from types import GenericAlias, UnionType
+from typing import Any, Self, cast
 
 from pydantic import BaseModel
 from pydantic_core import PydanticUndefined
@@ -86,6 +88,44 @@ class ModelDiff:
             lines.append("")
 
         return "\n".join(lines)
+
+    def to_dict(self: Self) -> dict[str, Any]:
+        """Convert to a JSON-serializable dictionary.
+
+        Converts type objects to their string representation for JSON compatibility.
+
+        Returns:
+            Dictionary with all type objects converted to strings.
+
+        Example:
+            ```python
+            diff_dict = diff.to_dict()
+            json.dumps(diff_dict, indent=2)
+            ```
+        """
+        diff_dict = asdict(self)
+        return cast("dict[str, Any]", self._serialize_for_json(diff_dict))
+
+    def _serialize_for_json(self: Self, obj: Any) -> Any:  # noqa: PLR0911
+        """Convert an object to JSON-serializable format, handling types."""
+        if isinstance(obj, type):
+            return obj.__name__
+        if hasattr(obj, "__origin__"):
+            return str(obj)
+        if isinstance(obj, UnionType):
+            return str(obj)
+        if isinstance(obj, GenericAlias):
+            return str(obj)
+        if isinstance(obj, dict):
+            return {k: self._serialize_for_json(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [self._serialize_for_json(item) for item in obj]
+        try:
+            # Maybe it's already json serializable
+            json.dumps(obj)
+            return obj
+        except (TypeError, ValueError):
+            return str(obj)
 
     def _format_field_description(self: Self, field_name: str, context: str) -> str:
         """Format a field for display."""
