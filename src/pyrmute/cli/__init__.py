@@ -1,0 +1,1 @@
+"""The pyrmute CLI subpackage."""

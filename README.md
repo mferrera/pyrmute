@@ -414,147 +414,55 @@ class LoggingHook(MigrationHook):
 manager.add_hook(LoggingHook())
 ```
 
+## Command-Line Interface
+
+pyrmute includes a CLI for working with models outside of Python:
+
+```bash
+# Initialize a new project
+pyrmute init
+
+# View registered models
+pyrmute info
+
+# Validate data against a schema
+pyrmute validate -d data.json -s User -v 1.0.0
+
+# Migrate data between versions
+pyrmute migrate -d user_v1.json -s User -f 1.0.0 -t 2.0.0 -o user_v2.json
+
+# Compare schema versions
+pyrmute diff -s User -f 1.0.0 -t 2.0.0
+
+# Export schemas in various formats
+pyrmute export -f json-schema -o schemas/
+```
+
+Install with CLI support:
+
+```bash
+pip install pyrmute[cli]
+```
+
+See the [CLI User
+Guide](https://pyrmute.readthedocs.io/en/latest/user-guide/cli/) for complete
+documentation.
+
 ## Real-World Examples
 
-### Configuration File Evolution
-
-```python
-# Your CLI tool evolves over time
-@manager.model("AppConfig", "1.0.0")
-class AppConfigV1(BaseModel):
-    api_key: str
-    debug: bool = False
-
-@manager.model("AppConfig", "2.0.0")
-class AppConfigV2(BaseModel):
-    api_key: str
-    api_endpoint: str = "https://api.example.com"
-    log_level: Literal["DEBUG", "INFO", "ERROR"] = "INFO"
-
-@manager.migration("AppConfig", "1.0.0", "2.0.0")
-def upgrade_config(data: dict) -> dict:
-    return {
-        "api_key": data["api_key"],
-        "api_endpoint": "https://api.example.com",
-        "log_level": "DEBUG" if data.get("debug") else "INFO",
-    }
-
-# Load and auto-upgrade user's config file
-def load_config(config_path: Path) -> AppConfigV2:
-    with open(config_path) as f:
-        data = json.load(f)
-
-    version = data.get("_version", "1.0.0")
-
-    # Migrate to current version
-    config = manager.migrate(
-        data,
-        "AppConfig",
-        from_version=version,
-        to_version="2.0.0"
-    )
-
-    # Save upgraded config with version tag
-    with open(config_path, "w") as f:
-        json.dump({**config.model_dump(), "_version": "2.0.0"}, f, indent=2)
-
-    return config
-```
-
-### Message Queue Consumer
-
-```python
-# Handle messages from multiple service versions
-@manager.model("OrderEvent", "1.0.0")
-class OrderEventV1(BaseModel):
-    order_id: str
-    customer_email: str
-    items: list[dict]  # Unstructured
-
-@manager.model("OrderEvent", "2.0.0")
-class OrderEventV2(BaseModel):
-    order_id: str
-    customer_email: str
-    items: list[OrderItem]  # Structured
-    total: Decimal
-
-def process_message(message: dict, schema_version: str) -> None:
-    # Migrate to current schema regardless of source version
-    event = manager.migrate(
-        message,
-        "OrderEvent",
-        from_version=schema_version,
-        to_version="2.0.0"
-    )
-    # Process with current schema only
-    fulfill_order(event)
-```
-
-### ETL Data Import
-
-```python
-# Import historical exports with evolving schemas
-import csv
-
-def import_customers(file_path: Path, file_version: str) -> None:
-    with open(file_path) as f:
-        reader = csv.DictReader(f)
-
-        # Stream migration for memory efficiency
-        for customer in manager.migrate_batch_streaming(
-            reader,
-            "Customer",
-            from_version=file_version,
-            to_version="3.0.0",
-            chunk_size=1000
-        ):
-            database.save(customer)
-
-# Handle files from different years
-import_customers("exports/2022_customers.csv", "1.0.0")
-import_customers("exports/2023_customers.csv", "2.0.0")
-import_customers("exports/2024_customers.csv", "3.0.0")
-```
-
-### ML Model Serving
-
-```python
-# Route requests to appropriate model versions
-class InferenceService:
-    def predict(self, features: dict, request_version: str) -> BaseModel:
-        # Determine target model version (A/B testing, gradual rollout, etc.)
-        model_version = self.get_model_version(features["user_id"])
-
-        # Migrate request to model's expected format
-        model_input = manager.migrate(
-            features,
-            "PredictionRequest",
-            from_version=request_version,
-            to_version=model_version
-        )
-
-        # Run inference
-        prediction = self.models[model_version].predict(model_input)
-
-        # Normalize output for logging/analytics
-        return manager.migrate(
-            prediction,
-            "PredictionResponse",
-            from_version=model_version,
-            to_version="3.0.0"
-        )
-```
-
 See [examples/](https://github.com/mferrera/pyrmute/tree/main/examples) for
-complete runnable code:
+complete, runnable code demonstrating:
 
-- `config_file_migration.py` - CLI/desktop app config file evolution
-- `message_queue_consumer.py` - Kafka/RabbitMQ/SQS consumer handling multiple
-    schemas
-- `etl_data_import.py` - CSV/JSON/Excel import pipeline with historical data
-- `ml_inference_pipeline.py` - ML model serving with feature evolution
-- `advanced_features.py` - Complex Pydantic features (unions, nested models,
-    validators)
+- **Configuration File Evolution** (`config_file_migration.py`) -
+    Automatically upgrade CLI/desktop app config files as schemas evolve
+- **Message Queue Consumer** (`message_queue_consumer.py`) - Handle messages
+    from multiple service versions with different schemas (Kafka, RabbitMQ, SQS)
+- **ETL Data Import** (`etl_data_import.py`) - Import historical
+    CSV/JSON/Excel files with evolving structures
+- **ML Model Serving** (`ml_inference_pipeline.py`) - Manage feature schema
+    evolution across model versions and A/B tests
+- **Advanced Features** (`advanced_features.py`) - Complex Pydantic features
+    including unions, nested models, and validators
 
 ## Contributing
 
