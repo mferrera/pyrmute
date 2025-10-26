@@ -24,11 +24,22 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Natural Language :: English",
 ]
-keywords = ["pydantic", "migration", "versioning", "schema"]
+keywords = [
+    "pydantic", 
+    "migration", 
+    "versioning", 
+    "schema", 
+    "jsonschema",
+    "avro",
+    "protobuf"
+]
 dynamic = ["version"]
 dependencies = ["pydantic"]
 
 [dependency-groups]
+cli = [
+    "typer",
+]
 dev = [
     "avro-python3",
     "fastavro",
@@ -41,16 +52,19 @@ dev = [
     "ruff",
 ]
 docs = [
+    "griffe-typingdoc",
     "mkdocs",
     "mkdocs-material",
     "mkdocstrings[python]",
-    "griffe-typingdoc",
 ]
 
 [project.urls]
 Homepage = "https://github.com/mferrera/pyrmute"
 Repository = "https://github.com/mferrera/pyrmute"
 Documentation = "https://github.com/mferrera/pyrmute"
+
+[project.scripts]
+pyrmute = "pyrmute.cli.main:app"
 
 [tool.setuptools_scm]
 write_to = "src/pyrmute/_version.py"
