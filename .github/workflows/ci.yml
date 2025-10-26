@@ -37,6 +37,12 @@ jobs:
       - name: Set up Python
         run: uv python install ${{ matrix.python-version }}
 
+      - name: Install protoc
+        uses: ./.github/actions/install-protoc
+        with:
+          version: v33.0
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install dependencies
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
@@ -44,9 +50,6 @@ jobs:
           else
             uv sync --all-groups --frozen
           fi
-
-      - name: Install protoc
-        run: sudo apt install protobuf-compiler -y
 
       - name: Ruff check
         run: uv run ruff check
