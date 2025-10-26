@@ -1,0 +1,137 @@
+name: "Install Protocol Buffers Compiler"
+description: "Downloads, caches, and installs a specific version of protoc from GitHub releases"
+inputs:
+  version:
+    description: "Version of protoc to install (e.g., v33.0, v29.5)"
+    required: true
+  github-token:
+    description: "GitHub token for API access"
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate version format
+      shell: bash
+      run: |
+        if [[ ! "${{ inputs.version }}" =~ ^v[0-9]+\.[0-9]+ ]]; then
+          echo "Error: Version must start with 'v' followed by numbers (e.g., v28.3)"
+          exit 1
+        fi
+
+    - name: Determine platform and architecture
+      shell: bash
+      id: platform
+      run: |
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        ARCH=$(uname -m)
+
+        case "$OS" in
+          linux)
+            OS_NAME="linux"
+            ;;
+          darwin)
+            OS_NAME="osx"
+            ;;
+          *)
+            echo "Unsupported OS: $OS"
+            exit 1
+            ;;
+        esac
+
+        case "$ARCH" in
+          x86_64)
+            ARCH_NAME="x86_64"
+            ;;
+          aarch64|arm64)
+            ARCH_NAME="aarch_64"
+            ;;
+          *)
+            echo "Unsupported architecture: $ARCH"
+            exit 1
+            ;;
+        esac
+
+        echo "os=$OS_NAME" >> $GITHUB_OUTPUT
+        echo "arch=$ARCH_NAME" >> $GITHUB_OUTPUT
+
+        CACHE_KEY="protoc-${{ inputs.version }}-${OS_NAME}-${ARCH_NAME}"
+        echo "cache-key=$CACHE_KEY" >> $GITHUB_OUTPUT
+
+    - name: Cache protoc installation
+      id: cache-protoc
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/protoc
+        key: ${{ steps.platform.outputs.cache-key }}
+
+    - name: Check release age (scheduled runs only)
+      if: github.event_name == 'schedule' && steps.cache-protoc.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        echo "Checking if ${{ inputs.version }} is within the last 5 releases..."
+
+        recent_releases=$(gh release list \
+          --repo protocolbuffers/protobuf \
+          --limit 5 \
+          --json tagName \
+          --jq '.[].tagName')
+
+        echo "Recent releases:"
+        echo "$recent_releases"
+
+        if echo "$recent_releases" | grep -q "^${{ inputs.version }}$"; then
+          echo "✓ Version ${{ inputs.version }} is within the last 5 releases"
+        else
+          echo "Error: Version ${{ inputs.version }} is more than 5 releases old"
+          echo "Please update to a more recent version."
+          exit 1
+        fi
+
+    - name: Download and install protoc
+      if: steps.cache-protoc.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        VERSION="${{ inputs.version }}"
+        OS="${{ steps.platform.outputs.os }}"
+        ARCH="${{ steps.platform.outputs.arch }}"
+
+        # Remove 'v' prefix for filename
+        VERSION_NUM="${VERSION#v}"
+
+        FILENAME="protoc-${VERSION_NUM}-${OS}-${ARCH}.zip"
+
+        echo "Downloading $FILENAME..."
+
+        gh release download "$VERSION" \
+          --repo protocolbuffers/protobuf \
+          --pattern "$FILENAME" \
+          --dir /tmp
+
+        echo "Extracting protoc to cache..."
+        mkdir -p ~/.local/protoc
+        unzip -q "/tmp/$FILENAME" -d ~/.local/protoc
+
+        rm "/tmp/$FILENAME"
+
+        echo "✓ protoc downloaded and cached successfully"
+
+    - name: Install protoc to system
+      shell: bash
+      run: |
+        echo "Installing protoc from cache..."
+        sudo cp -r ~/.local/protoc/bin/* /usr/local/bin/
+        sudo cp -r ~/.local/protoc/include/* /usr/local/include/
+
+        protoc --version
+
+        echo "✓ protoc installed successfully"
+
+branding:
+  icon: "download"
+  color: "blue"
