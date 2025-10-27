@@ -4,7 +4,7 @@
 
 # pyrmute
 
-**Schema evolution and migrations for Pydantic models**
+**Version, migrate, and export Pydantic models to any schema format**
 
 [![ci](https://img.shields.io/github/actions/workflow/status/mferrera/pyrmute/ci.yml?branch=main&logo=github&label=ci)](https://github.com/mferrera/pyrmute/actions?query=event%3Apush+branch%3Amain+workflow%3Aci)
 [![codecov](https://codecov.io/gh/mferrera/pyrmute/graph/badge.svg?token=4J9G3CEZQF)](https://codecov.io/gh/mferrera/pyrmute)
@@ -18,14 +18,14 @@
 
 ---
 
-Pydantic model migrations and schema management with semantic versioning.
+Pydantic model versioning, migrations, and multi-format schema generation.
 
-pyrmute handles the complexity of data model evolution so you can confidently
+Pyrmute handles the complexity of data model evolution so you can confidently
 make changes without breaking your production systems. Version your models,
-define transformations, and let pyrmute automatically migrate legacy data
-through multiple versions.
+define transformations, export to TypeScript/JSON Schema/Protobuf, and let
+pyrmute automatically migrate legacy data through multiple versions.
 
-pyrmute is to Pydantic models what Alembic is to SQLAlchemy. It offers a
+Pyrmute is to Pydantic models what Alembic is to SQLAlchemy. It offers a
 structured, composable way to evolve and migrate schemas across versions.
 
 **Key Features**
@@ -37,16 +37,18 @@ structured, composable way to evolve and migrate schemas across versions.
     catching errors before they reach production.
 - **Migration hooks** - Observe migrations with built-in metrics tracking or
     custom hooks for logging, monitoring, and validation.
-- **Flexible schema export** - Generate JSON Schema, Apache Avro, or Protocol
-    Buffer schemas for all versions with support for `$ref`, custom
-    generators, and nested models.
+- **Flexible schema export** - Generates, with support for nested models:
+    - JSON Schema with support for `$ref`, custom generators, and schema transformers
+    - Apache Avro schemas
+    - Protocol Buffer schemas
+    - TypeScript interfaces, types, and Zod schemas
 - **Production-ready** - Batch processing, parallel execution, and streaming
     support for large datasets.
 - **Only one dependency** - Pydantic.
 
-## When to Use pyrmute
+## When to Use Pyrmute
 
-pyrmute is useful for handling schema evolution in production systems:
+Pyrmute is useful for handling schema evolution in production systems:
 
 - **Configuration files** - Upgrade user config files as your CLI/desktop app
     evolves (`.apprc`, `config.json`, `settings.yaml`).
@@ -68,7 +70,7 @@ directory for complete, runnable code demonstrating these patterns.
 
 ## When Not to Use
 
-pyrmute may not be the right choice if you have:
+Pyrmute may not be the right choice if you have:
 
 - **High-throughput systems** - Runtime migration adds latency to hot paths.
     Use upfront batch migrations instead.

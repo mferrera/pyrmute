@@ -31,6 +31,7 @@ from .types import (
     ModelData,
     NestedModelInfo,
 )
+from .typescript_schema import TypeScriptConfig, TypeScriptExporter
 
 __all__ = [
     "AvroExporter",
@@ -58,6 +59,8 @@ __all__ = [
     "Registry",
     "SchemaConfig",
     "SchemaManager",
+    "TypeScriptConfig",
+    "TypeScriptExporter",
     "VersionedModelError",
     "__version__",
 ]
