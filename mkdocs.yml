@@ -132,6 +132,7 @@ nav:
   - Schema Generation: user-guide/schema-generation.md
   - Avro Schemas: user-guide/avro-schemas.md
   - ProtoBuf Schemas: user-guide/protobuf-schemas.md
+  - TypeScript Schemas: user-guide/typescript-schemas.md
   - Command-Line Interface: user-guide/cli.md
 - API Reference:
   - ModelManager: reference/model-manager.md
@@ -143,6 +144,7 @@ nav:
   - SchemaConfig: reference/schema-config.md
   - Avro Schema: reference/avro-schema.md
   - ProtoBuf Schema: reference/protobuf-schema.md
+  - TypeScript Schema: reference/typescript-schema.md
   - Types: reference/types.md
 - Advanced:
   - Discriminated Unions: advanced/discriminated-unions.md

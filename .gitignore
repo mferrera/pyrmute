@@ -19,3 +19,8 @@ wheels/
 
 # setuptools-scm version
 _version.py
+
+# tsc
+node_modules/
+package.json
+pnpm-lock.yaml

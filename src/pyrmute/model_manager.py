@@ -3,7 +3,7 @@
 from collections.abc import Callable, Iterable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel
 from pydantic.json_schema import GenerateJsonSchema
@@ -34,6 +34,7 @@ from .types import (
     NestedModelInfo,
     SchemaTransformer,
 )
+from .typescript_schema import TypeScriptConfig, TypeScriptExporter
 
 
 class ModelManager:
@@ -1257,4 +1258,180 @@ class ModelManager:
             include_comments=include_comments,
             use_proto3=use_proto3,
         )
+        return exporter.export_all_schemas(output_dir)
+
+    def get_typescript_schema(
+        self: Self,
+        name: str,
+        version: str | ModelVersion,
+        style: Literal["interface", "type", "zod"] = "interface",
+        config: TypeScriptConfig | None = None,
+    ) -> str:
+        """Get TypeScript schema for a specific model version.
+
+        Args:
+            name: Name of the model.
+            version: Semantic version.
+            style: Output style - 'interface', 'type', or 'zod'.
+            config: Optional configuration for schema generation.
+
+        Returns:
+            TypeScript schema code as a string.
+
+        Example:
+            ```python
+            # Get TypeScript interface for a model
+            schema = manager.get_typescript_schema("User", "1.0.0", style="interface")
+            print(schema)
+            # export interface UserV1_0_0 {
+            #   name: string;
+            #   email: string;
+            #   age?: number;
+            # }
+
+            # Get Zod schema with validation
+            zod_schema = manager.get_typescript_schema("User", "2.0.0", style="zod")
+            print(zod_schema)
+            # import { z } from 'zod';
+            #
+            # export const UserV2_0_0Schema = z.object({
+            #   name: z.string(),
+            #   email: z.string().email(),
+            #   age: z.number().int().positive().optional(),
+            # });
+            #
+            # export type UserV2_0_0 = z.infer<typeof UserV2_0_0Schema>;
+
+            # Customize output with config
+            from pyrmute.typescript_types import TypeScriptConfig
+
+            config = TypeScriptConfig(
+                date_format="timestamp",
+                enum_style="enum",
+                strict_null_checks=True,
+            )
+            schema = manager.get_typescript_schema(
+                "Event", "1.0.0", style="interface", config=config
+            )
+
+            # Use in frontend
+            # Save to file and import in TypeScript:
+            # import { UserV1_0_0 } from './types/user_v1_0_0';
+            #
+            # const user: UserV1_0_0 = {
+            #   name: "Alice",
+            #   email: "alice@example.com"
+            # };
+
+            # Use with Zod for runtime validation
+            # import { UserV2_0_0Schema } from './schemas/user_v2_0_0';
+            #
+            # const result = UserV2_0_0Schema.safeParse(data);
+            # if (result.success) {
+            #   console.log(result.data);
+            # } else {
+            #   console.error(result.error);
+            # }
+            ```
+        """
+        exporter = TypeScriptExporter(self._registry, style=style, config=config)
+        return exporter.export_schema(name, version)
+
+    def dump_typescript_schemas(
+        self: Self,
+        output_dir: str | Path,
+        style: Literal["interface", "type", "zod"] = "interface",
+        config: TypeScriptConfig | None = None,
+    ) -> dict[str, dict[str, str]]:
+        r"""Export all schemas as TypeScript schemas.
+
+        TypeScript schemas enable type-safe frontend development and can include runtime
+        validation with Zod. Ideal for full-stack applications where backend Pydantic
+        models need to be synchronized with frontend TypeScript code.
+
+        Args:
+            output_dir: Directory path for output.
+            style: Output style - 'interface' (default), 'type', or 'zod'.
+            config: Optional configuration for schema generation.
+
+        Returns:
+            Dictionary mapping model names to versions to TypeScript schema code.
+
+        Example:
+            ```python
+            # Export all models as TypeScript interfaces
+            manager.dump_typescript_schemas(
+                "frontend/src/types/",
+                style="interface"
+            )
+            # Creates files like:
+            # frontend/src/types/User_v1_0_0.ts
+            # frontend/src/types/User_v2_0_0.ts
+            # frontend/src/types/Order_v1_0_0.ts
+
+            # Export as Zod schemas with validation
+            manager.dump_typescript_schemas(
+                "frontend/src/schemas/",
+                style="zod"
+            )
+
+            # Export with custom configuration
+            from pyrmute.typescript_types import TypeScriptConfig
+
+            config = TypeScriptConfig(
+                use_optional_chaining=True,
+                generate_validators=True,
+                strict_null_checks=True,
+                date_format="iso",  # or "timestamp"
+                enum_style="union",  # or "enum"
+            )
+            manager.dump_typescript_schemas(
+                "frontend/src/types/",
+                style="interface",
+                config=config
+            )
+
+            # Use in React application
+            # import { UserV1_0_0 } from '@/types/User_v1_0_0';
+            #
+            # interface UserCardProps {
+            #   user: UserV1_0_0;
+            # }
+            #
+            # export function UserCard({ user }: UserCardProps) {
+            #   return <div>{user.name}</div>;
+            # }
+
+            # Use Zod for API response validation
+            # import { UserV1_0_0Schema } from '@/schemas/User_v1_0_0';
+            #
+            # async function fetchUser(id: string) {
+            #   const response = await fetch(`/api/users/${id}`);
+            #   const data = await response.json();
+            #   return UserV1_0_0Schema.parse(data); // Validates at runtime
+            # }
+
+            # Use with tRPC for end-to-end type safety
+            # import { UserV1_0_0Schema } from '@/schemas/User_v1_0_0';
+            #
+            # export const userRouter = router({
+            #   getUser: publicProcedure
+            #     .input(z.object({ id: z.string() }))
+            #     .output(UserV1_0_0Schema)
+            #     .query(async ({ input }) => {
+            #       return await db.user.findUnique({ where: { id: input.id } });
+            #     }),
+            # });
+
+            # Integrate with build pipeline
+            # Add to package.json scripts:
+            # {
+            #   "scripts": {
+            #     "generate-types": "pyrmute export -f typescript -o src/types",
+            #     "prebuild": "npm run generate-types"
+            #   }
+            # }
+            ```
+        """
+        exporter = TypeScriptExporter(self._registry, style=style, config=config)
         return exporter.export_all_schemas(output_dir)
