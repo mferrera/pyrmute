@@ -52,10 +52,12 @@ class MigrationManager:
             Decorator function for migration function.
 
         Example:
-            >>> manager = MigrationManager(registry)
-            >>> @manager.register_migration("User", "1.0.0", "2.0.0")
-            ... def migrate_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
-            ...     return {**data, "email": "unknown@example.com"}
+            ```python
+            manager = MigrationManager(registry)
+            @manager.register_migration("User", "1.0.0", "2.0.0")
+            def migrate_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
+                return {**data, "email": "unknown@example.com"}
+            ```
         """
         from_ver = self._parse_version(from_version)
         to_ver = self._parse_version(to_version)

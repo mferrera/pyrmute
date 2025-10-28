@@ -62,10 +62,12 @@ class Registry:
             Decorator function for model class.
 
         Example:
-            >>> registry = Registry()
-            >>> @registry.register("User", "1.0.0", enable_ref=True)
-            ... class UserV1(BaseModel):
-            ...     name: str
+            ```python
+            registry = Registry()
+            @registry.register("User", "1.0.0", enable_ref=True)
+            class UserV1(BaseModel):
+                name: str
+            ```
         """
         ver = ModelVersion.parse(version) if isinstance(version, str) else version
 
