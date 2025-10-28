@@ -596,7 +596,7 @@ class AvroSchemaGenerator:
         if isinstance(value, Enum):
             return str(value.value)
         if isinstance(value, BaseModel):
-            return value.model_dump()
+            return value.model_dump(mode="json")
         if isinstance(value, datetime):
             # timestamp-micros: microseconds since epoch
             return int(value.timestamp() * 1_000_000)
