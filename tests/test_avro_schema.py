@@ -9,7 +9,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field
 
 from pyrmute import ModelManager, ModelNotFoundError
 from pyrmute.avro_schema import AvroExporter, AvroSchemaGenerator
@@ -1743,6 +1743,20 @@ def test_avro_schema_unknown_type_default(manager: ModelManager) -> None:
 
     # Should fall back to string conversion
     assert result == "custom_value"
+
+
+def test_avro_schema_nested_anyhttpurl_with_value(manager: ModelManager) -> None:
+    """Tests that nested models with AnyHttpUrls value serializes correctly."""
+
+    class Inner(BaseModel):
+        url: AnyHttpUrl
+
+    @manager.model("Outer", "1.0.0")
+    class Outer(BaseModel):
+        inner: Inner = Inner(url=AnyHttpUrl("http://test.com"))
+
+    # Doesn't fail to serialize
+    json.dumps(manager.get_avro_schema("Outer", "1.0.0"))
 
 
 # ============================================================================
