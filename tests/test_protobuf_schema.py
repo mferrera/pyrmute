@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NewType, Optional
 from uuid import UUID
 
+import pytest
 from pydantic import BaseModel, Field
 
 from pyrmute import ModelManager, ModelVersion
@@ -1328,11 +1329,11 @@ def test_cycle_through_lists() -> None:
         children: list["Node"] = Field(default_factory=list)
 
     generator = ProtoSchemaGenerator()
-    message = generator._generate_proto_schema(Node, "Node", "1.0.0")
+    message = generator._generate_proto_schema(Node, "NotNode", "1.0.0")
 
     children = next((f for f in message["fields"] if f["name"] == "children"), None)
     assert children is not None
-    assert children["type"] == "Node"
+    assert children["type"] == "NotNode"
     assert children["label"] == "repeated"
 
 
@@ -2225,3 +2226,35 @@ def test_proto_schema_dump_with_nested_models(
     user_content = user_file.read_text()
     assert "message AddressV1 {" in user_content
     assert "AddressV1 address = 2;" in user_content
+
+
+def test_protobuf_model_with_unioned_iterable_oneof(
+    tmp_path: Path, manager: ModelManager
+) -> None:
+    """Models with unions with iterables raise an error."""
+
+    @manager.model("Unions", "1.0.0")
+    class ModelWithMapUnion(BaseModel):
+        """Model with union types."""
+
+        list_or_dict: list[int] | int
+
+    generator = ProtoSchemaGenerator(package="integration_test")
+    with pytest.raises(ValueError, match="Python iterables to ProtoBuf"):
+        generator.generate_proto_file(ModelWithMapUnion, "Unions", "1.0.0")
+
+
+def test_protobuf_model_with_unioned_mapping_oneof(
+    tmp_path: Path, manager: ModelManager
+) -> None:
+    """Models with unions with iterables raise an error."""
+
+    @manager.model("Unions", "1.0.0")
+    class ModelWithMapUnion(BaseModel):
+        """Model with union types."""
+
+        list_or_dict: dict[str, Any] | int
+
+    generator = ProtoSchemaGenerator(package="integration_test")
+    with pytest.raises(ValueError, match="Python mappings to ProtoBuf"):
+        generator.generate_proto_file(ModelWithMapUnion, "Unions", "1.0.0")

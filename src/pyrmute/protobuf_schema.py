@@ -56,6 +56,7 @@ class ProtoSchemaGenerator:
         self._field_counter = 1
         self._collected_enums: list[ProtoEnum] = []
         self._collected_nested_messages: list[ProtoMessage] = []
+        self._current_model = ("", "")
 
     def _generate_proto_schema(
         self: Self,
@@ -70,6 +71,7 @@ class ProtoSchemaGenerator:
         self._collected_enums = []
         self._collected_nested_messages = []
 
+        self._current_model = (model.__name__, name)
         self._types_seen.add(model.__name__)
 
         message: ProtoMessage = {
@@ -159,6 +161,18 @@ class ProtoSchemaGenerator:
         for arg in non_none_args:
             variant_name = self._get_union_variant_name(arg, field_name)
             proto_type, is_repeated = self._python_type_to_proto(arg, None)
+            if proto_type.startswith("map"):
+                raise ValueError(
+                    "Cannot encode unions with Python dictionaries to ProtoBuf: "
+                    "Map fields and repeated fields are not allowed in oneofs."
+                )
+
+            if is_repeated:
+                raise ValueError(
+                    "Cannot encode unions with Python iterables to ProtoBuf: "
+                    "Fields in oneofs must not have labels (required / optional / "
+                    "repeated)."
+                )
 
             field_schema: ProtoField = {
                 "name": variant_name,
@@ -167,9 +181,6 @@ class ProtoSchemaGenerator:
                 "oneof_group": oneof_name,
             }
             self._field_counter += 1
-
-            if is_repeated:
-                field_schema["label"] = "repeated"
 
             if self.include_comments:
                 type_name = self._get_type_display_name(arg)
@@ -338,6 +349,10 @@ class ProtoSchemaGenerator:
                 self._types_seen.add(model_name)
                 nested_msg = self._generate_nested_message(annotation, model_name)
                 self._collected_nested_messages.append(nested_msg)
+
+            # This is a recursive model referencing itself
+            if model_name == self._current_model[0]:
+                return self._current_model[1], False
 
             return model_name, False
 
