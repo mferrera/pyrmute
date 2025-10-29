@@ -1,5 +1,6 @@
 """Comprehensive tests for Protocol Buffer schema generation - Coverage Enhancement."""
 
+from collections.abc import Mapping, MutableMapping
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum, IntEnum, StrEnum
@@ -7,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NewType, Optional
 from uuid import UUID
 
+import pytest
 from pydantic import BaseModel, Field
 
 from pyrmute import ModelManager, ModelVersion
@@ -613,23 +615,38 @@ def test_union_with_model_types() -> None:
     assert "TypeB" in field_types
 
 
-def test_union_with_list_type() -> None:
-    """Test union containing a list type."""
+def test_protobuf_model_with_unioned_iterable_oneof(
+    tmp_path: Path, manager: ModelManager
+) -> None:
+    """Models with unions with iterables raise an error."""
 
+    @manager.model("Model", "1.0.0")
     class Model(BaseModel):
-        data: str | list[int]
+        """Model with union types."""
 
-    generator = ProtoSchemaGenerator()
-    message = generator._generate_proto_schema(Model, "Model", "1.0.0")
+        list_or_int: list[int] | int
 
-    oneof_fields = [
-        f for f in message["fields"] if f.get("oneof_group") == "data_value"
-    ]
-    assert len(oneof_fields) == 2
+    generator = ProtoSchemaGenerator(package="integration_test")
+    with pytest.raises(ValueError, match="Python iterables to ProtoBuf"):
+        generator.generate_proto_file(Model, "Model", "1.0.0")
 
-    repeated_fields = [f for f in oneof_fields if f.get("label") == "repeated"]
-    assert len(repeated_fields) == 1
-    assert repeated_fields[0]["type"] == "int32"
+
+def test_protobuf_model_with_unioned_mapping_oneof(
+    tmp_path: Path, manager: ModelManager
+) -> None:
+    """Models with unions with dictionaries raise an error."""
+
+    @manager.model("Model", "1.0.0")
+    class Model(BaseModel):
+        """Model with union types."""
+
+        dict_or_int: dict[str, Any] | int
+
+    generator = ProtoSchemaGenerator(package="integration_test")
+    with pytest.raises(
+        ValueError, match="Cannot encode unions with Python dictionaries"
+    ):
+        generator.generate_proto_file(Model, "Model", "1.0.0")
 
 
 def test_proto_file_with_options() -> None:
@@ -1089,46 +1106,28 @@ def test_union_with_two_list_types() -> None:
         data: list[str] | list[int]
 
     generator = ProtoSchemaGenerator()
-    message = generator._generate_proto_schema(Model, "Model", "1.0.0")
-
-    oneof_fields = [f for f in message["fields"] if f.get("oneof_group")]
-    assert len(oneof_fields) == 2
-
-    repeated_fields = [f for f in oneof_fields if f.get("label") == "repeated"]
-    assert len(repeated_fields) == 2
+    with pytest.raises(ValueError, match="Cannot encode unions with Python iterables"):
+        generator._generate_proto_schema(Model, "Model", "1.0.0")
 
 
 def test_union_with_two_dict_types() -> None:
     """Test union with two different dict types."""
 
     class Model(BaseModel):
-        config: dict[str, str] | dict[str, int]
+        config: Mapping[str, str] | MutableMapping[str, int]
 
     generator = ProtoSchemaGenerator()
-    message = generator._generate_proto_schema(Model, "Model", "1.0.0")
-
-    oneof_fields = [f for f in message["fields"] if f.get("oneof_group")]
-    assert len(oneof_fields) == 2
-
-    map_fields = [f for f in oneof_fields if "map<" in f["type"]]
-    assert len(map_fields) == 2
+    with pytest.raises(
+        ValueError, match="Cannot encode unions with Python dictionaries"
+    ):
+        generator._generate_proto_schema(Model, "Model", "1.0.0")
 
 
 def test_very_large_union() -> None:
     """Test union with many types (10+)."""
 
     class Model(BaseModel):
-        value: (
-            str
-            | int
-            | float
-            | bool
-            | bytes
-            | list[str]
-            | dict[str, str]
-            | (datetime)
-            | None
-        )
+        value: str | int | float | bool | bytes | (datetime) | None
 
     generator = ProtoSchemaGenerator()
     message = generator._generate_proto_schema(Model, "Model", "1.0.0")
@@ -1328,11 +1327,11 @@ def test_cycle_through_lists() -> None:
         children: list["Node"] = Field(default_factory=list)
 
     generator = ProtoSchemaGenerator()
-    message = generator._generate_proto_schema(Node, "Node", "1.0.0")
+    message = generator._generate_proto_schema(Node, "NotNode", "1.0.0")
 
     children = next((f for f in message["fields"] if f["name"] == "children"), None)
     assert children is not None
-    assert children["type"] == "Node"
+    assert children["type"] == "NotNode"
     assert children["label"] == "repeated"
 
 
