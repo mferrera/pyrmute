@@ -1,13 +1,14 @@
 """Avro schema generation from Pydantic models."""
 
 import json
+import re
 import types
 from collections.abc import Mapping
 from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from typing import Any, Self, Union, get_args, get_origin
+from typing import Any, Final, Self, Union, get_args, get_origin
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -32,6 +33,8 @@ from .model_version import ModelVersion
 
 class AvroSchemaGenerator:
     """Generates Apache Avro schemas from Pydantic models."""
+
+    AVRO_SYMBOL_REGEX: Final = re.compile("[A-Za-z_][A-Za-z0-9_]*")
 
     _BASIC_TYPE_MAPPING: Mapping[type, str] = {
         str: "string",
@@ -378,12 +381,22 @@ class AvroSchemaGenerator:
             # }
             ```
         """
-        enum_schema: AvroEnumSchema = {
+        symbols = []
+        for member in enum_class:
+            value = str(member.value)
+            if not re.fullmatch(self.AVRO_SYMBOL_REGEX, value):
+                raise ValueError(
+                    f"Unable to convert enum '{enum_class.__name__}' to Avro. "
+                    "Every symbol must match the regular expression "
+                    "'[A-Za-z_][A-Za-z0-9_]*'. Got '{value}'"
+                )
+            symbols.append(value)
+
+        return {
             "type": "enum",
             "name": enum_class.__name__,
-            "symbols": [str(member.value) for member in enum_class],
+            "symbols": symbols,
         }
-        return enum_schema
 
     def _union_to_avro(self: Self, args: tuple[Any, ...]) -> AvroUnion:
         """Convert Union type to Avro union.

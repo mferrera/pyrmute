@@ -1959,13 +1959,8 @@ def test_avro_schema_int_enum(manager: ModelManager) -> None:
     class TaskV1(BaseModel):
         priority: Priority
 
-    schema = manager.get_avro_schema("Task", "1.0.0", namespace="com.test")
-    fields = {f["name"]: f for f in schema["fields"]}
-
-    priority_type = fields["priority"]["type"]
-    assert priority_type["type"] == "enum"
-    assert priority_type["name"] == "Priority"
-    assert priority_type["symbols"] == ["1", "2", "3"]
+    with pytest.raises(ValueError, match="Unable to convert enum 'Priority' to Avro"):
+        manager.get_avro_schema("Task", "1.0.0", namespace="com.test")
 
 
 def test_avro_schema_enum_in_nested_union(manager: ModelManager) -> None:
@@ -2088,10 +2083,6 @@ def test_avro_schema_kafka_event_with_all_features(manager: ModelManager) -> Non
         UPDATE = "update"
         DELETE = "delete"
 
-    class Priority(int, Enum):
-        LOW = 1
-        HIGH = 2
-
     @manager.model("Metadata", "1.0.0")
     class MetadataV1(BaseModel):
         source: str
@@ -2104,7 +2095,6 @@ def test_avro_schema_kafka_event_with_all_features(manager: ModelManager) -> Non
         event_id: UUID
         event_type: EventType
         timestamp: datetime
-        priority: Priority = Priority.LOW
         user_id: str | int
         payload: dict[str, str | int]
         metadata: MetadataV1 | None = None
@@ -2123,7 +2113,6 @@ def test_avro_schema_kafka_event_with_all_features(manager: ModelManager) -> Non
     assert fields["event_id"]["type"]["logicalType"] == "uuid"
     assert fields["event_type"]["type"]["type"] == "enum"
     assert fields["timestamp"]["type"]["logicalType"] == "timestamp-micros"
-    assert str(fields["priority"]["default"].value) == "1"  # type: ignore[union-attr]
     assert isinstance(fields["user_id"]["type"], list)
     assert fields["payload"]["type"]["type"] == "map"
     assert "null" in fields["metadata"]["type"]
