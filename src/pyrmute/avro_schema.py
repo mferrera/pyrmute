@@ -69,6 +69,7 @@ class AvroSchemaGenerator:
         self.namespace = namespace
         self.include_docs = include_docs
         self._types_seen: set[str] = set()
+        self._current_model = ("", "")
 
     def generate_avro_schema(
         self: Self,
@@ -136,6 +137,7 @@ class AvroSchemaGenerator:
         """  # noqa: E501
         self._types_seen = set()
         # Mark the root type as seen to prevent infinite recursion
+        self._current_model = (model.__name__, name)
         self._types_seen.add(model.__name__)
 
         full_namespace = self.namespace
@@ -518,6 +520,9 @@ class AvroSchemaGenerator:
 
         # If we've seen this type before, just reference it
         if type_name in self._types_seen:
+            if type_name == self._current_model[0]:
+                # Is recursive self-reference
+                return self._current_model[1]
             return type_name
 
         self._types_seen.add(type_name)

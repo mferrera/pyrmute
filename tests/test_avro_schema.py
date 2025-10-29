@@ -509,11 +509,9 @@ def test_avro_schema_optional_nested_model(manager: ModelManager) -> None:
     fields = {f["name"]: f for f in schema["fields"]}
     billing_type = fields["billing_address"]["type"]
 
-    # Should be union with null
     assert isinstance(billing_type, list)
     assert "null" in billing_type
 
-    # Find the record in the union
     record_type = next(
         t for t in billing_type if isinstance(t, dict) and t.get("type") == "record"
     )
@@ -530,17 +528,15 @@ def test_avro_schema_recursive_reference(manager: ModelManager) -> None:
 
     schema = manager.get_avro_schema("Node", "1.0.0", namespace="com.test")
 
-    # First occurrence should be full schema
     assert schema["type"] == "record"
     assert schema["name"] == "Node"
 
-    # Children field should reference by name to avoid infinite recursion
     fields = {f["name"]: f for f in schema["fields"]}
     children_type = fields["children"]["type"]
 
     assert children_type["type"] == "array"
-    # Should be a string reference to NodeV1, not a full nested definition
-    assert children_type["items"] == "NodeV1"
+    # Should be a string reference to Node, not a full nested definition
+    assert children_type["items"] == "Node"
 
 
 def test_avro_schema_multiple_references_same_type(manager: ModelManager) -> None:
@@ -1845,16 +1841,13 @@ def test_avro_schema_circular_reference_prevention(manager: ModelManager) -> Non
     schema = manager.get_avro_schema("Node", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Parent should be union with null and reference
     parent_type = fields["parent"]["type"]
     assert isinstance(parent_type, list)
     assert "null" in parent_type
 
-    # Children should be array of references
     children_type = fields["children"]["type"]
     assert children_type["type"] == "array"
-    # Should use string reference to prevent infinite recursion
-    assert children_type["items"] == "NodeV1"
+    assert children_type["items"] == "Node"
 
 
 def test_avro_schema_shared_nested_model_multiple_fields(
@@ -1905,7 +1898,7 @@ def test_avro_schema_deeply_nested_same_type(manager: ModelManager) -> None:
 
     subcat_type = fields["subcategories"]["type"]
     assert subcat_type["type"] == "array"
-    assert subcat_type["items"] == "CategoryV1"
+    assert subcat_type["items"] == "Category"
 
 
 # ============================================================================
