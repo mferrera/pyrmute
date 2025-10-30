@@ -394,7 +394,7 @@ class TypeScriptSchemaGenerator:
             return self._list_to_typescript(args, field_info)
 
         if origin is tuple:
-            return self._tuple_to_typescript(args, field_info)
+            return self._tuple_to_typescript(python_type, field_info)
 
         if TypeInspector.is_base_model(python_type):
             return self._versioned_name_map.get(  # type: ignore[no-any-return]
@@ -464,17 +464,20 @@ class TypeScriptSchemaGenerator:
         return "any[]"
 
     def _tuple_to_typescript(
-        self: Self, args: tuple[Any, ...], field_info: FieldInfo | None
+        self: Self, python_type: Any, field_info: FieldInfo | None
     ) -> str:
         """Convert tuple type to TypeScript."""
-        if not args:
+        element_types = TypeInspector.get_tuple_element_types(python_type)
+        if not element_types:
             return "any[]"
 
-        if len(args) == 2 and args[1] is Ellipsis:  # noqa: PLR2004
-            item_type = self._python_type_to_typescript(args[0], None)
+        if len(element_types) == 2 and element_types[1] is Ellipsis:  # noqa: PLR2004
+            item_type = self._python_type_to_typescript(element_types[0], None)
             return f"{item_type}[]"
 
-        element_types = [self._python_type_to_typescript(arg, None) for arg in args]
+        element_types = [
+            self._python_type_to_typescript(element, None) for element in element_types
+        ]
         return f"[{', '.join(element_types)}]"
 
     def _enum_to_typescript_type(self: Self, enum_class: type[Enum]) -> str:
