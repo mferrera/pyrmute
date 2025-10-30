@@ -27,6 +27,7 @@ from .avro_types import (
     AvroSchema,
     AvroType,
     AvroUnion,
+    CachedAvroEnumSchema,
 )
 from .model_version import ModelVersion
 
@@ -72,6 +73,7 @@ class AvroSchemaGenerator:
         self.namespace = namespace
         self.include_docs = include_docs
         self._types_seen: set[str] = set()
+        self._collected_enums: dict[str, CachedAvroEnumSchema] = {}
         self._current_model = ("", "")
 
     def generate_avro_schema(
@@ -139,6 +141,7 @@ class AvroSchemaGenerator:
             ```
         """  # noqa: E501
         self._types_seen = set()
+        self._collected_enums = {}
         # Mark the root type as seen to prevent infinite recursion
         self._current_model = (model.__name__, name)
         self._types_seen.add(model.__name__)
@@ -331,7 +334,7 @@ class AvroSchemaGenerator:
 
         return "int"
 
-    def _enum_to_avro(self: Self, enum_class: type[Enum]) -> AvroEnumSchema:
+    def _enum_to_avro(self: Self, enum_class: type[Enum]) -> AvroEnumSchema | str:
         """Convert Python Enum to Avro enum type.
 
         Args:
@@ -357,6 +360,11 @@ class AvroSchemaGenerator:
             # }
             ```
         """
+        enum_name = enum_class.__name__
+
+        if enum_name in self._collected_enums:
+            return self._collected_enums[enum_name]["namespace_ref"]
+
         symbols = []
         for member in enum_class:
             value = str(member.value)
@@ -368,11 +376,36 @@ class AvroSchemaGenerator:
                 )
             symbols.append(value)
 
-        return {
+        enum_namespace = self._get_enum_namespace(enum_name)
+
+        enum_schema: AvroEnumSchema = {
             "type": "enum",
-            "name": enum_class.__name__,
+            "name": enum_name,
+            "namespace": enum_namespace,
             "symbols": symbols,
         }
+
+        namespace_ref = f"{enum_namespace}.{enum_name}"
+        self._collected_enums[enum_name] = {
+            "schema": enum_schema,
+            "namespace_ref": namespace_ref,
+        }
+
+        return enum_schema
+
+    def _get_enum_namespace(self: Self, module: str) -> str:
+        """Convert Python module to Avro namespace.
+
+        Args:
+            module: Python module name.
+
+        Returns:
+            Avro-compatible namespace.
+        """
+        if module in ("__main__", "builtins", None):
+            return self.namespace
+
+        return f"{self.namespace}.{module}"
 
     def _union_to_avro(self: Self, args: tuple[Any, ...]) -> AvroUnion:
         """Convert Union type to Avro union.
