@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Self, get_args, get_origin
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, create_model
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
@@ -54,6 +54,7 @@ class ProtoSchemaGenerator:
         self._types_seen: set[str] = set()
         self._required_imports: set[str] = set()
         self._field_counter = 1
+        self._tuple_counter = 0
         self._collected_enums: list[ProtoEnum] = []
         self._collected_nested_messages: list[ProtoMessage] = []
         self._current_model = ("", "")
@@ -242,7 +243,7 @@ class ProtoSchemaGenerator:
             field_schema["comment"] = field_info.description
 
         proto_type, is_repeated = self._python_type_to_proto(
-            field_info.annotation, field_info
+            field_info.annotation, field_info, field_name
         )
         is_optional = TypeInspector.is_optional_type(field_info.annotation)
         has_default = (
@@ -260,85 +261,141 @@ class ProtoSchemaGenerator:
         field_schema["type"] = proto_type
         return field_schema
 
-    def _python_type_to_proto(  # noqa: PLR0911, PLR0912, C901
+    def _python_type_to_proto(  # noqa: PLR0911, C901
         self: Self,
         python_type: Any,
         field_info: FieldInfo | None = None,
+        field_name: str | None = None,
     ) -> tuple[str, bool]:
-        """Convert Python type annotation to Protocol Buffer type.
-
-        Args:
-            python_type: Python type annotation.
-            field_info: Optional field info for constraint checking.
-
-        Returns:
-            Tuple of (proto_type, is_repeated).
-        """
+        """Convert Python type annotation to Protocol Buffer type."""
         if python_type is None:
             return ("string", False)
 
         if python_type is int and field_info:
-            proto_type = self._optimize_int_type(field_info)
-            return (proto_type, False)
+            return (self._optimize_int_type(field_info), False)
 
         if python_type in self._BASIC_TYPE_MAPPING:
             return (self._BASIC_TYPE_MAPPING[python_type], False)
 
         if python_type in self._WELLKNOWN_TYPE_MAPPING:
-            proto_type, import_path = self._WELLKNOWN_TYPE_MAPPING[python_type]
-            if import_path:
-                self._required_imports.add(import_path)
-            return (proto_type, False)
+            return self._wellknown_to_proto(python_type)
 
         if TypeInspector.is_enum(python_type):
             return self._enum_to_proto(python_type)
 
         origin = get_origin(python_type)
+
         if TypeInspector.is_union_type(origin):
-            non_none_args = TypeInspector.get_non_none_union_args(python_type)
-            if len(non_none_args) == 1:
-                return self._python_type_to_proto(non_none_args[0], field_info)
+            return self._union_to_proto(python_type, field_info)
 
-            return ("string", False)
-
-        # ProtoBuf treats everything as 'repeated'
-        if (
-            TypeInspector.is_list_like(origin)
-            or origin in (tuple, set, frozenset)
-            or (
-                hasattr(origin, "__origin__")
-                and origin.__origin__ in (tuple, set, frozenset)
-            )
+        if origin is tuple or (
+            hasattr(origin, "__origin__") and origin.__origin__ is tuple
         ):
-            args = get_args(python_type)
-            if args:
-                item_type, _ = self._python_type_to_proto(args[0], None)
-                return (item_type, True)
-            return ("string", True)
+            return self._tuple_to_proto(python_type, field_name)
+
+        if TypeInspector.is_list_like(origin) or origin in (set, frozenset):
+            return self._list_to_proto(python_type)
 
         if TypeInspector.is_dict_like(origin, python_type):
-            args = get_args(python_type)
-            if args and len(args) == 2:  # noqa: PLR2004
-                key_type, _ = self._python_type_to_proto(args[0], None)
-                value_type, _ = self._python_type_to_proto(args[1], None)
-                return (f"map<{key_type}, {value_type}>", False)
-            return ("map<string, string>", False)
+            return self._dict_to_proto(python_type)
 
         if TypeInspector.is_base_model(python_type):
-            model_name = python_type.__name__
-
-            if model_name not in self._types_seen:
-                self._types_seen.add(model_name)
-                nested_msg = self._generate_nested_message(python_type, model_name)
-                self._collected_nested_messages.append(nested_msg)
-
-            # This is a recursive model referencing itself
-            if model_name == self._current_model[0]:
-                return self._current_model[1], False
-
-            return model_name, False
+            return self._base_model_to_proto(python_type)
 
         return ("string", False)
+
+    def _wellknown_to_proto(self: Self, python_type: type) -> tuple[str, bool]:
+        """Convert well-known types to protobuf."""
+        proto_type, import_path = self._WELLKNOWN_TYPE_MAPPING[python_type]
+        if import_path:
+            self._required_imports.add(import_path)
+        return (proto_type, False)
+
+    def _union_to_proto(
+        self: Self, python_type: Any, field_info: FieldInfo | None
+    ) -> tuple[str, bool]:
+        """Convert union types to protobuf."""
+        non_none_args = TypeInspector.get_non_none_union_args(python_type)
+        if len(non_none_args) == 1:
+            return self._python_type_to_proto(non_none_args[0], field_info)
+        return ("string", False)
+
+    def _tuple_to_proto(
+        self: Self, python_type: Any, field_name: str | None
+    ) -> tuple[str, bool]:
+        """Convert tuple types to protobuf."""
+        elements = TypeInspector.get_tuple_element_types(python_type)
+
+        if TypeInspector.is_variable_length_tuple(python_type):
+            item_type, _ = self._python_type_to_proto(elements[0], None)
+            return (item_type, True)
+
+        if all(el == elements[0] for el in elements):
+            item_type, _ = self._python_type_to_proto(elements[0], None)
+            return (item_type, True)
+
+        # Heterogeneous tuple - create nested message
+        return self._heterogeneous_tuple_to_proto(elements, field_name)
+
+    def _heterogeneous_tuple_to_proto(
+        self: Self, elements: list[Any], field_name: str | None
+    ) -> tuple[str, bool]:
+        """Convert heterogeneous tuple to nested protobuf message."""
+        if field_name:
+            model_name = f"{self._current_model[1]}{field_name.title()}Tuple"
+        else:
+            self._tuple_counter += 1
+            model_name = f"{self._current_model[1]}Tuple{self._tuple_counter}"
+
+        if model_name not in self._types_seen:
+            self._types_seen.add(model_name)
+
+            field_definitions: dict[str, Any] = {
+                f"field{idx}": (field_type, ...)
+                for idx, field_type in enumerate(elements)
+            }
+            nested_tuple_model = create_model(model_name, **field_definitions)
+
+            nested_msg = self._generate_nested_message(nested_tuple_model, model_name)
+            self._collected_nested_messages.append(nested_msg)
+
+        if model_name == self._current_model[0]:
+            return self._current_model[1], False
+
+        return model_name, False
+
+    def _list_to_proto(self: Self, python_type: Any) -> tuple[str, bool]:
+        """Convert list/set types to protobuf."""
+        args = get_args(python_type)
+        if args:
+            item_type, _ = self._python_type_to_proto(args[0], None)
+            return (item_type, True)
+        return ("string", True)
+
+    def _dict_to_proto(self: Self, python_type: Any) -> tuple[str, bool]:
+        """Convert dict types to protobuf map."""
+        args = get_args(python_type)
+        if args and len(args) == 2:  # noqa: PLR2004
+            key_type, _ = self._python_type_to_proto(args[0], None)
+            value_type, _ = self._python_type_to_proto(args[1], None)
+            return (f"map<{key_type}, {value_type}>", False)
+        return ("map<string, string>", False)
+
+    def _base_model_to_proto(
+        self: Self, python_type: type[BaseModel]
+    ) -> tuple[str, bool]:
+        """Convert nested BaseModel to protobuf message."""
+        model_name = python_type.__name__
+
+        if model_name not in self._types_seen:
+            self._types_seen.add(model_name)
+            nested_msg = self._generate_nested_message(python_type, model_name)
+            self._collected_nested_messages.append(nested_msg)
+
+        if model_name == self._current_model[0]:
+            return self._current_model[1], False
+
+        return model_name, False
 
     def _optimize_int_type(self: Self, field_info: FieldInfo) -> str:
         """Optimize integer type based on field constraints.
