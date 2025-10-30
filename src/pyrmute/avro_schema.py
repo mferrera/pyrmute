@@ -2,13 +2,12 @@
 
 import json
 import re
-import types
 from collections.abc import Mapping
 from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from typing import Any, Final, Self, Union, get_args, get_origin
+from typing import Any, Final, Self, get_args, get_origin
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -16,6 +15,7 @@ from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
 from ._registry import Registry
+from ._type_inspector import TypeInspector
 from .avro_types import (
     AvroArraySchema,
     AvroDefaultValue,
@@ -187,7 +187,7 @@ class AvroSchemaGenerator:
             field_schema["doc"] = field_info.description
 
         avro_type = self._python_type_to_avro(field_info.annotation, field_info)
-        is_nullable = self._is_optional_type(field_info.annotation)
+        is_nullable = TypeInspector.is_optional_type(field_info.annotation)
         has_default = (
             field_info.default is not PydanticUndefined
             or field_info.default_factory is not None
@@ -250,16 +250,14 @@ class AvroSchemaGenerator:
             return "null"
 
         if annotation is int:
-            # Only optimize if we have field_info with constraints
-            if field_info and hasattr(field_info, "metadata") and field_info.metadata:
+            if field_info:
                 return self._optimize_int_type(field_info)
-
             return "int"
 
         if annotation in self._LOGICAL_TYPE_MAPPING:
             return self._LOGICAL_TYPE_MAPPING[annotation].copy()
 
-        if isinstance(annotation, type) and issubclass(annotation, Enum):
+        if TypeInspector.is_enum(annotation):
             return self._enum_to_avro(annotation)
 
         # Check for bare list or dict before checking origin
@@ -275,15 +273,15 @@ class AvroSchemaGenerator:
         if origin is not None:
             args = get_args(annotation)
 
-            if self._is_union_type(origin):
+            if TypeInspector.is_union_type(origin):
                 return self._union_to_avro(args)
 
-            if origin is list:
+            if TypeInspector.is_list_like(origin):
                 item_type = self._python_type_to_avro(args[0]) if args else "string"
                 array_schema: AvroArraySchema = {"type": "array", "items": item_type}
                 return array_schema
 
-            if origin is dict:
+            if TypeInspector.is_dict_like(origin, annotation):
                 value_type = (
                     self._python_type_to_avro(args[1]) if len(args) > 1 else "string"
                 )
@@ -291,14 +289,10 @@ class AvroSchemaGenerator:
                 return map_schema
 
             if origin is tuple:
-                return self._tuple_to_avro(args)
+                return self._tuple_to_avro(annotation)
 
-        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        if TypeInspector.is_base_model(annotation):
             return self._generate_nested_record_schema(annotation)
-
-        # Basic type mapping with integer optimization
-        if annotation is int and field_info:
-            return self._optimize_int_type(field_info)
 
         if annotation in self._BASIC_TYPE_MAPPING:
             return self._BASIC_TYPE_MAPPING[annotation]
@@ -314,8 +308,6 @@ class AvroSchemaGenerator:
             return "boolean"
         if "bytes" in type_str:
             return "bytes"
-
-        # Default fallback
         return "string"
 
     def _optimize_int_type(self: Self, field_info: FieldInfo) -> str:
@@ -327,33 +319,17 @@ class AvroSchemaGenerator:
         Returns:
             "int" or "long"
         """
-        # Check if field has constraints
-        if not hasattr(field_info, "metadata") or not field_info.metadata:
-            return "long"  # Default to long for safety
+        constraints = TypeInspector.get_numeric_constraints(field_info)
+        if constraints["ge"] is not None and constraints["ge"] < -(2**31):
+            return "long"
+        if constraints["gt"] is not None and constraints["gt"] + 1 < -(2**31):
+            return "long"
+        if constraints["le"] is not None and constraints["le"] > (2**31 - 1):
+            return "long"
+        if constraints["lt"] is not None and constraints["lt"] - 1 > (2**31 - 1):
+            return "long"
 
-        # Look for Annotated constraints
-        minimum: int | None = None
-        maximum: int | None = None
-        for constraint in field_info.metadata:
-            if hasattr(constraint, "ge"):
-                minimum = constraint.ge
-            elif hasattr(constraint, "gt"):
-                minimum = constraint.gt + 1
-            if hasattr(constraint, "le"):
-                maximum = constraint.le
-            elif hasattr(constraint, "lt"):
-                maximum = constraint.lt - 1
-
-        # If we have both min and max and they fit in 32 bits, use int
-        if (
-            minimum is not None
-            and minimum >= -(2**31)
-            and maximum is not None
-            and maximum <= (2**31 - 1)
-        ):
-            return "int"
-
-        return "long"
+        return "int"
 
     def _enum_to_avro(self: Self, enum_class: type[Enum]) -> AvroEnumSchema:
         """Convert Python Enum to Avro enum type.
@@ -438,14 +414,14 @@ class AvroSchemaGenerator:
 
         return unique_types
 
-    def _tuple_to_avro(self: Self, args: tuple[Any, ...]) -> AvroArraySchema:
+    def _tuple_to_avro(self: Self, annotation: Any) -> AvroArraySchema:
         """Convert tuple type to Avro array with union of item types.
 
         Avro doesn't have a true tuple type (fixed-length with heterogeneous types),
         so we convert to an array with a union of all possible item types.
 
         Args:
-            args: Tuple type arguments.
+            annotation: Tuple annotation.
 
         Returns:
             Avro array schema with union items.
@@ -459,7 +435,9 @@ class AvroSchemaGenerator:
             # {"type": "array", "items": "double"}
             ```
         """
-        if not args:
+        element_types = TypeInspector.get_tuple_element_types(annotation)
+
+        if not element_types:
             empty_array: AvroArraySchema = {"type": "array", "items": "string"}
             return empty_array
 
@@ -467,7 +445,7 @@ class AvroSchemaGenerator:
         item_types: list[str | AvroSchema] = []
         type_strs: set[str] = set()
 
-        for arg in args:
+        for arg in element_types:
             avro_type = self._python_type_to_avro(arg)
             if isinstance(avro_type, list):
                 # Flatten unions
@@ -554,41 +532,6 @@ class AvroSchemaGenerator:
             schema["fields"].append(field_schema)
 
         return schema
-
-    def _is_union_type(self: Self, origin: Any) -> bool:
-        """Check if origin represents a Union type.
-
-        Args:
-            origin: Type origin from get_origin().
-
-        Returns:
-            True if this is a Union type.
-        """
-        if origin is Union:
-            return True
-
-        if hasattr(types, "UnionType"):
-            try:
-                return origin is types.UnionType
-            except (ImportError, AttributeError):
-                pass
-
-        return False
-
-    def _is_optional_type(self: Self, annotation: Any) -> bool:
-        """Check if annotation represents an Optional type.
-
-        Args:
-            annotation: Type annotation.
-
-        Returns:
-            True if this is Optional (Union with None).
-        """
-        origin = get_origin(annotation)
-        if self._is_union_type(origin):
-            args = get_args(annotation)
-            return type(None) in args
-        return False
 
     def _convert_default_value(self: Self, value: Any) -> AvroDefaultValue:  # noqa: PLR0911, C901, PLR0912
         """Convert Python default value to Avro-compatible format.

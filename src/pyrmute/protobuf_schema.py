@@ -1,12 +1,11 @@
 """Protocol Buffer schema generation from Pydantic models."""
 
-import types
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from typing import Any, Self, Union, get_args, get_origin
+from typing import Any, Self, get_args, get_origin
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -15,6 +14,7 @@ from pydantic_core import PydanticUndefined
 
 from ._protobuf_types import ProtoEnum, ProtoField, ProtoFile, ProtoMessage, ProtoOneOf
 from ._registry import Registry
+from ._type_inspector import TypeInspector
 from .model_version import ModelVersion
 
 
@@ -88,7 +88,7 @@ class ProtoSchemaGenerator:
         oneofs_to_add: list[ProtoOneOf] = []
 
         for field_name, field_info in model.model_fields.items():
-            if self._is_union_requiring_oneof(field_info.annotation):
+            if TypeInspector.is_union_requiring_oneof(field_info.annotation):
                 oneof_fields = self._generate_oneof_fields(
                     field_name, field_info, model
                 )
@@ -116,25 +116,6 @@ class ProtoSchemaGenerator:
 
         return message
 
-    def _is_union_requiring_oneof(self: Self, annotation: Any) -> bool:
-        """Check if annotation is a union type that requires oneof.
-
-        Args:
-            annotation: Type annotation.
-
-        Returns:
-            True if this union requires oneof representation.
-        """
-        origin = get_origin(annotation)
-        if not self._is_union_type(origin):
-            return False
-
-        args = get_args(annotation)
-        non_none_args = [arg for arg in args if arg is not type(None)]
-
-        # If only one type remains (Optional[T]), no oneof needed
-        return not len(non_none_args) <= 1
-
     def _generate_oneof_fields(
         self: Self,
         field_name: str,
@@ -151,8 +132,7 @@ class ProtoSchemaGenerator:
         Returns:
             Dictionary with 'fields' list and 'oneof' definition.
         """
-        args = get_args(field_info.annotation)
-        non_none_args = [arg for arg in args if arg is not type(None)]
+        non_none_args = TypeInspector.get_non_none_union_args(field_info.annotation)
 
         oneof_name = f"{field_name}_value"
         oneof_field_names: list[str] = []
@@ -264,7 +244,7 @@ class ProtoSchemaGenerator:
         proto_type, is_repeated = self._python_type_to_proto(
             field_info.annotation, field_info
         )
-        is_optional = self._is_optional_type(field_info.annotation)
+        is_optional = TypeInspector.is_optional_type(field_info.annotation)
         has_default = (
             field_info.default is not PydanticUndefined
             or field_info.default_factory is not None
@@ -310,21 +290,25 @@ class ProtoSchemaGenerator:
                 self._required_imports.add(import_path)
             return (proto_type, False)
 
-        if isinstance(annotation, type) and issubclass(annotation, Enum):
+        if TypeInspector.is_enum(annotation):
             return self._enum_to_proto(annotation)
 
         origin = get_origin(annotation)
-        if self._is_union_type(origin):
-            args = get_args(annotation)
-            non_none_args = [arg for arg in args if arg is not type(None)]
+        if TypeInspector.is_union_type(origin):
+            non_none_args = TypeInspector.get_non_none_union_args(annotation)
             if len(non_none_args) == 1:
                 return self._python_type_to_proto(non_none_args[0], field_info)
 
             return ("string", False)
 
-        if origin in (list, tuple, set, frozenset) or (
-            hasattr(origin, "__origin__")
-            and origin.__origin__ in (list, tuple, set, frozenset)
+        # ProtoBuf treats everything as 'repeated'
+        if (
+            TypeInspector.is_list_like(origin)
+            or origin in (tuple, set, frozenset)
+            or (
+                hasattr(origin, "__origin__")
+                and origin.__origin__ in (tuple, set, frozenset)
+            )
         ):
             args = get_args(annotation)
             if args:
@@ -332,11 +316,7 @@ class ProtoSchemaGenerator:
                 return (item_type, True)
             return ("string", True)
 
-        if (
-            annotation is dict
-            or origin in {dict, Mapping, MutableMapping}
-            or (isinstance(origin, type) and issubclass(origin, Mapping))
-        ):
+        if TypeInspector.is_dict_like(origin, annotation):
             args = get_args(annotation)
             if args and len(args) == 2:  # noqa: PLR2004
                 key_type, _ = self._python_type_to_proto(args[0], None)
@@ -344,7 +324,7 @@ class ProtoSchemaGenerator:
                 return (f"map<{key_type}, {value_type}>", False)
             return ("map<string, string>", False)
 
-        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        if TypeInspector.is_base_model(annotation):
             model_name = annotation.__name__
 
             if model_name not in self._types_seen:
@@ -369,24 +349,10 @@ class ProtoSchemaGenerator:
         Returns:
             Optimized protobuf integer type.
         """
-        if not hasattr(field_info, "metadata") or not field_info.metadata:
-            return "int32"
-
-        ge_value = None
-        le_value = None
-
-        for constraint in field_info.metadata:
-            if hasattr(constraint, "ge") and constraint.ge is not None:
-                ge_value = constraint.ge
-            if hasattr(constraint, "le") and constraint.le is not None:
-                le_value = constraint.le
-
-        if ge_value is not None and ge_value >= 0:
-            if le_value is not None:
-                if le_value <= 2**32 - 1:
-                    return "uint32"
-                return "uint64"
-            return "uint32"
+        if TypeInspector.is_unsigned_int(field_info):
+            if TypeInspector.can_fit_in_32bit_uint(field_info):
+                return "uint32"
+            return "uint64"
 
         return "int32"
 
@@ -470,7 +436,7 @@ class ProtoSchemaGenerator:
         oneofs_to_add: list[ProtoOneOf] = []
 
         for field_name, field_info in model.model_fields.items():
-            if self._is_union_requiring_oneof(field_info.annotation):
+            if TypeInspector.is_union_requiring_oneof(field_info.annotation):
                 oneof_fields = self._generate_oneof_fields(
                     field_name, field_info, model
                 )
@@ -502,41 +468,6 @@ class ProtoSchemaGenerator:
         self._field_counter = saved_field_counter
 
         return message
-
-    def _is_union_type(self: Self, origin: Any) -> bool:
-        """Check if origin represents a Union type.
-
-        Args:
-            origin: Type origin from get_origin().
-
-        Returns:
-            True if this is a Union type.
-        """
-        if origin is Union:
-            return True
-
-        if hasattr(types, "UnionType"):
-            try:
-                return origin is types.UnionType
-            except (ImportError, AttributeError):
-                pass
-
-        return False
-
-    def _is_optional_type(self: Self, annotation: Any) -> bool:
-        """Check if annotation represents an Optional type.
-
-        Args:
-            annotation: Type annotation.
-
-        Returns:
-            True if this is Optional (Union with None).
-        """
-        origin = get_origin(annotation)
-        if self._is_union_type(origin):
-            args = get_args(annotation)
-            return type(None) in args
-        return False
 
     def generate_proto_file(
         self: Self,

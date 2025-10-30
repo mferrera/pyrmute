@@ -923,8 +923,7 @@ def test_avro_schema_int_with_constraints_fits_32bit(manager: ModelManager) -> N
     schema = manager.get_avro_schema("Data", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Should optimize to int since 0-1000 fits in 32 bits
-    assert fields["small_number"]["type"] in ["int", "long"]
+    assert fields["small_number"]["type"] == "int"
 
 
 # ============================================================================
@@ -1499,8 +1498,7 @@ def test_avro_schema_int_with_ge_constraint(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Product", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Should optimize to int since range fits in 32 bits
-    assert fields["stock"]["type"] in ["int", "long"]
+    assert fields["stock"]["type"] == "int"
 
 
 def test_avro_schema_int_with_gt_constraint(manager: ModelManager) -> None:
@@ -1513,9 +1511,7 @@ def test_avro_schema_int_with_gt_constraint(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Counter", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # gt=-100 means minimum is -99, lt=100 means maximum is 99
-    # Should fit in int type
-    assert fields["count"]["type"] in ["int", "long"]
+    assert fields["count"]["type"] == "int"
 
 
 def test_avro_schema_int_with_only_minimum(manager: ModelManager) -> None:
@@ -1527,9 +1523,7 @@ def test_avro_schema_int_with_only_minimum(manager: ModelManager) -> None:
 
     schema = manager.get_avro_schema("PositiveNumber", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
-
-    # Without maximum, should default to long for safety
-    assert fields["value"]["type"] == "long"
+    assert fields["value"]["type"] == "int"
 
 
 def test_avro_schema_int_with_only_maximum(manager: ModelManager) -> None:
@@ -1541,9 +1535,7 @@ def test_avro_schema_int_with_only_maximum(manager: ModelManager) -> None:
 
     schema = manager.get_avro_schema("SmallNumber", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
-
-    # Without minimum, should default to long for safety
-    assert fields["value"]["type"] == "long"
+    assert fields["value"]["type"] == "int"
 
 
 def test_avro_schema_int_exceeds_32bit_range(manager: ModelManager) -> None:

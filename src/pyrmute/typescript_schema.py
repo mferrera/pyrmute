@@ -1,12 +1,11 @@
 """TypeScript schema generation from Pydantic models."""
 
-import types
 from collections.abc import Mapping
 from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from typing import Any, Generic, Literal, Self, TypedDict, Union, get_args, get_origin
+from typing import Any, Generic, Literal, Self, TypedDict, get_args, get_origin
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -14,6 +13,7 @@ from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
 from ._registry import Registry
+from ._type_inspector import TypeInspector
 from .model_version import ModelVersion
 
 
@@ -139,61 +139,8 @@ class TypeScriptSchemaGenerator:
         Args:
             model: Pydantic model class to scan for nested models.
         """
-        if model.__name__ in self._types_seen:
-            return
-
-        self._types_seen.add(model.__name__)
-
-        for field_info in model.model_fields.values():
-            self._collect_nested_models_from_type(field_info.annotation)
-
-        if hasattr(model, "model_computed_fields"):
-            for computed_field_info in model.model_computed_fields.values():
-                if hasattr(computed_field_info, "return_type"):
-                    self._collect_nested_models_from_type(
-                        computed_field_info.return_type
-                    )
-
-    def _collect_nested_models_from_type(  # noqa: C901
-        self: Self, python_type: Any
-    ) -> None:
-        """Recursively collect nested models from a type annotation.
-
-        Args:
-            python_type: Python type to scan for nested models.
-        """
-        if (
-            python_type is None
-            or python_type is type(None)
-            or isinstance(python_type, str)
-        ):
-            return
-
-        if isinstance(python_type, type) and issubclass(python_type, BaseModel):
-            if python_type.__name__ not in self._nested_models:
-                self._nested_models[python_type.__name__] = python_type
-                self._collect_nested_models(python_type)
-            return
-
-        origin = get_origin(python_type)
-        args = get_args(python_type)
-
-        if self._is_union_type(origin):
-            for arg in args:
-                if arg is not type(None):
-                    self._collect_nested_models_from_type(arg)
-            return
-
-        if origin in (list, set, tuple):
-            for arg in args:
-                self._collect_nested_models_from_type(arg)
-            return
-
-        if origin is dict or (
-            origin and isinstance(origin, type) and issubclass(origin, Mapping)
-        ):
-            for arg in args:
-                self._collect_nested_models_from_type(arg)
+        nested = TypeInspector.collect_nested_models(model, self._types_seen)
+        self._nested_models.update(nested)
 
     def _collect_enums_from_model(self: Self, model: type[BaseModel]) -> None:
         """Recursively collect all enums from a model and its nested models.
@@ -229,33 +176,31 @@ class TypeScriptSchemaGenerator:
         ):
             return
 
-        if isinstance(python_type, type) and issubclass(python_type, Enum):
+        if TypeInspector.is_enum(python_type):
             enum_style = self.config.get("enum_style", "union")
             if enum_style == "enum":
                 self._enums_encountered[python_type.__name__] = python_type
             return
 
-        if isinstance(python_type, type) and issubclass(python_type, BaseModel):
+        if TypeInspector.is_base_model(python_type):
             self._collect_enums_from_model(python_type)
             return
 
         origin = get_origin(python_type)
         args = get_args(python_type)
 
-        if self._is_union_type(origin):
+        if TypeInspector.is_union_type(origin):
             for arg in args:
                 if arg is not type(None):
                     self._collect_enums_from_type(arg)
             return
 
-        if origin in (list, set, tuple):
+        if TypeInspector.is_list_like(origin) or origin is tuple:
             for arg in args:
                 self._collect_enums_from_type(arg)
             return
 
-        if origin is dict or (
-            origin and isinstance(origin, type) and issubclass(origin, Mapping)
-        ):
+        if TypeInspector.is_dict_like(origin, python_type):
             for arg in args:
                 self._collect_enums_from_type(arg)
 
@@ -430,31 +375,29 @@ class TypeScriptSchemaGenerator:
         if python_type is Decimal:
             return "number"
 
-        if isinstance(python_type, type) and issubclass(python_type, Enum):
+        if TypeInspector.is_enum(python_type):
             return self._enum_to_typescript_type(python_type)
 
         origin = get_origin(python_type)
         args = get_args(python_type)
 
-        if self._is_union_type(origin):
+        if TypeInspector.is_union_type(origin):
             return self._union_to_typescript(args, field_info)
 
         if origin is Literal:
             return self._literal_to_typescript(args)
 
-        if origin is dict or (
-            origin and isinstance(origin, type) and issubclass(origin, Mapping)
-        ):
+        if TypeInspector.is_dict_like(origin, python_type):
             return self._dict_to_typescript(args, field_info)
 
-        if origin in (list, set):
+        if TypeInspector.is_list_like(origin):
             return self._list_to_typescript(args, field_info)
 
         if origin is tuple:
             return self._tuple_to_typescript(args, field_info)
 
-        if isinstance(python_type, type) and issubclass(python_type, BaseModel):
-            return self._versioned_name_map.get(
+        if TypeInspector.is_base_model(python_type):
+            return self._versioned_name_map.get(  # type: ignore[no-any-return]
                 python_type.__name__, python_type.__name__
             )
 
@@ -591,7 +534,7 @@ class TypeScriptSchemaGenerator:
             return "z.any()"
 
         # Handle BaseModel early
-        if isinstance(python_type, type) and issubclass(python_type, BaseModel):
+        if TypeInspector.is_base_model(python_type):
             schema_name = f"{python_type.__name__}Schema"
             if field_info and not field_info.is_required():
                 return f"{schema_name}.optional()"
@@ -600,7 +543,7 @@ class TypeScriptSchemaGenerator:
         origin = get_origin(python_type)
         args = get_args(python_type)
 
-        if self._is_union_type(origin):
+        if TypeInspector.is_union_type(origin):
             return self._union_to_zod(args, field_info)
 
         if origin is Literal:
@@ -617,15 +560,13 @@ class TypeScriptSchemaGenerator:
                 )
             return "z.never()"
 
-        if origin is dict or (
-            origin and isinstance(origin, type) and issubclass(origin, Mapping)
-        ):
+        if TypeInspector.is_dict_like(origin, python_type):
             if args and len(args) == 2:  # noqa: PLR2004
                 value_validator = self._python_type_to_zod(args[1], None)
                 return f"z.record({value_validator})"
             return "z.record(z.any())"
 
-        if origin is list or origin is set:
+        if TypeInspector.is_list_like(origin):
             if args:
                 item_validator = self._python_type_to_zod(args[0], None)
                 return f"z.array({item_validator})"
@@ -665,7 +606,7 @@ class TypeScriptSchemaGenerator:
         if python_type is bytes:
             return "z.string()"
 
-        if isinstance(python_type, type) and issubclass(python_type, Enum):
+        if TypeInspector.is_enum(python_type):
             return self._enum_to_zod(python_type)
 
         return "z.any()"
@@ -705,30 +646,38 @@ class TypeScriptSchemaGenerator:
         self: Self, base: str, field_info: FieldInfo | None
     ) -> str:
         """Apply string constraints to Zod validator."""
-        if field_info and field_info.metadata:
-            for constraint in field_info.metadata:
-                if hasattr(constraint, "pattern"):
-                    base += f".regex(/{constraint.pattern}/)"
-                if hasattr(constraint, "min_length"):
-                    base += f".min({constraint.min_length})"
-                if hasattr(constraint, "max_length"):
-                    base += f".max({constraint.max_length})"
+        if not field_info:
+            return base
+
+        constraints = TypeInspector.get_string_constraints(field_info)
+
+        if constraints["pattern"]:
+            base += f".regex(/{constraints['pattern']}/)"
+        if constraints["min_length"] is not None:
+            base += f".min({constraints['min_length']})"
+        if constraints["max_length"] is not None:
+            base += f".max({constraints['max_length']})"
+
         return base
 
     def _apply_numeric_constraints(
         self: Self, base: str, field_info: FieldInfo | None
     ) -> str:
         """Apply numeric constraints to Zod validator."""
-        if field_info and field_info.metadata:
-            for constraint in field_info.metadata:
-                if hasattr(constraint, "ge"):
-                    base += f".gte({constraint.ge})"
-                if hasattr(constraint, "gt"):
-                    base += f".gt({constraint.gt})"
-                if hasattr(constraint, "le"):
-                    base += f".lte({constraint.le})"
-                if hasattr(constraint, "lt"):
-                    base += f".lt({constraint.lt})"
+        if not field_info:
+            return base
+
+        constraints = TypeInspector.get_numeric_constraints(field_info)
+
+        if constraints["ge"] is not None:
+            base += f".gte({constraints['ge']})"
+        if constraints["gt"] is not None:
+            base += f".gt({constraints['gt']})"
+        if constraints["le"] is not None:
+            base += f".lte({constraints['le']})"
+        if constraints["lt"] is not None:
+            base += f".lt({constraints['lt']})"
+
         return base
 
     def _enum_to_zod(self: Self, enum_class: type[Enum]) -> str:
@@ -748,19 +697,6 @@ class TypeScriptSchemaGenerator:
         return (
             f"export const {enum_class.__name__}Schema = z.enum([{', '.join(values)}]);"
         )
-
-    def _is_union_type(self: Self, origin: Any) -> bool:
-        """Check if origin represents a Union type."""
-        if origin is Union:
-            return True
-
-        if hasattr(types, "UnionType"):
-            try:
-                return origin is types.UnionType
-            except (ImportError, AttributeError):
-                pass
-
-        return False
 
 
 class TypeScriptExporter:
