@@ -299,7 +299,7 @@ def test_long_descriptions_handled(description_length: int) -> None:
     class Model(BaseModel):
         field: str = Field(description=description)
 
-    generator = ProtoSchemaGenerator(include_comments=True)
+    generator = ProtoSchemaGenerator(include_docs=True)
     proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
     proto_string = generator.proto_file_to_string(proto_file)
 

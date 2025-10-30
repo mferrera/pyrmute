@@ -492,7 +492,7 @@ def test_multiline_comment_in_proto_string() -> None:
 
         field: str = Field(description="Field line 1\nField line 2")
 
-    generator = ProtoSchemaGenerator(include_comments=True)
+    generator = ProtoSchemaGenerator(include_docs=True)
     proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
     proto_string = generator.proto_file_to_string(proto_file)
 
@@ -547,7 +547,7 @@ def test_enum_to_string_with_comment() -> None:
 
         status: Status
 
-    generator = ProtoSchemaGenerator(include_comments=True)
+    generator = ProtoSchemaGenerator(include_docs=True)
     test_enum: ProtoEnum = {
         "name": "Status",
         "values": {"ACTIVE": 0, "INACTIVE": 1},
@@ -574,7 +574,7 @@ def test_nested_message_with_indentation() -> None:
 
         inner: Inner
 
-    generator = ProtoSchemaGenerator(include_comments=True)
+    generator = ProtoSchemaGenerator(include_docs=True)
 
     inner_msg: ProtoMessage = {
         "name": "Inner",
@@ -743,7 +743,7 @@ def test_proto_exporter_with_file_output(tmp_path: Path) -> None:
     exporter = ProtoExporter(
         registry=registry,
         package="com.test",
-        include_comments=True,
+        include_docs=True,
         use_proto3=True,
     )
 
@@ -1385,7 +1385,7 @@ def test_very_long_comment() -> None:
     class Model(BaseModel):
         field: str = Field(description=long_desc)
 
-    generator = ProtoSchemaGenerator(include_comments=True)
+    generator = ProtoSchemaGenerator(include_docs=True)
     proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
     proto_string = generator.proto_file_to_string(proto_file)
 
@@ -1400,7 +1400,7 @@ def test_comment_with_proto_syntax() -> None:
 
         field: str = Field(description="message Status { ACTIVE = 1; }")
 
-    generator = ProtoSchemaGenerator(include_comments=True)
+    generator = ProtoSchemaGenerator(include_docs=True)
     proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
     proto_string = generator.proto_file_to_string(proto_file)
 
@@ -1415,7 +1415,7 @@ def test_unicode_in_comments() -> None:
 
         field: str = Field(description="Unicode: 你好 мир שלום")
 
-    generator = ProtoSchemaGenerator(include_comments=True)
+    generator = ProtoSchemaGenerator(include_docs=True)
     proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
     proto_string = generator.proto_file_to_string(proto_file)
 
@@ -1433,7 +1433,7 @@ def test_empty_docstring_vs_none() -> None:
     class ModelWithNone(BaseModel):
         field: str
 
-    generator = ProtoSchemaGenerator(include_comments=True)
+    generator = ProtoSchemaGenerator(include_docs=True)
 
     msg_empty = generator._generate_proto_schema(ModelWithEmpty, "Model1", "1.0.0")
     msg_none = generator._generate_proto_schema(ModelWithNone, "Model2", "1.0.0")
@@ -1886,7 +1886,7 @@ def test_proto_schema_enum_with_description(manager: ModelManager) -> None:
         status: Status
 
     proto_schema = manager.get_proto_schema(
-        "Task", "1.0.0", package="com.test", include_comments=True
+        "Task", "1.0.0", package="com.test", include_docs=True
     )
 
     assert "// Task status enumeration." in proto_schema
@@ -2204,7 +2204,7 @@ def test_proto_schema_nested_model_with_description(manager: ModelManager) -> No
         address: AddressV1
 
     proto_schema = manager.get_proto_schema(
-        "User", "1.0.0", package="com.test", include_comments=True
+        "User", "1.0.0", package="com.test", include_docs=True
     )
 
     assert "// User's address information." in proto_schema

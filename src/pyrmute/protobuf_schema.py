@@ -38,18 +38,18 @@ class ProtoSchemaGenerator:
     def __init__(
         self: Self,
         package: str = "com.example",
-        include_comments: bool = True,
+        include_docs: bool = True,
         use_proto3: bool = True,
     ) -> None:
         """Initialize the Protocol Buffer schema generator.
 
         Args:
             package: Protobuf package name (e.g., "com.mycompany.events").
-            include_comments: Whether to include field descriptions as comments.
+            include_docs: Whether to include field descriptions as comments.
             use_proto3: Use proto3 syntax (True) or proto2 (False).
         """
         self.package = package
-        self.include_comments = include_comments
+        self.include_docs = include_docs
         self.use_proto3 = use_proto3
         self._types_seen: set[str] = set()
         self._required_imports: set[str] = set()
@@ -83,7 +83,7 @@ class ProtoSchemaGenerator:
             "field_order": [],
         }
 
-        if self.include_comments and model.__doc__:
+        if self.include_docs and model.__doc__:
             message["comment"] = model.__doc__.strip()
 
         oneofs_to_add: list[ProtoOneOf] = []
@@ -164,7 +164,7 @@ class ProtoSchemaGenerator:
             }
             self._field_counter += 1
 
-            if self.include_comments:
+            if self.include_docs:
                 type_name = self._get_type_display_name(arg)
                 field_schema["comment"] = f"{field_name} when type is {type_name}"
 
@@ -176,7 +176,7 @@ class ProtoSchemaGenerator:
             "fields": oneof_field_names,
         }
 
-        if self.include_comments and field_info.description:
+        if self.include_docs and field_info.description:
             oneof["comment"] = field_info.description
 
         return {"fields": fields, "oneof": oneof}
@@ -239,7 +239,7 @@ class ProtoSchemaGenerator:
         }
         self._field_counter += 1
 
-        if self.include_comments and field_info.description:
+        if self.include_docs and field_info.description:
             field_schema["comment"] = field_info.description
 
         proto_type, is_repeated = self._python_type_to_proto(
@@ -442,7 +442,7 @@ class ProtoSchemaGenerator:
         """
         enum_def: ProtoEnum = {"name": enum_class.__name__, "values": {}}
 
-        if self.include_comments and enum_class.__doc__:
+        if self.include_docs and enum_class.__doc__:
             enum_def["comment"] = enum_class.__doc__.strip()
 
         for i, member in enumerate(enum_class):
@@ -478,7 +478,7 @@ class ProtoSchemaGenerator:
             "field_order": [],
         }
 
-        if self.include_comments and model.__doc__:
+        if self.include_docs and model.__doc__:
             message["comment"] = model.__doc__.strip()
 
         saved_field_counter = self._field_counter
@@ -865,7 +865,7 @@ class ProtoExporter:
         self: Self,
         registry: Registry,
         package: str = "com.example",
-        include_comments: bool = True,
+        include_docs: bool = True,
         use_proto3: bool = True,
     ) -> None:
         """Initialize the Protocol Buffer exporter.
@@ -873,13 +873,13 @@ class ProtoExporter:
         Args:
             registry: Model registry instance.
             package: Protobuf package name.
-            include_comments: Whether to include documentation as comments.
+            include_docs: Whether to include documentation as comments.
             use_proto3: Use proto3 syntax (True) or proto2 (False).
         """
         self._registry = registry
         self.generator = ProtoSchemaGenerator(
             package=package,
-            include_comments=include_comments,
+            include_docs=include_docs,
             use_proto3=use_proto3,
         )
 
