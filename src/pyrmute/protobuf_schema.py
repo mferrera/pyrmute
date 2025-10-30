@@ -262,40 +262,40 @@ class ProtoSchemaGenerator:
 
     def _python_type_to_proto(  # noqa: PLR0911, PLR0912, C901
         self: Self,
-        annotation: Any,
+        python_type: Any,
         field_info: FieldInfo | None = None,
     ) -> tuple[str, bool]:
         """Convert Python type annotation to Protocol Buffer type.
 
         Args:
-            annotation: Python type annotation.
+            python_type: Python type annotation.
             field_info: Optional field info for constraint checking.
 
         Returns:
             Tuple of (proto_type, is_repeated).
         """
-        if annotation is None:
+        if python_type is None:
             return ("string", False)
 
-        if annotation is int and field_info:
+        if python_type is int and field_info:
             proto_type = self._optimize_int_type(field_info)
             return (proto_type, False)
 
-        if annotation in self._BASIC_TYPE_MAPPING:
-            return (self._BASIC_TYPE_MAPPING[annotation], False)
+        if python_type in self._BASIC_TYPE_MAPPING:
+            return (self._BASIC_TYPE_MAPPING[python_type], False)
 
-        if annotation in self._WELLKNOWN_TYPE_MAPPING:
-            proto_type, import_path = self._WELLKNOWN_TYPE_MAPPING[annotation]
+        if python_type in self._WELLKNOWN_TYPE_MAPPING:
+            proto_type, import_path = self._WELLKNOWN_TYPE_MAPPING[python_type]
             if import_path:
                 self._required_imports.add(import_path)
             return (proto_type, False)
 
-        if TypeInspector.is_enum(annotation):
-            return self._enum_to_proto(annotation)
+        if TypeInspector.is_enum(python_type):
+            return self._enum_to_proto(python_type)
 
-        origin = get_origin(annotation)
+        origin = get_origin(python_type)
         if TypeInspector.is_union_type(origin):
-            non_none_args = TypeInspector.get_non_none_union_args(annotation)
+            non_none_args = TypeInspector.get_non_none_union_args(python_type)
             if len(non_none_args) == 1:
                 return self._python_type_to_proto(non_none_args[0], field_info)
 
@@ -310,26 +310,26 @@ class ProtoSchemaGenerator:
                 and origin.__origin__ in (tuple, set, frozenset)
             )
         ):
-            args = get_args(annotation)
+            args = get_args(python_type)
             if args:
                 item_type, _ = self._python_type_to_proto(args[0], None)
                 return (item_type, True)
             return ("string", True)
 
-        if TypeInspector.is_dict_like(origin, annotation):
-            args = get_args(annotation)
+        if TypeInspector.is_dict_like(origin, python_type):
+            args = get_args(python_type)
             if args and len(args) == 2:  # noqa: PLR2004
                 key_type, _ = self._python_type_to_proto(args[0], None)
                 value_type, _ = self._python_type_to_proto(args[1], None)
                 return (f"map<{key_type}, {value_type}>", False)
             return ("map<string, string>", False)
 
-        if TypeInspector.is_base_model(annotation):
-            model_name = annotation.__name__
+        if TypeInspector.is_base_model(python_type):
+            model_name = python_type.__name__
 
             if model_name not in self._types_seen:
                 self._types_seen.add(model_name)
-                nested_msg = self._generate_nested_message(annotation, model_name)
+                nested_msg = self._generate_nested_message(python_type, model_name)
                 self._collected_nested_messages.append(nested_msg)
 
             # This is a recursive model referencing itself
