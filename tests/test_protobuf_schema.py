@@ -197,8 +197,8 @@ def test_decimal_type_mapping() -> None:
     assert amount_field["type"] == "double"
 
 
-def test_tuple_type_handling() -> None:
-    """Test tuple types are handled like lists."""
+def test_tuple_ellipsis_type_handling() -> None:
+    """Test tuple ellipsis types are handled like lists."""
 
     class Model(BaseModel):
         values: tuple[str, ...]
@@ -210,6 +210,44 @@ def test_tuple_type_handling() -> None:
     assert values_field is not None
     assert values_field["type"] == "string"
     assert values_field["label"] == "repeated"
+
+
+def test_tuple_homogeneous_type_handling() -> None:
+    """Test tuple homogeneous types are handled like lists."""
+
+    class Model(BaseModel):
+        values: tuple[str, str]
+
+    generator = ProtoSchemaGenerator()
+    message = generator._generate_proto_schema(Model, "Model", "1.0.0")
+
+    values_field = next((f for f in message["fields"] if f["name"] == "values"), None)
+    assert values_field is not None
+    assert values_field["type"] == "string"
+    assert values_field["label"] == "repeated"
+
+
+def test_tuple_heterogeneous_type_handling() -> None:
+    """Test tuple heterogeneous types are handled like lists."""
+
+    class Model(BaseModel):
+        values: tuple[str, int, float]
+
+    generator = ProtoSchemaGenerator()
+    message = generator._generate_proto_schema(Model, "Model", "1.0.0")
+
+    assert message["name"] == "Model"
+    values_field = message["fields"][0]
+    assert values_field["name"] == "values"
+    nested_msg_name = values_field["type"]
+
+    assert len(message["nested_messages"]) == 1
+    tuple_msg = message["nested_messages"][0]
+    assert tuple_msg["name"] == nested_msg_name
+    assert len(tuple_msg["fields"]) == 3
+
+    field_types = {f["number"]: f["type"] for f in tuple_msg["fields"]}
+    assert field_types == {1: "string", 2: "int32", 3: "double"}
 
 
 def test_empty_list_type() -> None:
