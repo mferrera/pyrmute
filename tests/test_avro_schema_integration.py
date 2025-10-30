@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 import avro  # type: ignore[import-untyped]
 import avro.schema  # type: ignore[import-untyped]
 import fastavro
+import pytest
 from pydantic import BaseModel, Field
 
 from pyrmute import ModelManager
@@ -119,6 +120,27 @@ def test_avro_schema_with_enums_fastavro(manager: ModelManager) -> None:
     assert len(records) == 2
     assert records[0]["status"] == "pending"  # type: ignore[index,call-overload]
     assert records[1]["status"] == "active"  # type: ignore[index,call-overload]
+
+
+@pytest.mark.xfail(reason="To be fixed next.")
+def test_avro_schema_with_invalid_enum_symbols_fastavro(manager: ModelManager) -> None:
+    """Test enum schemas work correctly with fastavro."""
+
+    class Status(str, Enum):
+        PENDING = "pending"
+        ACTIVE = "active"
+        COMPLETED = "completed"
+
+    @manager.model("Task", "1.0.0")
+    class TaskV1(BaseModel):
+        name: str
+        status: Status
+        status_two: Status
+
+    schema = manager.get_avro_schema("Task", "1.0.0", namespace="com.test")
+    fastavro.parse_schema(dict(schema))
+    with pytest.raises(ValueError, match=r"Unable to convert enum 'Priority' to Avro."):
+        manager.get_avro_schema("Task", "1.0.0", namespace="com.test")
 
 
 def test_avro_schema_with_unions_fastavro(manager: ModelManager) -> None:

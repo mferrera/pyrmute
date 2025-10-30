@@ -99,7 +99,7 @@ class IntegerConstraints(BaseModel):
     small_uint: int = Field(ge=0, le=1000)
     # uint64: ge >= 0, le > 2^32-1
     large_uint: int = Field(ge=0, le=5_000_000_000)
-    # uint32: ge >= 0, no upper bound
+    # uint64: ge >= 0, no upper bound
     unbounded_uint: int = Field(ge=0)
     # int32: negative lower bound
     signed_int: int = Field(ge=-100, le=100)
@@ -283,7 +283,7 @@ def test_integer_unbounded_uint() -> None:
 
     field = next((f for f in message["fields"] if f["name"] == "count"), None)
     assert field is not None
-    assert field["type"] == "uint32"
+    assert field["type"] == "uint64"
 
 
 def test_integer_with_negative_bound() -> None:
@@ -897,7 +897,7 @@ def test_integer_with_gt_constraint() -> None:
 
     field = next((f for f in message["fields"] if f["name"] == "positive"), None)
     assert field is not None
-    assert field["type"] == "int32"
+    assert field["type"] == "uint64"
 
 
 def test_integer_with_lt_constraint() -> None:
@@ -926,7 +926,7 @@ def test_integer_with_mixed_gt_le() -> None:
 
     field = next((f for f in message["fields"] if f["name"] == "value"), None)
     assert field is not None
-    assert field["type"] == "int32"
+    assert field["type"] == "uint32"
 
 
 def test_integer_with_multiple_of_constraint() -> None:
@@ -947,7 +947,7 @@ def test_integer_with_multiple_of_constraint() -> None:
         (f for f in message["fields"] if f["name"] == "positive_even"), None
     )
     assert positive_even_field is not None
-    assert positive_even_field["type"] == "uint32"
+    assert positive_even_field["type"] == "uint64"
 
 
 # ============================================================================
