@@ -42,6 +42,13 @@ class AvroEnumSchema(TypedDict):
     namespace: NotRequired[str]
 
 
+class CachedAvroEnumSchema(TypedDict):
+    """Cached enums when creating Avro schemas."""
+
+    schema: AvroEnumSchema
+    namespace_ref: str
+
+
 class AvroArraySchema(TypedDict):
     """Avro array type schema."""
 
