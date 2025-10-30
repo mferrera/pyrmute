@@ -98,7 +98,7 @@ class TypeInspector:
     def is_list_like(origin: Any) -> bool:
         """Check if origin represents a list-like type.
 
-        Includes list, set, tuple, and frozenset.
+        Includes list, set, and frozenset.
 
         Args:
             origin: Type origin from get_origin().
