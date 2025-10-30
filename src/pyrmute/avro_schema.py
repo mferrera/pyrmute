@@ -234,44 +234,44 @@ class AvroSchemaGenerator:
 
     def _python_type_to_avro(  # noqa: PLR0911, PLR0912, C901
         self: Self,
-        annotation: Any,
+        python_type: Any,
         field_info: FieldInfo | None = None,
     ) -> AvroType:
         """Convert Python type annotation to Avro type.
 
         Args:
-            annotation: Python type annotation.
+            python_type: Python type annotation.
             field_info: Optional field info for constraint checking.
 
         Returns:
             Avro type specification (string, list, or dict).
         """
-        if annotation is None:
+        if python_type is None:
             return "null"
 
-        if annotation is int:
+        if python_type is int:
             if field_info:
                 return self._optimize_int_type(field_info)
             return "int"
 
-        if annotation in self._LOGICAL_TYPE_MAPPING:
-            return self._LOGICAL_TYPE_MAPPING[annotation].copy()
+        if python_type in self._LOGICAL_TYPE_MAPPING:
+            return self._LOGICAL_TYPE_MAPPING[python_type].copy()
 
-        if TypeInspector.is_enum(annotation):
-            return self._enum_to_avro(annotation)
+        if TypeInspector.is_enum(python_type):
+            return self._enum_to_avro(python_type)
 
         # Check for bare list or dict before checking origin
-        if annotation is list:
+        if python_type is list:
             arr_schema: AvroArraySchema = {"type": "array", "items": "string"}
             return arr_schema
 
-        if annotation is dict:
+        if python_type is dict:
             m_schema: AvroMapSchema = {"type": "map", "values": "string"}
             return m_schema
 
-        origin = get_origin(annotation)
+        origin = get_origin(python_type)
         if origin is not None:
-            args = get_args(annotation)
+            args = get_args(python_type)
 
             if TypeInspector.is_union_type(origin):
                 return self._union_to_avro(args)
@@ -281,7 +281,7 @@ class AvroSchemaGenerator:
                 array_schema: AvroArraySchema = {"type": "array", "items": item_type}
                 return array_schema
 
-            if TypeInspector.is_dict_like(origin, annotation):
+            if TypeInspector.is_dict_like(origin, python_type):
                 value_type = (
                     self._python_type_to_avro(args[1]) if len(args) > 1 else "string"
                 )
@@ -289,15 +289,15 @@ class AvroSchemaGenerator:
                 return map_schema
 
             if origin is tuple:
-                return self._tuple_to_avro(annotation)
+                return self._tuple_to_avro(python_type)
 
-        if TypeInspector.is_base_model(annotation):
-            return self._generate_nested_record_schema(annotation)
+        if TypeInspector.is_base_model(python_type):
+            return self._generate_nested_record_schema(python_type)
 
-        if annotation in self._BASIC_TYPE_MAPPING:
-            return self._BASIC_TYPE_MAPPING[annotation]
+        if python_type in self._BASIC_TYPE_MAPPING:
+            return self._BASIC_TYPE_MAPPING[python_type]
 
-        type_str = str(annotation).lower()
+        type_str = str(python_type).lower()
         if "str" in type_str:
             return "string"
         if "int" in type_str:
@@ -414,14 +414,14 @@ class AvroSchemaGenerator:
 
         return unique_types
 
-    def _tuple_to_avro(self: Self, annotation: Any) -> AvroArraySchema:
+    def _tuple_to_avro(self: Self, python_type: Any) -> AvroArraySchema:
         """Convert tuple type to Avro array with union of item types.
 
         Avro doesn't have a true tuple type (fixed-length with heterogeneous types),
         so we convert to an array with a union of all possible item types.
 
         Args:
-            annotation: Tuple annotation.
+            python_type: Tuple annotation.
 
         Returns:
             Avro array schema with union items.
@@ -435,7 +435,7 @@ class AvroSchemaGenerator:
             # {"type": "array", "items": "double"}
             ```
         """
-        element_types = TypeInspector.get_tuple_element_types(annotation)
+        element_types = TypeInspector.get_tuple_element_types(python_type)
 
         if not element_types:
             empty_array: AvroArraySchema = {"type": "array", "items": "string"}
