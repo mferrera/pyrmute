@@ -1169,7 +1169,7 @@ class ModelManager:
         name: str,
         version: str | ModelVersion,
         package: str | None = None,
-        include_comments: bool = True,
+        include_docs: bool = True,
         use_proto3: bool = True,
     ) -> str:
         """Get Protocol Buffer schema for a specific model version.
@@ -1180,7 +1180,7 @@ class ModelManager:
             package: Protobuf package name (e.g., "com.mycompany.users").
                 This is a namespace that remains consistent across versions.
                 Defaults to "com.example".
-            include_comments: Whether to include documentation as comments.
+            include_docs: Whether to include documentation as comments.
             use_proto3: Use proto3 syntax (True) or proto2 (False).
                 Defaults to True (proto3 is recommended for new projects).
 
@@ -1203,7 +1203,7 @@ class ModelManager:
         exporter = ProtoExporter(
             self._registry,
             package=package,
-            include_comments=include_comments,
+            include_docs=include_docs,
             use_proto3=use_proto3,
         )
         return exporter.export_schema(name, version)
@@ -1212,7 +1212,7 @@ class ModelManager:
         self: Self,
         output_dir: str | Path,
         package: str | None = None,
-        include_comments: bool = True,
+        include_docs: bool = True,
         use_proto3: bool = True,
     ) -> dict[str, dict[str, str]]:
         """Export all schemas as Protocol Buffer schemas.
@@ -1225,7 +1225,7 @@ class ModelManager:
             package: Protobuf package name (e.g., "com.mycompany.events").
                 This namespace remains consistent across all versions.
                 Defaults to "com.example".
-            include_comments: Whether to include documentation as comments.
+            include_docs: Whether to include documentation as comments.
             use_proto3: Use proto3 syntax (True) or proto2 (False).
                 Defaults to True (proto3 is recommended for new projects).
 
@@ -1238,7 +1238,7 @@ class ModelManager:
             manager.dump_proto_schemas(
                 "schemas/protos/",
                 package="com.mycompany.events",
-                include_comments=True,
+                include_docs=True,
                 use_proto3=True,
             )
 
@@ -1255,7 +1255,7 @@ class ModelManager:
         exporter = ProtoExporter(
             self._registry,
             package=package,
-            include_comments=include_comments,
+            include_docs=include_docs,
             use_proto3=use_proto3,
         )
         return exporter.export_all_schemas(output_dir)
