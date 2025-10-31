@@ -149,10 +149,14 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
         """  # noqa: E501
         self._reset_state()
 
+        self._register_model_name(model.__name__, name)
         self._current_model = (model.__name__, name)
         self._types_seen.add(model.__name__)
 
         self._collect_nested_models(model)
+        for nested_class_name in self._nested_models:
+            if nested_class_name != model.__name__:
+                self._register_model_name(nested_class_name, nested_class_name)
 
         full_namespace = self.namespace
         if version:
@@ -537,15 +541,17 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
         # If we've seen this type before, just reference it
         if type_name in self._types_seen:
             if type_name == self._current_model[0]:
-                # Is recursive self-reference
-                return self._current_model[1]
-            return type_name
+                # Is recursive self-reference - use the versioned name
+                return self._get_model_schema_name(type_name)  # CHANGED
+            # Use the mapped name
+            return self._get_model_schema_name(type_name)
 
         self._types_seen.add(type_name)
 
+        schema_name = self._get_model_schema_name(type_name)
         schema: AvroRecordSchema = {
             "type": "record",
-            "name": type_name,
+            "name": schema_name,
             "fields": [],
         }
 

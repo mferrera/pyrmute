@@ -65,7 +65,6 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
         self._tuple_counter = 0
         self._collected_nested_messages: list[ProtoMessage] = []
         self._current_model_class = ""
-        self._versioned_name_map: dict[str, str] = {}
         self._enum_schemas: list[ProtoEnum] = []
 
     def _reset_state(self: Self) -> None:
@@ -85,11 +84,8 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
         version: str | ModelVersion,
     ) -> ProtoMessage:
         """Generate a Protocol Buffer schema from a Pydantic model."""
-        self._reset_state()
-        if not hasattr(self, "_versioned_name_map") or not self._versioned_name_map:
-            self._versioned_name_map = {}
-
-        self._versioned_name_map[model.__name__] = name
+        self._field_counter = 1
+        self._register_model_name(model.__name__, name)
         self._current_model_class = model.__name__
 
         self._current_model = (model.__name__, name)
@@ -97,9 +93,13 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
 
         self._collect_nested_models(model)
 
+        for nested_class_name in self._nested_models:
+            if nested_class_name != model.__name__:
+                self._register_model_name(nested_class_name, nested_class_name)
+
         for nested_class_name, nested_model in self._nested_models.items():
             if nested_class_name != model.__name__:
-                proto_name = self._versioned_name_map[nested_class_name]
+                proto_name = self._get_model_schema_name(nested_class_name)
                 nested_msg = self._generate_nested_message(nested_model, proto_name)
                 self._collected_nested_messages.append(nested_msg)
 
@@ -237,7 +237,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
 
         if TypeInspector.is_base_model(typ):
             model_name = typ.__name__
-            proto_name = self._versioned_name_map.get(model_name, model_name)
+            proto_name = self._get_model_schema_name(model_name)
             return f"{base_name}_{proto_name.lower()}"
 
         if hasattr(typ, "__name__"):
@@ -265,7 +265,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
 
         if TypeInspector.is_base_model(typ):
             model_name = typ.__name__
-            return self._versioned_name_map.get(model_name, model_name)
+            return self._get_model_schema_name(model_name)
 
         if hasattr(typ, "__name__"):
             return typ.__name__
@@ -411,11 +411,9 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
             nested_msg = self._generate_nested_message(nested_tuple_model, model_name)
             self._collected_nested_messages.append(nested_msg)
 
-        if model_name == self._versioned_name_map.get(self._current_model_class):
-            return ProtoTypeInfo(
-                type_name=self._versioned_name_map[self._current_model_class],
-                is_repeated=False,
-            )
+        current_schema_name = self._get_model_schema_name(self._current_model_class)
+        if model_name == current_schema_name:
+            return ProtoTypeInfo(current_schema_name, False)
 
         return ProtoTypeInfo(type_name=model_name, is_repeated=False)
 
@@ -442,7 +440,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
     def _convert_basemodel(self: Self, python_type: type[BaseModel]) -> ProtoTypeInfo:
         """Convert nested BaseModel to protobuf message."""
         model_name = python_type.__name__
-        proto_name = self._versioned_name_map.get(model_name, model_name)
+        proto_name = self._get_model_schema_name(model_name)
 
         self._register_nested_model(python_type)
 
@@ -450,16 +448,14 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
             self._types_seen.add(model_name)
 
             if model_name not in self._versioned_name_map:
-                self._versioned_name_map[model_name] = model_name
+                self._register_model_name(model_name, model_name)
                 proto_name = model_name
 
             nested_msg = self._generate_nested_message(python_type, proto_name)
             self._collected_nested_messages.append(nested_msg)
 
         if model_name == self._current_model_class:
-            return ProtoTypeInfo(
-                type_name=self._versioned_name_map[model_name], is_repeated=False
-            )
+            return ProtoTypeInfo(self._get_model_schema_name(model_name), False)
 
         return ProtoTypeInfo(type_name=proto_name, is_repeated=False)
 
@@ -598,7 +594,8 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
         self._reset_state()
 
         if registry_name_map:
-            self._versioned_name_map = registry_name_map.copy()
+            for class_name, schema_name in registry_name_map.items():
+                self._register_model_name(class_name, schema_name)
 
         message = self._generate_proto_schema(model, name, version or "1.0.0")
 
@@ -1022,13 +1019,21 @@ class ProtoExporter:
 
         all_schemas: dict[str, dict[str, str]] = {}
 
+        registry_name_map: dict[str, str] = {}
+        for model_name in self._registry.list_models():
+            for model_version in self._registry.get_versions(model_name):
+                registered_model = self._registry.get_model(model_name, model_version)
+                registry_name_map[registered_model.__name__] = model_name
+
         for model_name in self._registry.list_models():
             all_schemas[model_name] = {}
             versions = self._registry.get_versions(model_name)
 
             for version in versions:
                 model = self._registry.get_model(model_name, version)
-                proto_file = self.generator.generate_schema(model, model_name, version)
+                proto_file = self.generator.generate_schema(
+                    model, model_name, version, registry_name_map
+                )
 
                 version_str = str(version).replace(".", "_")
                 filename = f"{model_name}_v{version_str}.proto"
