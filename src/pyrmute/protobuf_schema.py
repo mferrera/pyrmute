@@ -57,6 +57,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
         self._tuple_counter = 0
         self._collected_nested_messages: list[ProtoMessage] = []
         self._current_model_class = ""
+        self._current_model = ("", "")
         self._enum_schemas: list[ProtoEnum] = []
 
     def _reset_state(self: Self) -> None:
@@ -603,6 +604,19 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
         if registry_name_map:
             for class_name, schema_name in registry_name_map.items():
                 self._register_model_name(class_name, schema_name)
+
+        self._register_model_name(model.__name__, name)
+        self._current_model = (model.__name__, name)
+        self._types_seen.add(model.__name__)
+
+        self._collect_nested_models(model)
+
+        for nested_name in self._nested_models:
+            if (
+                nested_name != model.__name__
+                and nested_name not in self._versioned_name_map
+            ):
+                self._register_model_name(nested_name, nested_name)
 
         message = self._generate_proto_schema(model, name, version or "1.0.0")
 

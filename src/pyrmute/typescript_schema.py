@@ -60,6 +60,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
         include_docs: bool = config.get("include_docs", True) if config else True
         super().__init__(include_docs=include_docs)
         self.style = style
+        self._current_model = ("", "")
         self.config = config or TypeScriptConfig()
 
     def generate_schema(
@@ -83,19 +84,24 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
         self._reset_state()
 
         versioned_name = self._build_versioned_name(name, version)
+
         self._register_model_name(model.__name__, versioned_name)
+        self._current_model = (model.__name__, versioned_name)
 
         self._collect_nested_models(model)
+
+        for nested_name in self._nested_models:
+            if nested_name != model.__name__:
+                self._register_model_name(nested_name, nested_name)
+
         if self.config.get("enum_style", "union") == "enum":
             self._collect_all_enums(model)
 
         imports: list[str] = []
-        enums: list[str] = []
-        auxiliary: list[str] = []
-
         if self.style == "zod":
             imports.append("import { z } from 'zod';")
 
+        enums: list[str] = []
         if self._collected_enums:
             if self.style == "zod":
                 enum_declarations = [
@@ -109,6 +115,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
                 ]
             enums.extend(enum_declarations)
 
+        auxiliary: list[str] = []
         for nested_name, nested_model in self._nested_models.items():
             if nested_name != model.__name__:
                 nested_schema = self._generate_schema_for_model(

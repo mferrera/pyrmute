@@ -99,54 +99,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
 
         Returns:
             Avro record schema.
-
-        Example:
-            ```python
-            from pydantic import BaseModel, Field
-            from datetime import datetime
-
-            class Event(BaseModel):
-                '''Event record.'''
-                id: UUID = Field(description="Event identifier")
-                name: str = Field(description="Event name")
-                timestamp: datetime = Field(description="Event timestamp")
-                metadata: dict[str, str] = Field(default_factory=dict)
-
-            generator = AvroSchemaGenerator(namespace="com.events")
-            schema = generator.generate_avro_schema(Event, "Event")
-
-            # Returns proper Avro schema with logical types
-            # {
-            #   "type": "record",
-            #   "name": "Event",
-            #   "namespace": "com.events",
-            #   "doc": "Event record.",
-            #   "fields": [
-            #     {"name": "id", "type": {"type": "string", "logicalType": "uuid"}},
-            #     {"name": "name", "type": "string"},
-            #     {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-micros"}},
-            #     {"name": "metadata", "type": {"type": "map", "values": "string"}}
-            #   ]
-            # }
-
-            # When a version is provided
-            schema = generator.generate_avro_schema(Event, "Event", "1.0.0")
-
-            # Returns proper Avro schema with logical types
-            # {
-            #   "type": "record",
-            #   "name": "Event",
-            #   "namespace": "com.events.v1_0_0",
-            #   "doc": "Event record.",
-            #   "fields": [
-            #     {"name": "id", "type": {"type": "string", "logicalType": "uuid"}},
-            #     {"name": "name", "type": "string"},
-            #     {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-micros"}},
-            #     {"name": "metadata", "type": {"type": "map", "values": "string"}}
-            #   ]
-            # }
-            ```
-        """  # noqa: E501
+        """
         self._reset_state()
 
         self._register_model_name(model.__name__, name)
