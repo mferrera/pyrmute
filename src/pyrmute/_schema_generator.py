@@ -31,6 +31,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
         self._types_seen: set[str] = set()
         self._collected_enums: dict[str, type[Enum]] = {}
         self._nested_models: dict[str, type[BaseModel]] = {}
+        self._versioned_name_map: dict[str, str] = {}
 
     @abstractmethod
     def generate_schema(
@@ -47,6 +48,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
         self._types_seen = set()
         self._collected_enums = {}
         self._nested_models = {}
+        self._versioned_name_map = {}
 
     @abstractmethod
     def _convert_type(
@@ -213,3 +215,49 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
         model_name = model.__name__
         if model_name not in self._nested_models and model_name not in self._types_seen:
             self._nested_models[model_name] = model
+
+    def _register_model_name(
+        self: Self, model_class_name: str, schema_name: str
+    ) -> None:
+        """Register the mapping from model class name to schema name.
+
+        This is used to track how model class names map to their schema names, which may
+        include version information or other transformations.
+
+        Args:
+            model_class_name: Original Python class name (e.g., "User").
+            schema_name: Name to use in generated schema (e.g., "UserV1_0_0").
+        """
+        self._versioned_name_map[model_class_name] = schema_name
+
+    def _get_model_schema_name(self: Self, model_class_name: str) -> str:
+        """Get the schema name for a model class.
+
+        Args:
+            model_class_name: Original Python class name.
+
+        Returns:
+            Schema name to use, or the class name if no mapping exists.
+        """
+        return self._versioned_name_map.get(model_class_name, model_class_name)
+
+    def _build_versioned_name(
+        self: Self, base_name: str, version: str | ModelVersion | None
+    ) -> str:
+        """Build a versioned name from base name and version.
+
+        Default implementation creates names like "UserV1_0_0".  Subclasses can override
+        for different naming conventions.
+
+        Args:
+            base_name: Base model name.
+            version: Optional version string.
+
+        Returns:
+            Versioned name, or base name if no version.
+        """
+        if version is None:
+            return base_name
+
+        version_str = str(version).replace(".", "_")
+        return f"{base_name}V{version_str}"

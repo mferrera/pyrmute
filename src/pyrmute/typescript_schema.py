@@ -60,12 +60,6 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         super().__init__(include_docs=include_docs)
         self.style = style
         self.config = config or TypeScriptConfig()
-        self._versioned_name_map: dict[str, str] = {}
-
-    def _reset_state(self: Self) -> None:
-        """Reset internal state before generating a new schema."""
-        super()._reset_state()
-        self._versioned_name_map = {}
 
     def generate_schema(
         self: Self,
@@ -87,8 +81,8 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         """
         self._reset_state()
 
-        versioned_name = self._get_versioned_name(name, version)
-        self._versioned_name_map[model.__name__] = versioned_name
+        versioned_name = self._build_versioned_name(name, version)
+        self._register_model_name(model.__name__, versioned_name)
 
         self._collect_nested_models(model)
         if self.config.get("enum_style", "union") == "enum":
@@ -175,16 +169,6 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         if self.style == "type":
             return self._generate_type_alias(model, type_name)
         return self._generate_interface(model, type_name)
-
-    def _get_versioned_name(
-        self: Self, name: str, version: str | ModelVersion | None
-    ) -> str:
-        """Generate versioned name for a model."""
-        if version is None:
-            return name
-
-        version_str = str(version).replace(".", "_")
-        return f"{name}V{version_str}"
 
     def _generate_interface(self: Self, model: type[BaseModel], name: str) -> str:
         """Generate TypeScript interface."""
@@ -400,9 +384,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
 
         if TypeInspector.is_base_model(python_type):
             self._register_nested_model(python_type)
-            return self._versioned_name_map.get(  # type: ignore[no-any-return]
-                python_type.__name__, python_type.__name__
-            )
+            return self._get_model_schema_name(python_type.__name__)
 
         if hasattr(python_type, "__origin__") and python_type.__origin__ is Generic:
             return "any"
