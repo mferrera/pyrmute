@@ -57,9 +57,11 @@ class ProtoSchemaGenerator:
         self._tuple_counter = 0
         self._collected_enums: list[ProtoEnum] = []
         self._collected_nested_messages: list[ProtoMessage] = []
-        self._current_model = ("", "")
+        self._current_model_class = ""
+        self._versioned_name_map: dict[str, str] = {}
+        self._types_seen_collecting_enums: set[str] = set()
 
-    def _generate_proto_schema(
+    def _generate_proto_schema(  # noqa: C901, PLR0912
         self: Self,
         model: type[BaseModel],
         name: str,
@@ -72,8 +74,35 @@ class ProtoSchemaGenerator:
         self._collected_enums = []
         self._collected_nested_messages = []
 
+        if not hasattr(self, "_versioned_name_map") or not self._versioned_name_map:
+            self._versioned_name_map = {}
+
+        self._types_seen_collecting_enums = set()
+
+        self._versioned_name_map[model.__name__] = name
+        self._current_model_class = model.__name__
+
         self._current_model = (model.__name__, name)
         self._types_seen.add(model.__name__)
+
+        self._nested_models: dict[str, type[BaseModel]] = {}
+        self._collect_nested_models(model)
+
+        for nested_class_name in self._nested_models:
+            if nested_class_name != model.__name__:
+                self._versioned_name_map[nested_class_name] = nested_class_name
+
+            self._collect_enums_from_model(model)
+
+        for nested_model in self._nested_models.values():
+            if nested_model.__name__ != model.__name__:
+                self._collect_enums_from_model(nested_model)
+
+        for nested_class_name, nested_model in self._nested_models.items():
+            if nested_class_name != model.__name__:
+                proto_name = self._versioned_name_map[nested_class_name]
+                nested_msg = self._generate_nested_message(nested_model, proto_name)
+                self._collected_nested_messages.append(nested_msg)
 
         message: ProtoMessage = {
             "name": name,
@@ -109,13 +138,76 @@ class ProtoSchemaGenerator:
         if oneofs_to_add:
             message["oneofs"] = oneofs_to_add
 
-        if self._collected_enums:
-            message["nested_enums"] = self._collected_enums
-
-        if self._collected_nested_messages:
-            message["nested_messages"] = self._collected_nested_messages
-
         return message
+
+    def _collect_nested_models(self: Self, model: type[BaseModel]) -> None:
+        """Recursively collect all nested BaseModel types.
+
+        Args:
+            model: Pydantic model class to scan for nested models.
+        """
+        nested = TypeInspector.collect_nested_models(model, self._types_seen)
+        self._nested_models.update(nested)
+
+    def _collect_enums_from_model(self: Self, model: type[BaseModel]) -> None:
+        """Recursively collect all enums from a model and its nested models.
+
+        Args:
+            model: Pydantic model class to scan for enums.
+        """
+        if not hasattr(self, "_types_seen_collecting_enums"):
+            self._types_seen_collecting_enums = set()
+
+        if model.__name__ in self._types_seen_collecting_enums:
+            return
+
+        self._types_seen_collecting_enums.add(model.__name__)
+
+        for field_info in model.model_fields.values():
+            self._collect_enums_from_type(field_info.annotation)
+
+    def _collect_enums_from_type(self: Self, python_type: Any) -> None:  # noqa: C901
+        """Recursively collect enums from a type annotation.
+
+        Args:
+            python_type: Python type to scan for enums.
+        """
+        if (
+            python_type is None
+            or python_type is type(None)
+            or isinstance(python_type, str)
+        ):
+            return
+
+        if TypeInspector.is_enum(python_type):
+            enum_name = python_type.__name__
+            if enum_name not in self._types_seen:
+                self._types_seen.add(enum_name)
+                enum_def = self._generate_enum_schema(python_type)
+                self._collected_enums.append(enum_def)
+            return
+
+        if TypeInspector.is_base_model(python_type):
+            self._collect_enums_from_model(python_type)
+            return
+
+        origin = get_origin(python_type)
+        args = get_args(python_type)
+
+        if TypeInspector.is_union_type(origin):
+            for arg in args:
+                if arg is not type(None):
+                    self._collect_enums_from_type(arg)
+            return
+
+        if TypeInspector.is_list_like(origin) or origin is tuple:
+            for arg in args:
+                self._collect_enums_from_type(arg)
+            return
+
+        if TypeInspector.is_dict_like(origin, python_type):
+            for arg in args:
+                self._collect_enums_from_type(arg)
 
     def _generate_oneof_fields(
         self: Self,
@@ -138,22 +230,34 @@ class ProtoSchemaGenerator:
         oneof_name = f"{field_name}_value"
         oneof_field_names: list[str] = []
         fields: list[ProtoField] = []
+        used_variant_names: set[str] = set()
 
         for arg in non_none_args:
             variant_name = self._get_union_variant_name(arg, field_name)
             proto_type, is_repeated = self._python_type_to_proto(arg, None)
 
+            original_variant_name = variant_name
+            counter = 1
+            while variant_name in used_variant_names:
+                variant_name = f"{original_variant_name}_{counter}"
+                counter += 1
+            used_variant_names.add(variant_name)
+
             if proto_type.startswith("map"):
                 raise ValueError(
                     "Cannot encode unions with Python dictionaries to ProtoBuf: "
-                    "Map fields and repeated fields are not allowed in oneofs."
+                    "Map fields fields are not allowed in oneofs. Relevant model:\n"
+                    f"{model.__name__}\n"
+                    f"    {field_name}: {field_info.annotation}"
                 )
 
             if is_repeated:
                 raise ValueError(
                     "Cannot encode unions with Python iterables to ProtoBuf: "
                     "Fields in oneofs must not have labels (required / optional / "
-                    "repeated)."
+                    "repeated). Relevant model:\n"
+                    f"{model.__name__}\n"
+                    f"    {field_name}: {field_info.annotation}"
                 )
 
             field_schema: ProtoField = {
@@ -191,9 +295,20 @@ class ProtoSchemaGenerator:
         Returns:
             Generated variant field name.
         """
+        origin = get_origin(typ)
+        if origin is not None:
+            args = get_args(typ)
+            if args:
+                typ = args[0]
+
         if typ in self._BASIC_TYPE_MAPPING:
             type_name = self._BASIC_TYPE_MAPPING[typ].replace("<", "_").replace(">", "")
             return f"{base_name}_{type_name}"
+
+        if TypeInspector.is_base_model(typ):
+            model_name = typ.__name__
+            proto_name = self._versioned_name_map.get(model_name, model_name)
+            return f"{base_name}_{proto_name.lower()}"
 
         if hasattr(typ, "__name__"):
             type_name = typ.__name__.lower()
@@ -212,6 +327,16 @@ class ProtoSchemaGenerator:
         Returns:
             Human-readable type name.
         """
+        origin = get_origin(typ)
+        if origin is not None:
+            args = get_args(typ)
+            if args:
+                typ = args[0]
+
+        if TypeInspector.is_base_model(typ):
+            model_name = typ.__name__
+            return self._versioned_name_map.get(model_name, model_name)
+
         if hasattr(typ, "__name__"):
             return typ.__name__
         return str(typ)
@@ -359,8 +484,8 @@ class ProtoSchemaGenerator:
             nested_msg = self._generate_nested_message(nested_tuple_model, model_name)
             self._collected_nested_messages.append(nested_msg)
 
-        if model_name == self._current_model[0]:
-            return self._current_model[1], False
+        if model_name == self._versioned_name_map.get(self._current_model_class):
+            return self._versioned_name_map[self._current_model_class], False
 
         return model_name, False
 
@@ -386,16 +511,22 @@ class ProtoSchemaGenerator:
     ) -> tuple[str, bool]:
         """Convert nested BaseModel to protobuf message."""
         model_name = python_type.__name__
+        proto_name = self._versioned_name_map.get(model_name, model_name)
 
         if model_name not in self._types_seen:
             self._types_seen.add(model_name)
-            nested_msg = self._generate_nested_message(python_type, model_name)
+
+            if model_name not in self._versioned_name_map:
+                self._versioned_name_map[model_name] = model_name
+                proto_name = model_name
+
+            nested_msg = self._generate_nested_message(python_type, proto_name)
             self._collected_nested_messages.append(nested_msg)
 
-        if model_name == self._current_model[0]:
-            return self._current_model[1], False
+        if model_name == self._current_model_class:
+            return self._versioned_name_map[model_name], False
 
-        return model_name, False
+        return proto_name, False
 
     def _optimize_int_type(self: Self, field_info: FieldInfo) -> str:
         """Optimize integer type based on field constraints.
@@ -484,12 +615,6 @@ class ProtoSchemaGenerator:
         saved_field_counter = self._field_counter
         self._field_counter = 1
 
-        parent_enums = self._collected_enums
-        parent_messages = self._collected_nested_messages
-
-        self._collected_enums = []
-        self._collected_nested_messages = []
-
         oneofs_to_add: list[ProtoOneOf] = []
 
         for field_name, field_info in model.model_fields.items():
@@ -513,15 +638,6 @@ class ProtoSchemaGenerator:
         if oneofs_to_add:
             message["oneofs"] = oneofs_to_add
 
-        if self._collected_enums:
-            message["nested_enums"] = self._collected_enums
-
-        if self._collected_nested_messages:
-            message["nested_messages"] = self._collected_nested_messages
-
-        self._collected_enums = parent_enums
-        self._collected_nested_messages = parent_messages
-
         self._field_counter = saved_field_counter
 
         return message
@@ -531,6 +647,7 @@ class ProtoSchemaGenerator:
         model: type[BaseModel],
         name: str,
         version: str | ModelVersion,
+        registry_name_map: dict[str, str] | None = None,
     ) -> ProtoFile:
         """Generate a complete .proto file definition.
 
@@ -538,17 +655,26 @@ class ProtoSchemaGenerator:
             model: Pydantic model class.
             name: Model name.
             version: Model version.
+            registry_name_map: Optional mapping of class names to registry names.
 
         Returns:
             Complete proto file definition.
         """
+        if registry_name_map:
+            self._versioned_name_map = registry_name_map.copy()
+
         message = self._generate_proto_schema(model, name, version)
+
+        all_messages = []
+        all_messages.extend(self._collected_nested_messages)
+        all_messages.append(message)
+
         proto_file: ProtoFile = {
             "syntax": "proto3" if self.use_proto3 else "proto2",
             "package": self.package,
             "imports": sorted(self._required_imports),
-            "messages": [message],
-            "enums": [],
+            "messages": all_messages,
+            "enums": self._collected_enums,
         }
 
         return proto_file
@@ -911,7 +1037,16 @@ class ProtoExporter:
             ```
         """
         model = self._registry.get_model(name, version)
-        proto_file = self.generator.generate_proto_file(model, name, version)
+
+        registry_name_map: dict[str, str] = {}
+        for model_name in self._registry.list_models():
+            for model_version in self._registry.get_versions(model_name):
+                registered_model = self._registry.get_model(model_name, model_version)
+                registry_name_map[registered_model.__name__] = model_name
+
+        proto_file = self.generator.generate_proto_file(
+            model, name, version, registry_name_map
+        )
         proto_content = self.generator.proto_file_to_string(proto_file)
 
         if output_path:

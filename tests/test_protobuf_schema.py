@@ -228,7 +228,7 @@ def test_tuple_homogeneous_type_handling() -> None:
 
 
 def test_tuple_heterogeneous_type_handling() -> None:
-    """Test tuple heterogeneous types are handled like lists."""
+    """Test tuple heterogeneous types are handled as separate messages."""
 
     class Model(BaseModel):
         values: tuple[str, int, float]
@@ -241,8 +241,10 @@ def test_tuple_heterogeneous_type_handling() -> None:
     assert values_field["name"] == "values"
     nested_msg_name = values_field["type"]
 
-    assert len(message["nested_messages"]) == 1
-    tuple_msg = message["nested_messages"][0]
+    assert len(message["nested_messages"]) == 0
+    assert len(generator._collected_nested_messages) == 1
+
+    tuple_msg = generator._collected_nested_messages[0]
     assert tuple_msg["name"] == nested_msg_name
     assert len(tuple_msg["fields"]) == 3
 
@@ -1186,6 +1188,30 @@ def test_union_with_none_in_middle() -> None:
     assert len(oneof_fields) == 2  # str and int, not None
 
 
+def test_oneof_variant_names_use_registry_names(manager: ModelManager) -> None:
+    """Test that oneof variant names use registry names from the model manager."""
+
+    @manager.model("CardPayment", "1.0.0")
+    class CardPaymentV1(BaseModel):
+        card_number: str
+
+    @manager.model("BankPayment", "1.0.0")
+    class BankPaymentV1(BaseModel):
+        account_number: str
+
+    @manager.model("Payment", "1.0.0")
+    class PaymentV1(BaseModel):
+        payment: CardPaymentV1 | BankPaymentV1
+
+    proto_content = manager.get_proto_schema("Payment", "1.0.0")
+
+    assert "payment_cardpayment" in proto_content
+    assert "payment_bankpayment" in proto_content
+
+    assert "payment_cardpaymentv1" not in proto_content.lower()
+    assert "payment_bankpaymentv1" not in proto_content.lower()
+
+
 # ============================================================================
 # NAME COLLISION RISKS
 # ============================================================================
@@ -2011,7 +2037,7 @@ def test_proto_schema_enum_in_nested_message(manager: ModelManager) -> None:
 
     proto_schema = manager.get_proto_schema("User", "1.0.0", package="com.test")
 
-    assert "message AddressV1 {" in proto_schema
+    assert "message Address {" in proto_schema
     assert "enum AddressType {" in proto_schema
     assert "HOME = 0;" in proto_schema
     assert "WORK = 1;" in proto_schema
@@ -2033,14 +2059,14 @@ def test_proto_schema_with_simple_nested_model(manager: ModelManager) -> None:
 
     proto_schema = manager.get_proto_schema("User", "1.0.0", package="com.test")
 
-    assert "message AddressV1 {" in proto_schema
+    assert "message Address {" in proto_schema
     assert "string street = 1;" in proto_schema
     assert "string city = 2;" in proto_schema
 
-    assert "AddressV1 address = 2;" in proto_schema
+    assert "Address address = 2;" in proto_schema
 
-    nested_msg_idx = proto_schema.index("message AddressV1")
-    field_idx = proto_schema.index("AddressV1 address")
+    nested_msg_idx = proto_schema.index("message Address")
+    field_idx = proto_schema.index("Address address")
     assert nested_msg_idx < field_idx
 
 
@@ -2063,7 +2089,7 @@ def test_proto_schema_nested_model_with_enum(manager: ModelManager) -> None:
 
     proto_schema = manager.get_proto_schema("User", "1.0.0", package="com.test")
 
-    assert "message AddressV1 {" in proto_schema
+    assert "message Address {" in proto_schema
 
     assert "enum AddressType {" in proto_schema
     assert "HOME = 0;" in proto_schema
@@ -2093,10 +2119,10 @@ def test_proto_schema_multiple_nested_models(manager: ModelManager) -> None:
 
     proto_schema = manager.get_proto_schema("User", "1.0.0", package="com.test")
 
-    assert "message AddressV1 {" in proto_schema
-    assert "message ContactV1 {" in proto_schema
-    assert "AddressV1 address = 2;" in proto_schema
-    assert "ContactV1 contact = 3;" in proto_schema
+    assert "message Address {" in proto_schema
+    assert "message Contact {" in proto_schema
+    assert "Address address = 2;" in proto_schema
+    assert "Contact contact = 3;" in proto_schema
 
 
 def test_proto_schema_optional_nested_model(manager: ModelManager) -> None:
@@ -2113,8 +2139,8 @@ def test_proto_schema_optional_nested_model(manager: ModelManager) -> None:
 
     proto_schema = manager.get_proto_schema("User", "1.0.0", package="com.test")
 
-    assert "message AddressV1 {" in proto_schema
-    assert "optional AddressV1 address = 2;" in proto_schema
+    assert "message Address {" in proto_schema
+    assert "optional Address address = 2;" in proto_schema
 
 
 def test_proto_schema_repeated_nested_model(manager: ModelManager) -> None:
@@ -2132,8 +2158,8 @@ def test_proto_schema_repeated_nested_model(manager: ModelManager) -> None:
 
     proto_schema = manager.get_proto_schema("Order", "1.0.0", package="com.test")
 
-    assert "message ItemV1 {" in proto_schema
-    assert "repeated ItemV1 items = 2;" in proto_schema
+    assert "message Item {" in proto_schema
+    assert "repeated Item items = 2;" in proto_schema
 
 
 def test_proto_schema_deeply_nested_models(manager: ModelManager) -> None:
@@ -2156,13 +2182,13 @@ def test_proto_schema_deeply_nested_models(manager: ModelManager) -> None:
 
     proto_schema = manager.get_proto_schema("User", "1.0.0", package="com.test")
 
-    assert "message AddressV1 {" in proto_schema
-    assert "message CityV1 {" in proto_schema
+    assert "message City {" in proto_schema
+    assert "message Address {" in proto_schema
 
-    address_start = proto_schema.index("message AddressV1 {")
-    city_start = proto_schema.index("message CityV1 {")
+    address_start = proto_schema.index("message Address {")
+    city_start = proto_schema.index("message City {")
 
-    assert address_start < city_start
+    assert city_start < address_start
 
 
 def test_proto_schema_nested_model_not_duplicated(manager: ModelManager) -> None:
@@ -2180,13 +2206,13 @@ def test_proto_schema_nested_model_not_duplicated(manager: ModelManager) -> None
 
     proto_schema = manager.get_proto_schema("User", "1.0.0", package="com.test")
 
-    message_count = proto_schema.count("message AddressV1 {")
+    message_count = proto_schema.count("message Address {")
     assert message_count == 1, (
         f"Expected message to be defined once, found {message_count} times"
     )
 
-    assert "AddressV1 home_address = 2;" in proto_schema
-    assert "AddressV1 work_address = 3;" in proto_schema
+    assert "Address home_address = 2;" in proto_schema
+    assert "Address work_address = 3;" in proto_schema
 
 
 def test_proto_schema_nested_model_with_description(manager: ModelManager) -> None:
@@ -2208,7 +2234,7 @@ def test_proto_schema_nested_model_with_description(manager: ModelManager) -> No
     )
 
     assert "// User's address information." in proto_schema
-    assert "message AddressV1 {" in proto_schema
+    assert "message Address {" in proto_schema
 
 
 def test_proto_schema_nested_model_field_numbering(manager: ModelManager) -> None:
@@ -2229,7 +2255,7 @@ def test_proto_schema_nested_model_field_numbering(manager: ModelManager) -> Non
     proto_schema = manager.get_proto_schema("User", "1.0.0", package="com.test")
 
     assert "string name = 1;" in proto_schema
-    assert "AddressV1 address = 2;" in proto_schema
+    assert "Address address = 2;" in proto_schema
     assert "string email = 3;" in proto_schema
 
     assert "string street = 1;" in proto_schema
@@ -2254,11 +2280,11 @@ def test_proto_schema_dump_with_nested_models(
     output_dir = tmp_path / "protos"
     schemas = manager.dump_proto_schemas(output_dir, package="com.test")
 
-    assert "message AddressV1 {" in schemas["User"]["1.0.0"]
+    assert "message Address {" in schemas["User"]["1.0.0"]
 
     user_file = output_dir / "User_v1_0_0.proto"
     assert user_file.exists()
 
     user_content = user_file.read_text()
-    assert "message AddressV1 {" in user_content
-    assert "AddressV1 address = 2;" in user_content
+    assert "message Address {" in user_content
+    assert "Address address = 2;" in user_content
