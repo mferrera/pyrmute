@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from ._registry import Registry
+from ._schema_documents import AvroSchemaDocument
 from ._schema_generator import SchemaGeneratorBase, TypeInfo
 from ._type_inspector import TypeInspector
 from .avro_types import (
@@ -31,7 +32,7 @@ from .avro_types import (
 from .model_version import ModelVersion
 
 
-class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
+class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
     """Generates Apache Avro schemas from Pydantic models."""
 
     AVRO_SYMBOL_REGEX: Final = re.compile("[A-Za-z_][A-Za-z0-9_]*")
@@ -86,7 +87,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
         name: str,
         version: str | ModelVersion | None = None,
         registry_name_map: dict[str, str] | None = None,
-    ) -> AvroRecordSchema:
+    ) -> AvroSchemaDocument:
         """Generate an Avro schema from a Pydantic model.
 
         Args:
@@ -176,7 +177,11 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
             field_schema = self._generate_field_schema(field_name, field_info, model)
             schema["fields"].append(field_schema)
 
-        return schema
+        return AvroSchemaDocument(
+            main=schema,
+            namespace=full_namespace,
+            enums={k: v["schema"] for k, v in self._enum_schemas.items()},
+        )
 
     def _generate_field_schema(
         self: Self,
@@ -686,7 +691,7 @@ class AvroExporter:
             ```
         """
         model = self._registry.get_model(name, version)
-        schema = (
+        document = (
             self.generator.generate_schema(model, name, version)
             if versioned_namespace
             else self.generator.generate_schema(model, name)
@@ -695,9 +700,9 @@ class AvroExporter:
         if output_path:
             output_path = Path(output_path)
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(json.dumps(schema, indent=2))
+            output_path.write_text(document.to_string())
 
-        return schema
+        return document.main
 
     def export_all_schemas(
         self: Self,
@@ -737,7 +742,7 @@ class AvroExporter:
 
             for version in versions:
                 model = self._registry.get_model(model_name, version)
-                schema = (
+                document = (
                     self.generator.generate_schema(model, model_name, version)
                     if versioned_namespace
                     else self.generator.generate_schema(model, model_name)
@@ -747,8 +752,8 @@ class AvroExporter:
                 filename = f"{model_name}_v{version_str}.avsc"
                 filepath = output_dir / filename
 
-                filepath.write_text(json.dumps(schema, indent=indent))
+                filepath.write_text(document.to_string(indent=indent))
 
-                all_schemas[model_name][str(version)] = schema
+                all_schemas[model_name][str(version)] = document.main
 
         return all_schemas

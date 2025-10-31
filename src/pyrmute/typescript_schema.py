@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from ._registry import Registry
+from ._schema_documents import TypeScriptModule
 from ._schema_generator import SchemaGeneratorBase, TypeInfo
 from ._type_inspector import TypeInspector
 from .model_version import ModelVersion
@@ -28,7 +29,7 @@ class TypeScriptConfig(TypedDict, total=False):
     mark_computed_readonly: bool
 
 
-class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
+class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
     """Generates TypeScript schemas from Pydantic models."""
 
     _BASIC_TYPE_MAPPING: Mapping[type, str] = {
@@ -67,7 +68,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         name: str,
         version: str | ModelVersion | None = None,
         registry_name_map: dict[str, str] | None = None,
-    ) -> str:
+    ) -> TypeScriptModule:
         """Generate a TypeScript schema from a Pydantic model.
 
         Args:
@@ -88,11 +89,12 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         if self.config.get("enum_style", "union") == "enum":
             self._collect_all_enums(model)
 
-        schemas: list[str] = []
+        imports: list[str] = []
+        enums: list[str] = []
+        auxiliary: list[str] = []
 
         if self.style == "zod":
-            schemas.append("import { z } from 'zod';")
-            schemas.append("")
+            imports.append("import { z } from 'zod';")
 
         if self._collected_enums:
             if self.style == "zod":
@@ -105,20 +107,23 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
                     self._generate_enum_declaration(enum_class)
                     for enum_class in self._collected_enums.values()
                 ]
-            schemas.extend(enum_declarations)
-            schemas.append("")
+            enums.extend(enum_declarations)
 
         for nested_name, nested_model in self._nested_models.items():
             if nested_name != model.__name__:
                 nested_schema = self._generate_schema_for_model(
                     nested_model, nested_name
                 )
-                schemas.append(nested_schema)
+                auxiliary.append(nested_schema)
 
         main_schema = self._generate_schema_for_model(model, versioned_name)
-        schemas.append(main_schema)
 
-        return "\n\n".join(schemas)
+        return TypeScriptModule(
+            main=main_schema,
+            auxiliary=auxiliary,
+            enums=enums,
+            imports=imports,
+        )
 
     def _collect_all_enums(self: Self, model: type[BaseModel]) -> None:
         """Pre-traverse model to collect all enums.
@@ -792,7 +797,8 @@ class TypeScriptExporter:
             TypeScript schema code.
         """
         model = self._registry.get_model(name, version)
-        schema_code = self.generator.generate_schema(model, name, version)
+        module = self.generator.generate_schema(model, name, version)
+        schema_code = module.to_string()
 
         if output_path:
             output_path = Path(output_path)
@@ -824,7 +830,8 @@ class TypeScriptExporter:
 
             for version in versions:
                 model = self._registry.get_model(model_name, version)
-                schema_code = self.generator.generate_schema(model, model_name, version)
+                module = self.generator.generate_schema(model, model_name, version)
+                schema_code = module.to_string()
 
                 version_str = str(version).replace(".", "_")
                 filename = f"{model_name}_v{version_str}.ts"
