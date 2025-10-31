@@ -733,7 +733,7 @@ def model_with_datetime_types_strategy(draw: DrawFn) -> ModelWithDateTimeTypes:
     past = draw(st.dates(min_value=date(1900, 1, 1), max_value=date.today()))
     future = draw(
         st.dates(
-            min_value=date.today() + timedelta(days=1),
+            min_value=date.today() + timedelta(days=7),
             max_value=date(2100, 12, 31),
         )
     )
