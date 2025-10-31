@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 import avro  # type: ignore[import-untyped]
 import avro.schema  # type: ignore[import-untyped]
 import fastavro
+import pytest
 from pydantic import BaseModel, Field
 
 from pyrmute import ModelManager
@@ -19,6 +20,7 @@ from pyrmute import ModelManager
 # ruff: noqa: PLR2004
 
 
+@pytest.mark.integration
 def test_avro_schema_validates_with_fastavro(manager: ModelManager) -> None:
     """Test that generated schemas are valid according to fastavro."""
 
@@ -54,6 +56,7 @@ def test_avro_schema_validates_with_fastavro(manager: ModelManager) -> None:
     assert records[0]["name"] == "Alice"  # type: ignore[index,call-overload]
 
 
+@pytest.mark.integration
 def test_avro_schema_with_nested_records_fastavro(manager: ModelManager) -> None:
     """Test nested record schemas work with fastavro."""
 
@@ -90,6 +93,7 @@ def test_avro_schema_with_nested_records_fastavro(manager: ModelManager) -> None
     assert records[0]["address"]["city"] == "Springfield"  # type: ignore[index,call-overload]
 
 
+@pytest.mark.integration
 def test_avro_schema_with_enums_fastavro(manager: ModelManager) -> None:
     """Test enum schemas work correctly with fastavro."""
 
@@ -121,6 +125,7 @@ def test_avro_schema_with_enums_fastavro(manager: ModelManager) -> None:
     assert records[1]["status"] == "active"  # type: ignore[index,call-overload]
 
 
+@pytest.mark.integration
 def test_avro_schema_with_invalid_enum_symbols_fastavro(manager: ModelManager) -> None:
     """Test enum schemas work correctly with fastavro."""
 
@@ -144,6 +149,7 @@ def test_avro_schema_with_invalid_enum_symbols_fastavro(manager: ModelManager) -
     fastavro.parse_schema(dict(schema))
 
 
+@pytest.mark.integration
 def test_avro_schema_with_unions_fastavro(manager: ModelManager) -> None:
     """Test union types work correctly with fastavro."""
 
@@ -171,6 +177,7 @@ def test_avro_schema_with_unions_fastavro(manager: ModelManager) -> None:
     assert records[2]["value"] == 42  # type: ignore[index,call-overload]
 
 
+@pytest.mark.integration
 def test_avro_schema_with_arrays_and_maps_fastavro(manager: ModelManager) -> None:
     """Test array and map types work with fastavro."""
 
@@ -198,6 +205,7 @@ def test_avro_schema_with_arrays_and_maps_fastavro(manager: ModelManager) -> Non
     assert records[0]["settings"]["key1"] == "value1"  # type: ignore[index,call-overload]
 
 
+@pytest.mark.integration
 def test_avro_schema_logical_types_roundtrip_fastavro(manager: ModelManager) -> None:
     """Test logical types (UUID, datetime) serialize/deserialize correctly."""
 
@@ -230,6 +238,7 @@ def test_avro_schema_logical_types_roundtrip_fastavro(manager: ModelManager) -> 
     assert records[0]["event_id"] == test_id  # type: ignore[index,call-overload]
 
 
+@pytest.mark.integration
 def test_avro_schema_validates_with_avro_python(manager: ModelManager) -> None:
     """Test that generated schemas are valid according to official avro-python."""
 
@@ -274,6 +283,7 @@ def test_avro_schema_complex_nested_validates(manager: ModelManager) -> None:
 # ============================================================================
 
 
+@pytest.mark.integration
 def test_avro_schema_kafka_schema_registry_compatible(manager: ModelManager) -> None:
     """Test schema format is compatible with Kafka Schema Registry."""
 
@@ -300,6 +310,7 @@ def test_avro_schema_kafka_schema_registry_compatible(manager: ModelManager) -> 
     assert reparsed == schema
 
 
+@pytest.mark.integration
 def test_avro_schema_multiple_versions_schema_registry(manager: ModelManager) -> None:
     """Test multiple versions can coexist in Schema Registry format."""
 
@@ -334,6 +345,7 @@ def test_avro_schema_multiple_versions_schema_registry(manager: ModelManager) ->
     fastavro.writer(output_v1, parsed_v1, v1_data)
 
 
+@pytest.mark.integration
 def test_avro_schema_pydantic_to_avro_to_pydantic_roundtrip(
     manager: ModelManager,
 ) -> None:
@@ -382,6 +394,7 @@ def test_avro_schema_pydantic_to_avro_to_pydantic_roundtrip(
     assert reconstructed_order.items == original_order.items
 
 
+@pytest.mark.integration
 def test_avro_schema_batch_processing_integration(manager: ModelManager) -> None:
     """Test batch processing scenario with Avro serialization."""
 
@@ -422,17 +435,16 @@ def test_avro_schema_batch_processing_integration(manager: ModelManager) -> None
     assert all(r["level"] == "INFO" for r in records)  # type: ignore[index,call-overload]
 
 
+@pytest.mark.integration
 def test_avro_schema_schema_evolution_in_pipeline(manager: ModelManager) -> None:
     """Test schema evolution scenario in a data pipeline."""
 
-    # Version 1: Original schema
     @manager.model("Product", "1.0.0")
     class ProductV1(BaseModel):
         id: str
         name: str
         price: float
 
-    # Version 2: Add optional fields
     @manager.model("Product", "2.0.0")
     class ProductV2(BaseModel):
         id: str
@@ -478,6 +490,7 @@ def test_avro_schema_schema_evolution_in_pipeline(manager: ModelManager) -> None
     assert v2_records[0]["category"] == "electronics"  # type: ignore[index,call-overload]
 
 
+@pytest.mark.integration
 def test_avro_schema_file_export_and_reload(
     manager: ModelManager, tmp_path: Path
 ) -> None:
@@ -516,6 +529,7 @@ def test_avro_schema_file_export_and_reload(
     assert records[0]["event_type"] == "user_login"  # type: ignore[index,call-overload]
 
 
+@pytest.mark.integration
 def test_avro_schema_large_schema_generation_performance(
     manager: ModelManager,
 ) -> None:
@@ -554,6 +568,7 @@ def test_avro_schema_large_schema_generation_performance(
     assert len(schema["fields"]) == 20
 
 
+@pytest.mark.integration
 def test_avro_schema_many_models_export_performance(
     manager: ModelManager, tmp_path: Path
 ) -> None:

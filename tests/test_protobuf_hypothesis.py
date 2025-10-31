@@ -362,6 +362,7 @@ def test_invariant_field_counter_resets(model_count: int) -> None:
     )
 
 
+@pytest.mark.integration
 def test_proto_compiler_validation_sample() -> None:
     """Validate generated proto compiles with protoc.
 
