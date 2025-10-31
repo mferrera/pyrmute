@@ -11,7 +11,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, create_model
 from pydantic.fields import FieldInfo
-from pydantic_core import PydanticUndefined
 
 from ._protobuf_types import ProtoEnum, ProtoField, ProtoFile, ProtoMessage, ProtoOneOf
 from ._registry import Registry
@@ -370,16 +369,12 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
         if self.include_docs and field_info.description:
             field_schema["comment"] = field_info.description
 
-        proto_type = self._convert_type(field_info.annotation, field_info, field_name)
-        is_optional = TypeInspector.is_optional_type(field_info.annotation)
-        has_default = (
-            field_info.default is not PydanticUndefined
-            or field_info.default_factory is not None
-        )
+        context = self._analyze_field(field_info)
 
+        proto_type = self._convert_type(field_info.annotation, field_info)
         if proto_type.is_repeated:
             field_schema["label"] = "repeated"
-        elif is_optional or has_default:
+        elif context["is_optional"] or context["has_default"]:  # CHANGED: use context
             field_schema["label"] = "optional"
         elif not self.use_proto3:
             field_schema["label"] = "required"

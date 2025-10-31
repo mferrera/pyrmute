@@ -12,7 +12,6 @@ from uuid import UUID
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
-from pydantic_core import PydanticUndefined
 
 from ._registry import Registry
 from ._schema_generator import SchemaGeneratorBase
@@ -174,7 +173,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
 
         return schema
 
-    def _generate_field_schema(  # noqa: C901
+    def _generate_field_schema(
         self: Self,
         field_name: str,
         field_info: FieldInfo,
@@ -196,15 +195,12 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
         if self.include_docs and field_info.description:
             field_schema["doc"] = field_info.description
 
-        avro_type = self._convert_type(field_info.annotation, field_info)
-        is_nullable = TypeInspector.is_optional_type(field_info.annotation)
-        has_default = (
-            field_info.default is not PydanticUndefined
-            or field_info.default_factory is not None
-        )
+        context = self._analyze_field(field_info)
 
-        if is_nullable:
-            # Type includes None - wrap in union with null first
+        avro_type = self._convert_type(field_info.annotation, field_info)
+
+        if context["is_optional"]:
+            # Includes None. Wrap in union with null first
             if isinstance(avro_type, list):
                 # Remove null if present and re-add at the front
                 avro_type = [t for t in avro_type if t != "null"]
@@ -212,32 +208,18 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
             else:
                 avro_type = ["null", avro_type]
 
-            # Set default if provided
-            if field_info.default is not PydanticUndefined:
+            if "default_value" in context:
                 field_schema["default"] = self._convert_default_value(
-                    field_info.default
+                    context["default_value"]
                 )
-            elif field_info.default_factory is not None:
-                try:
-                    default_value = field_info.default_factory()  # type: ignore[call-arg]
-                    field_schema["default"] = self._convert_default_value(default_value)
-                except Exception:
-                    field_schema["default"] = None
             else:
                 field_schema["default"] = None
-        elif has_default:
-            # Has default but not nullable - just set the default
-            if field_info.default is not PydanticUndefined:
+        elif context["has_default"]:
+            # Has default but not nullable. Just set the default
+            if "default_value" in context:
                 field_schema["default"] = self._convert_default_value(
-                    field_info.default
+                    context["default_value"]
                 )
-            elif field_info.default_factory is not None:
-                try:
-                    default_value = field_info.default_factory()  # type: ignore[call-arg]
-                    field_schema["default"] = self._convert_default_value(default_value)
-                except Exception:
-                    # If factory fails, don't set a default
-                    pass
 
         field_schema["type"] = avro_type
         return field_schema
