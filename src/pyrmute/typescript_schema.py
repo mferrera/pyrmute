@@ -268,7 +268,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
             Field schema information dict.
         """
         context = self._analyze_field(field_info)
-        ts_name = self._get_field_ts_name(field_name, field_info)
+        ts_name = self._get_field_name(field_name, field_info)
         ts_type = self._convert_type(field_info.annotation, field_info)
 
         is_required = field_info.is_required()
@@ -359,7 +359,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         ]
         return "\n".join(lines)
 
-    def _get_field_ts_name(self: Self, field_name: str, field_info: FieldInfo) -> str:
+    def _get_field_name(self: Self, field_name: str, field_info: FieldInfo) -> str:
         """Get TypeScript field name, using alias if present."""
         if field_info.alias:
             return field_info.alias

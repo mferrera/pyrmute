@@ -1,6 +1,5 @@
 """Base class for schema generators."""
 
-import contextlib
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Generic, Self, TypedDict, TypeVar
 
@@ -84,21 +83,17 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
             Field context with analyzed properties.
         """
         is_optional = TypeInspector.is_optional_type(field_info.annotation)
-        has_default = (
-            field_info.default is not PydanticUndefined
-            or field_info.default_factory is not None
-        )
+        has_default = self._has_default_value(field_info)
 
         context: FieldContext = {
             "is_optional": is_optional,
             "has_default": has_default,
         }
 
-        if field_info.default is not PydanticUndefined:
-            context["default_value"] = field_info.default
-        elif field_info.default_factory is not None:
-            with contextlib.suppress(Exception):
-                context["default_value"] = field_info.default_factory()  # type: ignore
+        if has_default:
+            default_value = self._get_default_value(field_info)
+            if default_value is not None:
+                context["default_value"] = default_value
 
         return context
 
@@ -119,3 +114,52 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
         Returns:
             Field schema in target format.
         """
+
+    def _get_field_name(self, field_name: str, field_info: FieldInfo) -> str:
+        """Get the schema field name, considering aliases.
+
+        Default implementation returns the original field name.  Subclasses can override
+        to handle aliases differently.
+
+        Args:
+            field_name: Original Python field name.
+            field_info: Pydantic field info.
+
+        Returns:
+            Field name to use in schema.
+        """
+        return field_name
+
+    def _has_default_value(self, field_info: FieldInfo) -> bool:
+        """Check if field has a default value.
+
+        Args:
+            field_info: Pydantic field info.
+
+        Returns:
+            True if field has a default value.
+        """
+        return (
+            field_info.default is not PydanticUndefined
+            or field_info.default_factory is not None
+        )
+
+    def _get_default_value(self, field_info: FieldInfo) -> Any:
+        """Get the default value for a field.
+
+        Args:
+            field_info: Pydantic field info.
+
+        Returns:
+            Default value, or None if no default or factory fails.
+        """
+        if field_info.default is not PydanticUndefined:
+            return field_info.default
+
+        if field_info.default_factory is not None:
+            try:
+                return field_info.default_factory()  # type: ignore
+            except Exception:
+                return None
+
+        return None
