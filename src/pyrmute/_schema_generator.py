@@ -1,9 +1,10 @@
 """Base class for schema generators."""
 
-from abc import ABC
-from typing import TYPE_CHECKING, Generic, Self, TypeVar
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar
 
 from pydantic import BaseModel
+from pydantic.fields import FieldInfo
 
 from ._type_inspector import TypeInspector
 from .model_version import ModelVersion
@@ -23,6 +24,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
         self._enums_encountered: dict[str, type[Enum]] = {}
         self._nested_models: dict[str, type[BaseModel]] = {}
 
+    @abstractmethod
     def generate_schema(
         self: Self,
         model: type[BaseModel],
@@ -31,13 +33,28 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
         registry_name_map: dict[str, str] | None = None,
     ) -> SchemaType:
         """Generate schema from Pydantic model."""
-        raise NotImplementedError
 
     def _reset_state(self: Self) -> None:
         """Reset internal state before generating a new schema."""
         self._types_seen = set()
         self._enums_encountered = {}
         self._nested_models = {}
+
+    @abstractmethod
+    def _convert_type(
+        self: Self,
+        python_type: Any,
+        field_info: FieldInfo | None = None,
+    ) -> Any:
+        """Convert Python type annotation to target schema type.
+
+        Args:
+            python_type: Python type annotation.
+            field_info: Optional field info for constraint checking.
+
+        Returns:
+            Target schema type representation.
+        """
 
     def _collect_nested_models(self: Self, model: type[BaseModel]) -> None:
         """Shared implementation using TypeInspector."""

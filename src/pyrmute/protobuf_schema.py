@@ -1,6 +1,7 @@
 """Protocol Buffer schema generation from Pydantic models."""
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
@@ -17,6 +18,14 @@ from ._registry import Registry
 from ._schema_generator import SchemaGeneratorBase
 from ._type_inspector import TypeInspector
 from .model_version import ModelVersion
+
+
+@dataclass
+class ProtoTypeInfo:
+    """Information about a converted Protocol Buffer type."""
+
+    type_name: str
+    is_repeated: bool = False
 
 
 class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
@@ -228,7 +237,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
 
         for arg in non_none_args:
             variant_name = self._get_union_variant_name(arg, field_name)
-            proto_type, is_repeated = self._python_type_to_proto(arg, None)
+            proto_type = self._convert_type(arg, None)
 
             original_variant_name = variant_name
             counter = 1
@@ -237,7 +246,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
                 counter += 1
             used_variant_names.add(variant_name)
 
-            if proto_type.startswith("map"):
+            if proto_type.type_name.startswith("map"):
                 raise ValueError(
                     "Cannot encode unions with Python dictionaries to ProtoBuf: "
                     "Map fields fields are not allowed in oneofs. Relevant model:\n"
@@ -245,7 +254,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
                     f"    {field_name}: {field_info.annotation}"
                 )
 
-            if is_repeated:
+            if proto_type.is_repeated:
                 raise ValueError(
                     "Cannot encode unions with Python iterables to ProtoBuf: "
                     "Fields in oneofs must not have labels (required / optional / "
@@ -256,7 +265,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
 
             field_schema: ProtoField = {
                 "name": variant_name,
-                "type": proto_type,
+                "type": proto_type.type_name,
                 "number": self._field_counter,
                 "oneof_group": oneof_name,
             }
@@ -361,104 +370,105 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
         if self.include_docs and field_info.description:
             field_schema["comment"] = field_info.description
 
-        proto_type, is_repeated = self._python_type_to_proto(
-            field_info.annotation, field_info, field_name
-        )
+        proto_type = self._convert_type(field_info.annotation, field_info, field_name)
         is_optional = TypeInspector.is_optional_type(field_info.annotation)
         has_default = (
             field_info.default is not PydanticUndefined
             or field_info.default_factory is not None
         )
 
-        if is_repeated:
+        if proto_type.is_repeated:
             field_schema["label"] = "repeated"
         elif is_optional or has_default:
             field_schema["label"] = "optional"
         elif not self.use_proto3:
             field_schema["label"] = "required"
 
-        field_schema["type"] = proto_type
+        field_schema["type"] = proto_type.type_name
         return field_schema
 
-    def _python_type_to_proto(  # noqa: PLR0911, C901
+    def _convert_type(  # noqa: PLR0911, C901
         self: Self,
         python_type: Any,
         field_info: FieldInfo | None = None,
         field_name: str | None = None,
-    ) -> tuple[str, bool]:
+    ) -> ProtoTypeInfo:
         """Convert Python type annotation to Protocol Buffer type."""
         if python_type is None:
-            return ("string", False)
+            return ProtoTypeInfo(type_name="string", is_repeated=False)
 
         if python_type is int and field_info:
-            return (self._optimize_int_type(field_info), False)
+            return ProtoTypeInfo(
+                type_name=self._optimize_int_type(field_info), is_repeated=False
+            )
 
         if python_type in self._BASIC_TYPE_MAPPING:
-            return (self._BASIC_TYPE_MAPPING[python_type], False)
+            return ProtoTypeInfo(
+                type_name=self._BASIC_TYPE_MAPPING[python_type], is_repeated=False
+            )
 
         if python_type in self._WELLKNOWN_TYPE_MAPPING:
-            return self._wellknown_to_proto(python_type)
+            return self._convert_wellknown(python_type)
 
         if TypeInspector.is_enum(python_type):
-            return self._enum_to_proto(python_type)
+            return self._convert_enum(python_type)
 
         origin = get_origin(python_type)
 
         if TypeInspector.is_union_type(origin):
-            return self._union_to_proto(python_type, field_info)
+            return self._convert_union(python_type, field_info)
 
         if origin is tuple or (
             hasattr(origin, "__origin__") and origin.__origin__ is tuple
         ):
-            return self._tuple_to_proto(python_type, field_name)
+            return self._convert_tuple(python_type, field_name)
 
         if TypeInspector.is_list_like(origin) or origin in (set, frozenset):
-            return self._list_to_proto(python_type)
+            return self._convert_list(python_type)
 
         if TypeInspector.is_dict_like(origin, python_type):
-            return self._dict_to_proto(python_type)
+            return self._convert_dict(python_type)
 
         if TypeInspector.is_base_model(python_type):
-            return self._base_model_to_proto(python_type)
+            return self._convert_basemodel(python_type)
 
-        return ("string", False)
+        return ProtoTypeInfo(type_name="string", is_repeated=False)
 
-    def _wellknown_to_proto(self: Self, python_type: type) -> tuple[str, bool]:
+    def _convert_wellknown(self: Self, python_type: type) -> ProtoTypeInfo:
         """Convert well-known types to protobuf."""
         proto_type, import_path = self._WELLKNOWN_TYPE_MAPPING[python_type]
         if import_path:
             self._required_imports.add(import_path)
-        return (proto_type, False)
+        return ProtoTypeInfo(type_name=proto_type, is_repeated=False)
 
-    def _union_to_proto(
+    def _convert_union(
         self: Self, python_type: Any, field_info: FieldInfo | None
-    ) -> tuple[str, bool]:
+    ) -> ProtoTypeInfo:
         """Convert union types to protobuf."""
         non_none_args = TypeInspector.get_non_none_union_args(python_type)
         if len(non_none_args) == 1:
-            return self._python_type_to_proto(non_none_args[0], field_info)
-        return ("string", False)
+            return self._convert_type(non_none_args[0], field_info)
+        return ProtoTypeInfo(type_name="string", is_repeated=False)
 
-    def _tuple_to_proto(
+    def _convert_tuple(
         self: Self, python_type: Any, field_name: str | None
-    ) -> tuple[str, bool]:
+    ) -> ProtoTypeInfo:
         """Convert tuple types to protobuf."""
         elements = TypeInspector.get_tuple_element_types(python_type)
 
         if TypeInspector.is_variable_length_tuple(python_type):
-            item_type, _ = self._python_type_to_proto(elements[0], None)
-            return (item_type, True)
+            proto_type = self._convert_type(elements[0], None)
+            return ProtoTypeInfo(type_name=proto_type.type_name, is_repeated=True)
 
         if all(el == elements[0] for el in elements):
-            item_type, _ = self._python_type_to_proto(elements[0], None)
-            return (item_type, True)
+            proto_type = self._convert_type(elements[0], None)
+            return ProtoTypeInfo(proto_type.type_name, True)
 
-        # Heterogeneous tuple - create nested message
-        return self._heterogeneous_tuple_to_proto(elements, field_name)
+        return self._convert_hetereogeneous_tuple(elements, field_name)
 
-    def _heterogeneous_tuple_to_proto(
+    def _convert_hetereogeneous_tuple(
         self: Self, elements: list[Any], field_name: str | None
-    ) -> tuple[str, bool]:
+    ) -> ProtoTypeInfo:
         """Convert heterogeneous tuple to nested protobuf message."""
         if field_name:
             model_name = f"{self._current_model[1]}{field_name.title()}Tuple"
@@ -479,30 +489,34 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
             self._collected_nested_messages.append(nested_msg)
 
         if model_name == self._versioned_name_map.get(self._current_model_class):
-            return self._versioned_name_map[self._current_model_class], False
+            return ProtoTypeInfo(
+                type_name=self._versioned_name_map[self._current_model_class],
+                is_repeated=False,
+            )
 
-        return model_name, False
+        return ProtoTypeInfo(type_name=model_name, is_repeated=False)
 
-    def _list_to_proto(self: Self, python_type: Any) -> tuple[str, bool]:
+    def _convert_list(self: Self, python_type: Any) -> ProtoTypeInfo:
         """Convert list/set types to protobuf."""
         args = get_args(python_type)
         if args:
-            item_type, _ = self._python_type_to_proto(args[0], None)
-            return (item_type, True)
-        return ("string", True)
+            proto_type = self._convert_type(args[0], None)
+            return ProtoTypeInfo(type_name=proto_type.type_name, is_repeated=True)
+        return ProtoTypeInfo(type_name="string", is_repeated=True)
 
-    def _dict_to_proto(self: Self, python_type: Any) -> tuple[str, bool]:
+    def _convert_dict(self: Self, python_type: Any) -> ProtoTypeInfo:
         """Convert dict types to protobuf map."""
         args = get_args(python_type)
         if args and len(args) == 2:  # noqa: PLR2004
-            key_type, _ = self._python_type_to_proto(args[0], None)
-            value_type, _ = self._python_type_to_proto(args[1], None)
-            return (f"map<{key_type}, {value_type}>", False)
-        return ("map<string, string>", False)
+            key_type = self._convert_type(args[0], None)
+            value_type = self._convert_type(args[1], None)
+            return ProtoTypeInfo(
+                type_name=f"map<{key_type.type_name}, {value_type.type_name}>",
+                is_repeated=False,
+            )
+        return ProtoTypeInfo(type_name="map<string, string>", is_repeated=False)
 
-    def _base_model_to_proto(
-        self: Self, python_type: type[BaseModel]
-    ) -> tuple[str, bool]:
+    def _convert_basemodel(self: Self, python_type: type[BaseModel]) -> ProtoTypeInfo:
         """Convert nested BaseModel to protobuf message."""
         model_name = python_type.__name__
         proto_name = self._versioned_name_map.get(model_name, model_name)
@@ -518,9 +532,11 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
             self._collected_nested_messages.append(nested_msg)
 
         if model_name == self._current_model_class:
-            return self._versioned_name_map[model_name], False
+            return ProtoTypeInfo(
+                type_name=self._versioned_name_map[model_name], is_repeated=False
+            )
 
-        return proto_name, False
+        return ProtoTypeInfo(type_name=proto_name, is_repeated=False)
 
     def _optimize_int_type(self: Self, field_info: FieldInfo) -> str:
         """Optimize integer type based on field constraints.
@@ -538,7 +554,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
 
         return "int32"
 
-    def _enum_to_proto(self: Self, enum_class: type[Enum]) -> tuple[str, bool]:
+    def _convert_enum(self: Self, enum_class: type[Enum]) -> ProtoTypeInfo:
         """Convert Python Enum to Protocol Buffer enum.
 
         Args:
@@ -554,7 +570,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
             enum_def = self._generate_enum_schema(enum_class)
             self._collected_enums.append(enum_def)
 
-        return enum_name, False
+        return ProtoTypeInfo(type_name=enum_name, is_repeated=False)
 
     def _generate_enum_schema(self: Self, enum_class: type[Enum]) -> ProtoEnum:
         """Generate a Protocol Buffer enum from a Python Enum.

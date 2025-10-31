@@ -882,19 +882,19 @@ def test_unknown_type_defaults_to_string() -> None:
         pass
 
     generator = ProtoSchemaGenerator()
-    proto_type, is_repeated = generator._python_type_to_proto(CustomType, None)
+    proto_type = generator._convert_type(CustomType, None)
 
-    assert proto_type == "string"
-    assert is_repeated is False
+    assert proto_type.type_name == "string"
+    assert proto_type.is_repeated is False
 
 
 def test_none_annotation_defaults_to_string() -> None:
     """Test None annotation defaults to string."""
     generator = ProtoSchemaGenerator()
-    proto_type, is_repeated = generator._python_type_to_proto(None, None)
+    proto_type = generator._convert_type(None, None)
 
-    assert proto_type == "string"
-    assert is_repeated is False
+    assert proto_type.type_name == "string"
+    assert proto_type.is_repeated is False
 
 
 def test_complex_nested_structure() -> None:

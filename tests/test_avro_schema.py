@@ -1570,8 +1570,8 @@ def test_avro_schema_int_without_field_info(manager: ModelManager) -> None:
     """Test int type falls back to basic mapping when no field_info."""
     generator = AvroSchemaGenerator(namespace="com.test")
 
-    # Call _python_type_to_avro with None field_info
-    avro_type = generator._python_type_to_avro(int, field_info=None)
+    # Call _convert_type with None field_info
+    avro_type = generator._convert_type(int, field_info=None)
 
     # Should return basic mapping default
     assert avro_type == "int"
@@ -1757,7 +1757,7 @@ def test_avro_schema_none_type_annotation(manager: ModelManager) -> None:
     generator = AvroSchemaGenerator(namespace="com.test")
 
     # None annotation should return "null"
-    avro_type = generator._python_type_to_avro(None)
+    avro_type = generator._convert_type(None)
     assert avro_type == "null"
 
 
@@ -1805,14 +1805,11 @@ def test_avro_schema_string_type_hints(manager: ModelManager) -> None:
     """Test handling of type hints as strings (forward references)."""
     generator = AvroSchemaGenerator(namespace="com.test")
 
-    # Simulate string annotation by testing fallback logic
-    # The code has fallback for string representations
     class FakeAnnotation:
         def __str__(self) -> str:
             return "typing.List[str]"
 
-    # Should fallback to string when unable to parse
-    result = generator._python_type_to_avro(FakeAnnotation())
+    result = generator._convert_type(FakeAnnotation())
     assert result == "string"
 
 
