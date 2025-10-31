@@ -1,6 +1,5 @@
 # Protocol Buffer Schema Generation
 
-
 pyrmute can generate [Protocol Buffer](https://protobuf.dev/) schemas for all
 your model versions. Protocol Buffers (protobuf) are widely used for gRPC
 services, microservices communication, and efficient binary serialization.
@@ -247,7 +246,7 @@ to its default value versus one that was never set.
 
 ### Enum Types
 
-Python Enums map to Protocol Buffer enums:
+Python Enums map to top-level Protocol Buffer enums:
 
 ```python
 from enum import StrEnum
@@ -266,19 +265,28 @@ class TaskV1(BaseModel):
 ```
 
 Generated proto:
-
 ```protobuf
-message Task {
-  enum Status {
-    PENDING = 0;
-    ACTIVE = 1;
-    COMPLETED = 2;
-  }
+syntax = "proto3";
 
+package com.myapp;
+
+// Status appears as a top-level enum
+enum Status {
+  PENDING = 0;
+  ACTIVE = 1;
+  COMPLETED = 2;
+}
+
+// Task references the top-level enum
+message Task {
   string name = 1;
   Status status = 2;
 }
 ```
+
+**Why top-level?** Top-level enums can be shared across multiple messages and
+are easier to reference from other proto files, making them more reusable in
+larger service architectures.
 
 ### Union Types
 
@@ -314,6 +322,7 @@ class FlexibleV1(BaseModel):
 ```
 
 Generated proto:
+
 ```protobuf
 message Flexible {
   oneof value_value {
@@ -325,9 +334,65 @@ message Flexible {
 }
 ```
 
+**Unions with nested models:**
+
+```python
+@manager.model("CardPayment", "1.0.0")
+class CardPaymentV1(BaseModel):
+    card_number: str
+    cvv: str
+
+
+@manager.model("BankPayment", "1.0.0")
+class BankPaymentV1(BaseModel):
+    account_number: str
+    routing_number: str
+
+
+@manager.model("Payment", "1.0.0")
+class PaymentV1(BaseModel):
+    payment_id: str
+    method: CardPaymentV1 | BankPaymentV1  # Union of models
+```
+
+Generated proto:
+
+```protobuf
+syntax = "proto3";
+
+package com.myapp;
+
+// Top-level payment method messages
+message CardPayment {
+  string card_number = 1;
+  string cvv = 2;
+}
+
+message BankPayment {
+  string account_number = 1;
+  string routing_number = 2;
+}
+
+// Payment with oneof referencing top-level messages
+message Payment {
+  string payment_id = 1;
+  oneof method_value {
+    // method when type is CardPayment
+    CardPayment method_cardpayment = 2;
+    // method when type is BankPayment
+    BankPayment method_bankpayment = 3;
+  }
+}
+```
+
+Note that the oneof field names use the registry names (`method_cardpayment`,
+`method_bankpayment`) rather than the Python class names (`CardPaymentV1`,
+`BankPaymentV1`).
+
 ### Nested Messages
 
-Pydantic models become nested messages:
+Pydantic models that reference other models become top-level messages in the
+proto file:
 
 ```python
 @manager.model("Address", "1.0.0")
@@ -345,17 +410,28 @@ class UserV1(BaseModel):
 
 Generated proto:
 ```protobuf
-message User {
-  message AddressV1 {
-    string street = 1;
-    string city = 2;
-    string zip_code = 3;
-  }
+syntax = "proto3";
 
+package com.myapp;
+
+// Address appears as a top-level message
+message Address {
+  string street = 1;
+  string city = 2;
+  string zip_code = 3;
+}
+
+// User references Address
+message User {
   string name = 1;
-  AddressV1 address = 2;
+  Address address = 2;
 }
 ```
+
+**Why top-level?** This makes models independently referenceable and reusable
+across different schemas, which is ideal for schema registries and
+service-to-service communication. Each model can be versioned and evolved
+independently.
 
 ## Protocol Buffer Packages
 
@@ -746,29 +822,32 @@ class CreateOrderResponseV1(BaseModel):
 manager.dump_proto_schemas("protos/", package="com.shop.orders")
 ```
 
-### Event Streaming
+Generated proto for `CreateOrderResponse_v1_0_0.proto`:
+```protobuf
+syntax = "proto3";
 
-```python
-@manager.model("UserEvent", "1.0.0")
-class UserEventV1(BaseModel):
-    """User event for event streaming."""
-    event_id: UUID
-    user_id: str
-    event_type: str
-    timestamp: datetime
-    payload: dict[str, str]
-    metadata: dict[str, str] = Field(default_factory=dict)
+package com.shop.orders;
 
+import "google/protobuf/timestamp.proto";
 
-# Export for Kafka with protobuf serialization
-proto_schema = manager.get_proto_schema(
-    "UserEvent", "1.0.0",
-    package="com.events.users"
-)
+// OrderStatus enum is top-level
+enum OrderStatus {
+  PENDING = 0;
+  CONFIRMED = 1;
+  SHIPPED = 2;
+  DELIVERED = 3;
+}
 
-# Write to file for compilation
-Path("user_event.proto").write_text(proto_schema)
+// Response with created order details.
+message CreateOrderResponse {
+  string order_id = 1;
+  OrderStatus status = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
 ```
+
+This self-contained schema can be registered in a schema registry as a single
+subject, with all dependencies (the enum) included at the top level.
 
 ### API Gateway
 
