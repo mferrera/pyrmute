@@ -72,7 +72,7 @@ def test_typescript_interface_basic_types(generator: TypeScriptSchemaGenerator) 
         is_active: bool
         data: bytes
 
-    schema = generator.generate_typescript_schema(BasicTypes, "BasicTypes", "1.0.0")
+    schema = generator.generate_schema(BasicTypes, "BasicTypes", "1.0.0")
 
     assert "export interface BasicTypesV1_0_0 {" in schema
     assert "name: string;" in schema
@@ -92,9 +92,7 @@ def test_typescript_type_alias_basic_types(
         age: int
         is_active: bool
 
-    schema = type_generator.generate_typescript_schema(
-        BasicTypes, "BasicTypes", "1.0.0"
-    )
+    schema = type_generator.generate_schema(BasicTypes, "BasicTypes", "1.0.0")
 
     assert "export type BasicTypesV1_0_0 = {" in schema
     assert "name: string;" in schema
@@ -111,7 +109,7 @@ def test_typescript_zod_basic_types(zod_generator: TypeScriptSchemaGenerator) ->
         height: float
         is_active: bool
 
-    schema = zod_generator.generate_typescript_schema(BasicTypes, "BasicTypes", "1.0.0")
+    schema = zod_generator.generate_schema(BasicTypes, "BasicTypes", "1.0.0")
 
     assert "import { z } from 'zod';" in schema
     assert "export const BasicTypesV1_0_0Schema = z.object({" in schema
@@ -140,7 +138,7 @@ def test_typescript_interface_optional_fields(
         email: str | None = None
         age: int | None = None
 
-    schema = generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = generator.generate_schema(User, "User", "1.0.0")
 
     assert "name: string;" in schema
     assert "email?: string;" in schema
@@ -157,7 +155,7 @@ def test_typescript_zod_optional_fields(
         email: str | None = None
         age: int | None = None
 
-    schema = zod_generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = zod_generator.generate_schema(User, "User", "1.0.0")
 
     assert "name: z.string()," in schema
     assert "email: z.string().optional()," in schema
@@ -175,7 +173,7 @@ def test_typescript_interface_with_defaults(
         enabled: bool = True
         name: str = "default"
 
-    schema = generator.generate_typescript_schema(Config, "Config", "1.0.0")
+    schema = generator.generate_schema(Config, "Config", "1.0.0")
 
     assert "timeout?: number;" in schema
     assert "retry_count?: number;" in schema
@@ -200,7 +198,7 @@ def test_typescript_interface_with_documentation(
         age: int = Field(description="User's age in years")
         email: str = Field(description="Email address")
 
-    schema = generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = generator.generate_schema(User, "User", "1.0.0")
 
     assert "/**" in schema
     assert " * User account information." in schema
@@ -225,7 +223,7 @@ def test_typescript_interface_datetime_as_string(
         scheduled_date: date
         scheduled_time: time
 
-    schema = generator.generate_typescript_schema(Event, "Event", "1.0.0")
+    schema = generator.generate_schema(Event, "Event", "1.0.0")
 
     assert "created_at: string;" in schema
     assert "scheduled_date: string;" in schema
@@ -241,7 +239,7 @@ def test_typescript_interface_datetime_as_timestamp() -> None:
 
     config = TypeScriptConfig(date_format="timestamp")
     generator = TypeScriptSchemaGenerator(style="interface", config=config)
-    schema = generator.generate_typescript_schema(Event, "Event", "1.0.0")
+    schema = generator.generate_schema(Event, "Event", "1.0.0")
 
     assert "created_at: number;" in schema
     assert "scheduled_date: number;" in schema
@@ -257,7 +255,7 @@ def test_typescript_zod_datetime_validators(
         scheduled_date: date
         scheduled_time: time
 
-    schema = zod_generator.generate_typescript_schema(Event, "Event", "1.0.0")
+    schema = zod_generator.generate_schema(Event, "Event", "1.0.0")
 
     assert "created_at: z.string().datetime()," in schema
     assert "scheduled_date: z.string().date()," in schema
@@ -270,7 +268,7 @@ def test_typescript_interface_uuid(generator: TypeScriptSchemaGenerator) -> None
     class Resource(BaseModel):
         id: UUID
 
-    schema = generator.generate_typescript_schema(Resource, "Resource", "1.0.0")
+    schema = generator.generate_schema(Resource, "Resource", "1.0.0")
 
     assert "id: string;" in schema
 
@@ -283,7 +281,7 @@ def test_typescript_zod_uuid_validator(
     class Resource(BaseModel):
         id: UUID
 
-    schema = zod_generator.generate_typescript_schema(Resource, "Resource", "1.0.0")
+    schema = zod_generator.generate_schema(Resource, "Resource", "1.0.0")
 
     assert "id: z.string().uuid()," in schema
 
@@ -294,7 +292,7 @@ def test_typescript_interface_decimal(generator: TypeScriptSchemaGenerator) -> N
     class Price(BaseModel):
         amount: Decimal
 
-    schema = generator.generate_typescript_schema(Price, "Price", "1.0.0")
+    schema = generator.generate_schema(Price, "Price", "1.0.0")
 
     assert "amount: number;" in schema
 
@@ -308,7 +306,7 @@ def test_typescript_interface_optional_datetime(
         name: str
         timestamp: datetime | None = None
 
-    schema = generator.generate_typescript_schema(Event, "Event", "1.0.0")
+    schema = generator.generate_schema(Event, "Event", "1.0.0")
 
     assert "name: string;" in schema
     assert "timestamp?: string;" in schema
@@ -323,7 +321,7 @@ def test_typescript_zod_optional_datetime(
         name: str
         timestamp: datetime | None = None
 
-    schema = zod_generator.generate_typescript_schema(Event, "Event", "1.0.0")
+    schema = zod_generator.generate_schema(Event, "Event", "1.0.0")
 
     assert "name: z.string()," in schema
     assert "timestamp: z.string().datetime().optional()," in schema
@@ -342,7 +340,7 @@ def test_typescript_interface_list_types(generator: TypeScriptSchemaGenerator) -
         scores: list[int]
         metadata: list[dict[str, str]]
 
-    schema = generator.generate_typescript_schema(Container, "Container", "1.0.0")
+    schema = generator.generate_schema(Container, "Container", "1.0.0")
 
     assert "tags: string[];" in schema
     assert "scores: number[];" in schema
@@ -357,7 +355,7 @@ def test_typescript_interface_dict_types(generator: TypeScriptSchemaGenerator) -
         counts: dict[str, int]
         nested: dict[str, dict[str, int]]
 
-    schema = generator.generate_typescript_schema(Container, "Container", "1.0.0")
+    schema = generator.generate_schema(Container, "Container", "1.0.0")
 
     assert "metadata: Record<string, string>;" in schema
     assert "counts: Record<string, number>;" in schema
@@ -371,7 +369,7 @@ def test_typescript_zod_list_types(zod_generator: TypeScriptSchemaGenerator) -> 
         tags: list[str]
         scores: list[int]
 
-    schema = zod_generator.generate_typescript_schema(Container, "Container", "1.0.0")
+    schema = zod_generator.generate_schema(Container, "Container", "1.0.0")
 
     assert "tags: z.array(z.string())," in schema
     assert "scores: z.array(z.number().int())," in schema
@@ -384,7 +382,7 @@ def test_typescript_zod_dict_types(zod_generator: TypeScriptSchemaGenerator) -> 
         metadata: dict[str, str]
         counts: dict[str, int]
 
-    schema = zod_generator.generate_typescript_schema(Container, "Container", "1.0.0")
+    schema = zod_generator.generate_schema(Container, "Container", "1.0.0")
 
     assert "metadata: z.record(z.string())," in schema
     assert "counts: z.record(z.number().int())," in schema
@@ -397,7 +395,7 @@ def test_typescript_interface_set_types(generator: TypeScriptSchemaGenerator) ->
         unique_tags: set[str]
         unique_ids: set[int]
 
-    schema = generator.generate_typescript_schema(Container, "Container", "1.0.0")
+    schema = generator.generate_schema(Container, "Container", "1.0.0")
 
     assert "unique_tags: string[];" in schema
     assert "unique_ids: number[];" in schema
@@ -410,7 +408,7 @@ def test_typescript_interface_tuple_types(generator: TypeScriptSchemaGenerator) 
         coordinates: tuple[float, float]
         point: tuple[int, int, int]
 
-    schema = generator.generate_typescript_schema(Container, "Container", "1.0.0")
+    schema = generator.generate_schema(Container, "Container", "1.0.0")
 
     assert "coordinates: [number, number];" in schema
     assert "point: [number, number, number];" in schema
@@ -422,7 +420,7 @@ def test_typescript_zod_tuple_types(zod_generator: TypeScriptSchemaGenerator) ->
     class Container(BaseModel):
         coordinates: tuple[float, float]
 
-    schema = zod_generator.generate_typescript_schema(Container, "Container", "1.0.0")
+    schema = zod_generator.generate_schema(Container, "Container", "1.0.0")
 
     assert "coordinates: z.tuple([z.number(), z.number()])," in schema
 
@@ -445,7 +443,7 @@ def test_typescript_interface_enum_as_union(
     class Task(BaseModel):
         status: Status
 
-    schema = generator.generate_typescript_schema(Task, "Task", "1.0.0")
+    schema = generator.generate_schema(Task, "Task", "1.0.0")
 
     assert "status: 'pending' | 'active' | 'completed';" in schema
 
@@ -463,7 +461,7 @@ def test_typescript_interface_enum_as_enum_reference() -> None:
 
     config = TypeScriptConfig(enum_style="enum")
     generator = TypeScriptSchemaGenerator(style="interface", config=config)
-    schema = generator.generate_typescript_schema(Task, "Task", "1.0.0")
+    schema = generator.generate_schema(Task, "Task", "1.0.0")
 
     assert "status: Status;" in schema
 
@@ -482,7 +480,7 @@ def test_typescript_interface_optional_enum(
         name: str
         priority: Priority | None = None
 
-    schema = generator.generate_typescript_schema(Task, "Task", "1.0.0")
+    schema = generator.generate_schema(Task, "Task", "1.0.0")
 
     assert "name: string;" in schema
     assert "priority?: 'low' | 'medium' | 'high';" in schema
@@ -498,7 +496,7 @@ def test_typescript_zod_enum(zod_generator: TypeScriptSchemaGenerator) -> None:
     class Article(BaseModel):
         status: Status
 
-    schema = zod_generator.generate_typescript_schema(Article, "Article", "1.0.0")
+    schema = zod_generator.generate_schema(Article, "Article", "1.0.0")
 
     assert "status: z.enum(['draft', 'published'])," in schema
 
@@ -513,7 +511,7 @@ def test_typescript_zod_optional_enum(zod_generator: TypeScriptSchemaGenerator) 
     class Task(BaseModel):
         priority: Priority | None = None
 
-    schema = zod_generator.generate_typescript_schema(Task, "Task", "1.0.0")
+    schema = zod_generator.generate_schema(Task, "Task", "1.0.0")
 
     assert "priority: z.enum(['low', 'high']).optional()," in schema
 
@@ -531,7 +529,7 @@ def test_typescript_interface_enum_with_default(
         title: str
         status: Status = Status.DRAFT
 
-    schema = generator.generate_typescript_schema(Article, "Article", "1.0.0")
+    schema = generator.generate_schema(Article, "Article", "1.0.0")
 
     assert "title: string;" in schema
     # Field with default should be optional
@@ -549,7 +547,7 @@ def test_typescript_interface_int_enum(generator: TypeScriptSchemaGenerator) -> 
     class Task(BaseModel):
         level: Level
 
-    schema = generator.generate_typescript_schema(Task, "Task", "1.0.0")
+    schema = generator.generate_schema(Task, "Task", "1.0.0")
 
     assert "level: 1 | 2 | 3;" in schema
 
@@ -566,7 +564,7 @@ def test_typescript_interface_union_types(generator: TypeScriptSchemaGenerator) 
         data: str | int
         result: bool | dict[str, str]
 
-    schema = generator.generate_typescript_schema(Response, "Response", "1.0.0")
+    schema = generator.generate_schema(Response, "Response", "1.0.0")
 
     assert "data: string | number;" in schema
     assert "result: boolean | Record<string, string>;" in schema
@@ -578,7 +576,7 @@ def test_typescript_zod_union_types(zod_generator: TypeScriptSchemaGenerator) ->
     class Response(BaseModel):
         data: str | int
 
-    schema = zod_generator.generate_typescript_schema(Response, "Response", "1.0.0")
+    schema = zod_generator.generate_schema(Response, "Response", "1.0.0")
 
     assert "data: z.union([z.string(), z.number().int()])," in schema
 
@@ -591,7 +589,7 @@ def test_typescript_interface_complex_union(
     class Data(BaseModel):
         value: str | int | None = None
 
-    schema = generator.generate_typescript_schema(Data, "Data", "1.0.0")
+    schema = generator.generate_schema(Data, "Data", "1.0.0")
 
     assert "value?: string | number;" in schema
 
@@ -602,7 +600,7 @@ def test_typescript_zod_complex_union(zod_generator: TypeScriptSchemaGenerator) 
     class Data(BaseModel):
         value: str | int | None = None
 
-    schema = zod_generator.generate_typescript_schema(Data, "Data", "1.0.0")
+    schema = zod_generator.generate_schema(Data, "Data", "1.0.0")
 
     assert "value: z.union([z.string(), z.number().int()]).optional()," in schema
 
@@ -625,7 +623,7 @@ def test_typescript_interface_nested_model(
         name: str
         address: Address
 
-    schema = generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = generator.generate_schema(User, "User", "1.0.0")
 
     assert "street: string;" in schema
     assert "name: string;" in schema
@@ -643,7 +641,7 @@ def test_typescript_zod_nested_model(zod_generator: TypeScriptSchemaGenerator) -
         name: str
         address: Address
 
-    schema = zod_generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = zod_generator.generate_schema(User, "User", "1.0.0")
 
     assert "name: z.string()," in schema
     assert "address: AddressSchema," in schema
@@ -661,7 +659,7 @@ def test_typescript_interface_optional_nested_model(
         name: str
         address: Address | None = None
 
-    schema = generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = generator.generate_schema(User, "User", "1.0.0")
 
     assert "name: string;" in schema
     assert "address?: Address;" in schema
@@ -679,7 +677,7 @@ def test_typescript_interface_list_of_nested_models(
     class Order(BaseModel):
         items: list[Item]
 
-    schema = generator.generate_typescript_schema(Order, "Order", "1.0.0")
+    schema = generator.generate_schema(Order, "Order", "1.0.0")
 
     assert "items: Item[];" in schema
 
@@ -698,7 +696,7 @@ def test_typescript_zod_string_constraints(
         username: str = Field(min_length=3, max_length=20)
         email: str = Field(pattern=r"^[\w\.-]+@[\w\.-]+\.\w+$")
 
-    schema = zod_generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = zod_generator.generate_schema(User, "User", "1.0.0")
 
     assert "username: z.string().min(3).max(20)," in schema
     assert "email: z.string().regex(/^[\\w\\.-]+@[\\w\\.-]+\\.\\w+$/)," in schema
@@ -713,7 +711,7 @@ def test_typescript_zod_numeric_constraints(
         port: int = Field(ge=1024, le=65535)
         temperature: float = Field(gt=0, lt=100)
 
-    schema = zod_generator.generate_typescript_schema(Config, "Config", "1.0.0")
+    schema = zod_generator.generate_schema(Config, "Config", "1.0.0")
 
     assert "port: z.number().int().gte(1024).lte(65535)," in schema
     assert "temperature: z.number().gt(0).lt(100)," in schema
@@ -732,7 +730,7 @@ def test_typescript_interface_version_in_name(
     class User(BaseModel):
         name: str
 
-    schema = generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = generator.generate_schema(User, "User", "1.0.0")
 
     assert "export interface UserV1_0_0 {" in schema
 
@@ -749,8 +747,8 @@ def test_typescript_interface_multiple_versions(
         name: str
         email: str
 
-    schema_v1 = generator.generate_typescript_schema(UserV1, "User", "1.0.0")
-    schema_v2 = generator.generate_typescript_schema(UserV2, "User", "2.0.0")
+    schema_v1 = generator.generate_schema(UserV1, "User", "1.0.0")
+    schema_v2 = generator.generate_schema(UserV2, "User", "2.0.0")
 
     assert "export interface UserV1_0_0 {" in schema_v1
     assert "export interface UserV2_0_0 {" in schema_v2
@@ -766,7 +764,7 @@ def test_typescript_zod_version_in_name(
     class User(BaseModel):
         name: str
 
-    schema = zod_generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = zod_generator.generate_schema(User, "User", "1.0.0")
 
     assert "export const UserV1_0_0Schema = z.object({" in schema
     assert "export type UserV1_0_0 = z.infer<typeof UserV1_0_0Schema>;" in schema
@@ -870,7 +868,7 @@ def test_typescript_discriminated_union(generator: TypeScriptSchemaGenerator) ->
     class Pet(BaseModel):
         pet: Cat | Dog
 
-    schema = generator.generate_typescript_schema(Pet, "Pet", "1.0.0")
+    schema = generator.generate_schema(Pet, "Pet", "1.0.0")
 
     assert "pet:" in schema
     assert "Cat" in schema or "Dog" in schema or "|" in schema
@@ -900,7 +898,7 @@ def test_typescript_deeply_nested_models(generator: TypeScriptSchemaGenerator) -
         name: str
         departments: list[Department]
 
-    schema = generator.generate_typescript_schema(Organization, "Organization", "1.0.0")
+    schema = generator.generate_schema(Organization, "Organization", "1.0.0")
 
     assert "name: string;" in schema
     assert "departments: Department[];" in schema
@@ -913,7 +911,7 @@ def test_typescript_recursive_model(generator: TypeScriptSchemaGenerator) -> Non
         value: int
         children: list["TreeNode"] = []
 
-    schema = generator.generate_typescript_schema(TreeNode, "TreeNode", "1.0.0")
+    schema = generator.generate_schema(TreeNode, "TreeNode", "1.0.0")
 
     assert "value: number;" in schema
     assert "children?: TreeNodeV1_0_0[];" in schema
@@ -928,7 +926,7 @@ def test_typescript_recursive_model_version_same(
         value: int
         children: list["TreeNodeV1"] = []
 
-    schema = generator.generate_typescript_schema(TreeNodeV1, "TreeNode", "1.0.0")
+    schema = generator.generate_schema(TreeNodeV1, "TreeNode", "1.0.0")
 
     assert "value: number;" in schema
     assert "children?: TreeNodeV1_0_0[];" in schema
@@ -945,7 +943,7 @@ def test_typescript_recursive_model_enum_mode(
 
     config = TypeScriptConfig(enum_style="enum")
     generator.config = config
-    schema = generator.generate_typescript_schema(TreeNode, "TreeNode", "1.0.0")
+    schema = generator.generate_schema(TreeNode, "TreeNode", "1.0.0")
 
     assert "value: number;" in schema
     assert "children?: TreeNodeV1_0_0[];" in schema
@@ -963,7 +961,7 @@ def test_typescript_complex_nested_collections(
         groups: dict[str, list[str]]
         coordinates: list[tuple[float, float]]
 
-    schema = generator.generate_typescript_schema(ComplexModel, "ComplexModel", "1.0.0")
+    schema = generator.generate_schema(ComplexModel, "ComplexModel", "1.0.0")
 
     assert "matrix: number[][];" in schema
     assert "nested_config: Record<string, Record<string, string>>;" in schema
@@ -980,7 +978,7 @@ def test_typescript_literal_types(generator: TypeScriptSchemaGenerator) -> None:
         log_level: Literal["debug", "info", "warning", "error"]
         enabled: Literal[True]
 
-    schema = generator.generate_typescript_schema(Config, "Config", "1.0.0")
+    schema = generator.generate_schema(Config, "Config", "1.0.0")
 
     assert "environment:" in schema
     assert "log_level:" in schema
@@ -995,7 +993,7 @@ def test_typescript_annotated_types(generator: TypeScriptSchemaGenerator) -> Non
         age: Annotated[int, conint(ge=0, le=150)]
         email: Annotated[str, constr(pattern=r"^[\w\.-]+@[\w\.-]+\.\w+$")]
 
-    schema = generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = generator.generate_schema(User, "User", "1.0.0")
 
     assert "username: string;" in schema
     assert "age: number;" in schema
@@ -1011,7 +1009,7 @@ def test_typescript_zod_annotated_constraints(
         username: Annotated[str, Field(min_length=3, max_length=20)]
         age: Annotated[int, Field(ge=0, le=150)]
 
-    schema = zod_generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = zod_generator.generate_schema(User, "User", "1.0.0")
 
     assert "username: z.string().min(3).max(20)," in schema
     assert "age: z.number().int().gte(0).lte(150)," in schema
@@ -1029,7 +1027,7 @@ def test_typescript_mixed_optional_and_required(
         required_but_nullable: str | None
         optional_complex: dict[str, list[int]] | None = None
 
-    schema = generator.generate_typescript_schema(MixedModel, "MixedModel", "1.0.0")
+    schema = generator.generate_schema(MixedModel, "MixedModel", "1.0.0")
 
     assert "required_field: string;" in schema
     assert "optional_with_none?: string;" in schema
@@ -1054,7 +1052,7 @@ def test_typescript_all_primitive_types(generator: TypeScriptSchemaGenerator) ->
         decimal_field: Decimal
         none_field: None
 
-    schema = generator.generate_typescript_schema(AllTypes, "AllTypes", "1.0.0")
+    schema = generator.generate_schema(AllTypes, "AllTypes", "1.0.0")
 
     assert "str_field: string;" in schema
     assert "int_field: number;" in schema
@@ -1075,7 +1073,7 @@ def test_typescript_empty_model(generator: TypeScriptSchemaGenerator) -> None:
     class Empty(BaseModel):
         pass
 
-    schema = generator.generate_typescript_schema(Empty, "Empty", "1.0.0")
+    schema = generator.generate_schema(Empty, "Empty", "1.0.0")
 
     assert "export interface EmptyV1_0_0 {" in schema
     assert "}" in schema
@@ -1090,7 +1088,7 @@ def test_typescript_model_with_forward_reference(
         value: int
         next: "Node | None" = None
 
-    schema = generator.generate_typescript_schema(Node, "Node", "1.0.0")
+    schema = generator.generate_schema(Node, "Node", "1.0.0")
 
     assert "value: number;" in schema
     assert "next?: NodeV1_0_0;" in schema
@@ -1109,7 +1107,7 @@ def test_typescript_multiple_inheritance_base(
         name: str
         description: str
 
-    schema = generator.generate_typescript_schema(Extended, "Extended", "1.0.0")
+    schema = generator.generate_schema(Extended, "Extended", "1.0.0")
 
     # Should include all fields from base and extended
     assert "id: number;" in schema
@@ -1137,7 +1135,7 @@ def test_generated_typescript_is_valid(
         email: str | None = None
         tags: list[str] = []
 
-    schema = generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = generator.generate_schema(User, "User", "1.0.0")
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".ts", delete=False) as f:
         f.write(schema)
@@ -1170,7 +1168,7 @@ def test_generated_zod_schema_is_valid(
         age: int
         email: str = Field(pattern=r"^[\w\.-]+@[\w\.-]+\.\w+$")
 
-    schema = zod_generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = zod_generator.generate_schema(User, "User", "1.0.0")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
@@ -1210,9 +1208,7 @@ def test_typescript_very_long_model_name(generator: TypeScriptSchemaGenerator) -
     class VeryLongNamedModel(BaseModel):
         field: str
 
-    schema = generator.generate_typescript_schema(
-        VeryLongNamedModel, long_name, "1.0.0"
-    )
+    schema = generator.generate_schema(VeryLongNamedModel, long_name, "1.0.0")
 
     assert "export interface" in schema
     assert "field: string;" in schema
@@ -1226,7 +1222,7 @@ def test_typescript_unicode_in_docstrings(generator: TypeScriptSchemaGenerator) 
 
         field: str = Field(description="Field with emoji 🚀 and symbols ±∞")
 
-    schema = generator.generate_typescript_schema(UnicodeModel, "UnicodeModel", "1.0.0")
+    schema = generator.generate_schema(UnicodeModel, "UnicodeModel", "1.0.0")
 
     assert "🎉" in schema or "emoji" in schema
     assert "field: string;" in schema
@@ -1240,7 +1236,7 @@ def test_typescript_circular_reference(generator: TypeScriptSchemaGenerator) -> 
         spouse: "Person | None" = None
         friends: list["Person"] = []
 
-    schema = generator.generate_typescript_schema(Person, "Person", "1.0.0")
+    schema = generator.generate_schema(Person, "Person", "1.0.0")
 
     assert "name: string;" in schema
     assert "spouse?: PersonV1_0_0;" in schema
@@ -1261,7 +1257,7 @@ def test_typescript_config_date_format_timestamp() -> None:
         timestamp: datetime
         date: date
 
-    schema = generator.generate_typescript_schema(Event, "Event", "1.0.0")
+    schema = generator.generate_schema(Event, "Event", "1.0.0")
 
     assert "timestamp: number;" in schema
     assert "date: number;" in schema
@@ -1279,7 +1275,7 @@ def test_typescript_config_enum_style_enum() -> None:
     class Model(BaseModel):
         status: Status
 
-    schema = generator.generate_typescript_schema(Model, "Model", "1.0.0")
+    schema = generator.generate_schema(Model, "Model", "1.0.0")
 
     assert "status: Status;" in schema
 
@@ -1299,8 +1295,8 @@ def test_typescript_interface_vs_type_output() -> None:
     interface_gen = TypeScriptSchemaGenerator(style="interface")
     type_gen = TypeScriptSchemaGenerator(style="type")
 
-    interface_schema = interface_gen.generate_typescript_schema(User, "User", "1.0.0")
-    type_schema = type_gen.generate_typescript_schema(User, "User", "1.0.0")
+    interface_schema = interface_gen.generate_schema(User, "User", "1.0.0")
+    type_schema = type_gen.generate_schema(User, "User", "1.0.0")
 
     assert "name: string;" in interface_schema
     assert "name: string;" in type_schema
@@ -1319,7 +1315,7 @@ def test_typescript_zod_generates_both_schema_and_type(
     class User(BaseModel):
         name: str
 
-    schema = zod_generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = zod_generator.generate_schema(User, "User", "1.0.0")
 
     assert "export const UserV1_0_0Schema = z.object({" in schema
     assert "export type UserV1_0_0 = z.infer<typeof UserV1_0_0Schema>;" in schema
@@ -1337,7 +1333,7 @@ def test_typescript_generic_model_abstract(
         error: str | None = None
         success: bool = True
 
-    schema = generator.generate_typescript_schema(ApiResponse, "ApiResponse", "1.0.0")
+    schema = generator.generate_schema(ApiResponse, "ApiResponse", "1.0.0")
 
     # Should generate a generic interface with type parameter
     # Expected: export interface ApiResponseV1_0_0<T> {
@@ -1364,7 +1360,7 @@ def test_typescript_generic_model_concrete(
 
     UserResponse = ApiResponse[User]
 
-    schema = generator.generate_typescript_schema(UserResponse, "UserResponse", "1.0.0")
+    schema = generator.generate_schema(UserResponse, "UserResponse", "1.0.0")
 
     assert "export interface UserResponseV1_0_0" in schema
     assert "data?: User | null;" in schema or "data?:" in schema
@@ -1378,7 +1374,7 @@ def test_typescript_multiple_type_params(generator: TypeScriptSchemaGenerator) -
         key: K
         value: V
 
-    schema = generator.generate_typescript_schema(KeyValuePair, "KeyValuePair", "1.0.0")
+    schema = generator.generate_schema(KeyValuePair, "KeyValuePair", "1.0.0")
 
     assert "export interface KeyValuePairV1_0_0" in schema
     assert "key:" in schema
@@ -1392,7 +1388,7 @@ def test_typescript_nested_generics(generator: TypeScriptSchemaGenerator) -> Non
         value: T
         items: list[T]
 
-    schema = generator.generate_typescript_schema(Wrapper, "Wrapper", "1.0.0")
+    schema = generator.generate_schema(Wrapper, "Wrapper", "1.0.0")
 
     assert "export interface WrapperV1_0_0" in schema
     assert "value:" in schema
@@ -1405,7 +1401,7 @@ def test_typescript_zod_generic_model(zod_generator: TypeScriptSchemaGenerator) 
     class Container(BaseModel, Generic[T]):
         content: T
 
-    schema = zod_generator.generate_typescript_schema(Container, "Container", "1.0.0")
+    schema = zod_generator.generate_schema(Container, "Container", "1.0.0")
 
     # Zod doesn't really support generics in the same way
     assert "export const ContainerV1_0_0Schema" in schema
@@ -1426,7 +1422,7 @@ def test_typescript_bounded_type_var(generator: TypeScriptSchemaGenerator) -> No
     class Shelter(BaseModel, Generic[AnimalT]):
         animals: list[AnimalT]
 
-    schema = generator.generate_typescript_schema(Shelter, "Shelter", "1.0.0")
+    schema = generator.generate_schema(Shelter, "Shelter", "1.0.0")
 
     assert "export interface ShelterV1_0_0" in schema
     assert "animals:" in schema
@@ -1439,9 +1435,7 @@ def test_typescript_constrained_type_var(generator: TypeScriptSchemaGenerator) -
     class NumericContainer(BaseModel, Generic[NumberT]):
         value: NumberT
 
-    schema = generator.generate_typescript_schema(
-        NumericContainer, "NumericContainer", "1.0.0"
-    )
+    schema = generator.generate_schema(NumericContainer, "NumericContainer", "1.0.0")
 
     assert "export interface NumericContainerV1_0_0" in schema
     assert "value:" in schema
@@ -1459,7 +1453,7 @@ def test_typescript_computed_field_basic(generator: TypeScriptSchemaGenerator) -
         def full_name(self) -> str:
             return f"{self.first_name} {self.last_name}"
 
-    schema = generator.generate_typescript_schema(Person, "Person", "1.0.0")
+    schema = generator.generate_schema(Person, "Person", "1.0.0")
 
     assert "first_name: string;" in schema
     assert "last_name: string;" in schema
@@ -1487,7 +1481,7 @@ def test_typescript_computed_field_complex_type(
         def item_count(self) -> int:
             return len(self.items)
 
-    schema = generator.generate_typescript_schema(Order, "Order", "1.0.0")
+    schema = generator.generate_schema(Order, "Order", "1.0.0")
 
     assert "items: Record<string, number>[];" in schema
     assert "tax_rate?: number;" in schema
@@ -1510,7 +1504,7 @@ def test_typescript_computed_field_optional(
         def contact_method(self) -> str | None:
             return self.phone or self.email
 
-    schema = generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = generator.generate_schema(User, "User", "1.0.0")
 
     assert "email: string;" in schema
     assert "phone?: string;" in schema
@@ -1538,7 +1532,7 @@ def test_typescript_computed_field_nested_model(
         def address(self) -> Address:
             return Address(street=self.street, city=self.city, country=self.country)
 
-    schema = generator.generate_typescript_schema(Person, "Person", "1.0.0")
+    schema = generator.generate_schema(Person, "Person", "1.0.0")
 
     assert "name: string;" in schema
     assert "address" in schema
@@ -1559,7 +1553,7 @@ def test_typescript_zod_computed_field(
         def area(self) -> float:
             return self.width * self.height
 
-    schema = zod_generator.generate_typescript_schema(Rectangle, "Rectangle", "1.0.0")
+    schema = zod_generator.generate_schema(Rectangle, "Rectangle", "1.0.0")
 
     assert "width: z.number()," in schema
     assert "height: z.number()," in schema
@@ -1582,7 +1576,7 @@ def test_typescript_computed_field_list(generator: TypeScriptSchemaGenerator) ->
         def uppercase_members(self) -> list[str]:
             return [m.upper() for m in self.members]
 
-    schema = generator.generate_typescript_schema(Team, "Team", "1.0.0")
+    schema = generator.generate_schema(Team, "Team", "1.0.0")
 
     assert "members: string[];" in schema
     assert "member_count" in schema
@@ -1600,7 +1594,7 @@ def test_typescript_computed_field_cached(generator: TypeScriptSchemaGenerator) 
         def expensive_result(self) -> int:
             return sum(self.data)
 
-    schema = generator.generate_typescript_schema(
+    schema = generator.generate_schema(
         ExpensiveComputation, "ExpensiveComputation", "1.0.0"
     )
 
@@ -1621,7 +1615,7 @@ def test_typescript_computed_field_serialization_alias(
         def computed_value(self) -> int:
             return self.internal_value * 2
 
-    schema = generator.generate_typescript_schema(Model, "Model", "1.0.0")
+    schema = generator.generate_schema(Model, "Model", "1.0.0")
 
     assert "internal_value: number;" in schema
     # Should use alias if provided
@@ -1654,7 +1648,7 @@ def test_typescript_multiple_computed_fields(
         def total(self) -> float:
             return self.subtotal + self.tax
 
-    schema = generator.generate_typescript_schema(Product, "Product", "1.0.0")
+    schema = generator.generate_schema(Product, "Product", "1.0.0")
 
     assert "name: string;" in schema
     assert "price: number;" in schema
@@ -1683,7 +1677,7 @@ def test_typescript_computed_field_readonly_option() -> None:
         def doubled(self) -> int:
             return self.value * 2
 
-    schema = generator.generate_typescript_schema(Model, "Model", "1.0.0")
+    schema = generator.generate_schema(Model, "Model", "1.0.0")
 
     assert "readonly doubled: number;" in schema
 
@@ -1701,7 +1695,7 @@ def test_typescript_computed_field_exclude_option() -> None:
         def doubled(self) -> int:
             return self.value * 2
 
-    schema = generator.generate_typescript_schema(Model, "Model", "1.0.0")
+    schema = generator.generate_schema(Model, "Model", "1.0.0")
 
     assert "doubled" not in schema
     assert "value: number;" in schema
@@ -1726,7 +1720,7 @@ def test_typescript_computed_field_with_docstring(
             """This is a computed field."""
             return self.value * 2
 
-    schema = generator.generate_typescript_schema(Model, "Model", "1.0.0")
+    schema = generator.generate_schema(Model, "Model", "1.0.0")
 
     assert "computed" in schema
     if "/**" in schema:
@@ -1761,7 +1755,7 @@ def test_typescript_computed_field_depends_on_other_computed(
         def step3(self) -> int:
             return self.step2 * 2
 
-    schema = generator.generate_typescript_schema(Chain, "Chain", "1.0.0")
+    schema = generator.generate_schema(Chain, "Chain", "1.0.0")
 
     assert "base: number;" in schema
     assert "step1" in schema
@@ -1807,7 +1801,7 @@ def test_enum_union_style_default(union_generator: TypeScriptSchemaGenerator) ->
         name: str
         status: Status
 
-    schema = union_generator.generate_typescript_schema(Task, "Task", "1.0.0")
+    schema = union_generator.generate_schema(Task, "Task", "1.0.0")
 
     # Should generate inline union type
     assert "status: 'pending' | 'active' | 'completed';" in schema
@@ -1826,7 +1820,7 @@ def test_enum_union_style_explicit(union_generator: TypeScriptSchemaGenerator) -
     class Task(BaseModel):
         priority: Priority
 
-    schema = union_generator.generate_typescript_schema(Task, "Task", "1.0.0")
+    schema = union_generator.generate_schema(Task, "Task", "1.0.0")
 
     assert "priority: 'low' | 'medium' | 'high';" in schema
     assert "export enum Priority" not in schema
@@ -1849,7 +1843,7 @@ def test_enum_style_basic(enum_generator: TypeScriptSchemaGenerator) -> None:
         name: str
         status: Status
 
-    schema = enum_generator.generate_typescript_schema(Task, "Task", "1.0.0")
+    schema = enum_generator.generate_schema(Task, "Task", "1.0.0")
 
     assert "export enum Status {" in schema
     assert "PENDING = 'pending'," in schema
@@ -1877,7 +1871,7 @@ def test_enum_style_multiple_enums(enum_generator: TypeScriptSchemaGenerator) ->
         status: Status
         priority: Priority
 
-    schema = enum_generator.generate_typescript_schema(Article, "Article", "1.0.0")
+    schema = enum_generator.generate_schema(Article, "Article", "1.0.0")
 
     assert "export enum Status {" in schema
     assert "DRAFT = 'draft'," in schema
@@ -1903,7 +1897,7 @@ def test_enum_style_int_enum(enum_generator: TypeScriptSchemaGenerator) -> None:
         code: ErrorCode
         message: str
 
-    schema = enum_generator.generate_typescript_schema(Response, "Response", "1.0.0")
+    schema = enum_generator.generate_schema(Response, "Response", "1.0.0")
 
     assert "export enum ErrorCode {" in schema
     assert "SUCCESS = 0," in schema
@@ -1924,7 +1918,7 @@ def test_enum_style_optional_enum(enum_generator: TypeScriptSchemaGenerator) -> 
         name: str
         status: Status | None = None
 
-    schema = enum_generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = enum_generator.generate_schema(User, "User", "1.0.0")
 
     assert "export enum Status {" in schema
     assert "ACTIVE = 'active'," in schema
@@ -1944,7 +1938,7 @@ def test_enum_style_with_default(enum_generator: TypeScriptSchemaGenerator) -> N
         title: str
         status: Status = Status.DRAFT
 
-    schema = enum_generator.generate_typescript_schema(Article, "Article", "1.0.0")
+    schema = enum_generator.generate_schema(Article, "Article", "1.0.0")
 
     assert "export enum Status {" in schema
     assert "status?: Status;" in schema  # Has default, so optional
@@ -1962,7 +1956,7 @@ def test_enum_style_enum_in_list(enum_generator: TypeScriptSchemaGenerator) -> N
         name: str
         tags: list[Tag]
 
-    schema = enum_generator.generate_typescript_schema(Project, "Project", "1.0.0")
+    schema = enum_generator.generate_schema(Project, "Project", "1.0.0")
 
     assert "export enum Tag {" in schema
     assert "PYTHON = 'python'," in schema
@@ -1980,9 +1974,7 @@ def test_enum_style_enum_in_dict(enum_generator: TypeScriptSchemaGenerator) -> N
     class TestResults(BaseModel):
         results: dict[str, Status]
 
-    schema = enum_generator.generate_typescript_schema(
-        TestResults, "TestResults", "1.0.0"
-    )
+    schema = enum_generator.generate_schema(TestResults, "TestResults", "1.0.0")
 
     assert "export enum Status {" in schema
     assert "results: Record<string, Status>;" in schema
@@ -2005,7 +1997,7 @@ def test_enum_style_nested_model_with_enum(
         name: str
         address: Address
 
-    schema = enum_generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = enum_generator.generate_schema(User, "User", "1.0.0")
 
     assert "export enum Status {" in schema
     assert "ACTIVE = 'active'," in schema
@@ -2039,9 +2031,7 @@ def test_enum_style_deeply_nested_enums(
         name: str
         projects: list[Project]
 
-    schema = enum_generator.generate_typescript_schema(
-        Organization, "Organization", "1.0.0"
-    )
+    schema = enum_generator.generate_schema(Organization, "Organization", "1.0.0")
 
     assert "export enum Priority {" in schema
     assert "LOW = 'low'," in schema
@@ -2068,7 +2058,7 @@ def test_enum_style_same_enum_multiple_fields(
         previous_status: Status | None = None
         target_status: Status
 
-    schema = enum_generator.generate_typescript_schema(Workflow, "Workflow", "1.0.0")
+    schema = enum_generator.generate_schema(Workflow, "Workflow", "1.0.0")
 
     enum_count = schema.count("export enum Status {")
     assert enum_count == 1
@@ -2089,7 +2079,7 @@ def test_enum_style_enum_order(enum_generator: TypeScriptSchemaGenerator) -> Non
         name: str
         priority: Priority
 
-    schema = enum_generator.generate_typescript_schema(Task, "Task", "1.0.0")
+    schema = enum_generator.generate_schema(Task, "Task", "1.0.0")
 
     enum_pos = schema.find("export enum Priority")
     interface_pos = schema.find("export interface TaskV1_0_0")
@@ -2114,7 +2104,7 @@ def test_enum_style_type_alias(enum_type_generator: TypeScriptSchemaGenerator) -
     class Task(BaseModel):
         status: Status
 
-    schema = enum_type_generator.generate_typescript_schema(Task, "Task", "1.0.0")
+    schema = enum_type_generator.generate_schema(Task, "Task", "1.0.0")
 
     assert "export enum Status {" in schema
     assert "PENDING = 'pending'," in schema
@@ -2138,7 +2128,7 @@ def test_enum_style_empty_enum(enum_generator: TypeScriptSchemaGenerator) -> Non
     class Model(BaseModel):
         value: str
 
-    schema = enum_generator.generate_typescript_schema(Model, "Model", "1.0.0")
+    schema = enum_generator.generate_schema(Model, "Model", "1.0.0")
     assert "export interface ModelV1_0_0" in schema
 
 
@@ -2154,7 +2144,7 @@ def test_enum_style_special_characters(
     class Task(BaseModel):
         status: Status
 
-    schema = enum_generator.generate_typescript_schema(Task, "Task", "1.0.0")
+    schema = enum_generator.generate_schema(Task, "Task", "1.0.0")
 
     assert "export enum Status {" in schema
     assert "IN_PROGRESS = 'in-progress'," in schema
@@ -2174,7 +2164,7 @@ def test_enum_style_numeric_string_values(
     class Config(BaseModel):
         version: Version
 
-    schema = enum_generator.generate_typescript_schema(Config, "Config", "1.0.0")
+    schema = enum_generator.generate_schema(Config, "Config", "1.0.0")
 
     assert "export enum Version {" in schema
     assert "V1 = '1.0'," in schema
@@ -2196,7 +2186,7 @@ def test_enum_style_with_documentation(
         name: str
         status: Status
 
-    schema = enum_generator.generate_typescript_schema(User, "User", "1.0.0")
+    schema = enum_generator.generate_schema(User, "User", "1.0.0")
 
     assert "export enum Status {" in schema
     assert "/**" in schema
@@ -2221,7 +2211,7 @@ def test_enum_style_with_literal_types(
         status: Status
         environment: Literal["dev", "prod"]
 
-    schema = enum_generator.generate_typescript_schema(Article, "Article", "1.0.0")
+    schema = enum_generator.generate_schema(Article, "Article", "1.0.0")
 
     assert "export enum Status {" in schema
     assert "status: Status;" in schema
@@ -2240,7 +2230,7 @@ def test_enum_style_with_union_types(enum_generator: TypeScriptSchemaGenerator) 
         status: Status
         value: str | int
 
-    schema = enum_generator.generate_typescript_schema(Model, "Model", "1.0.0")
+    schema = enum_generator.generate_schema(Model, "Model", "1.0.0")
 
     assert "export enum Status {" in schema
     assert "status: Status;" in schema
@@ -2262,7 +2252,7 @@ def test_no_config_defaults_to_union() -> None:
     class Model(BaseModel):
         status: Status
 
-    schema = generator.generate_typescript_schema(Model, "Model", "1.0.0")
+    schema = generator.generate_schema(Model, "Model", "1.0.0")
 
     assert "'active'" in schema
     assert "export enum Status" not in schema
@@ -2279,7 +2269,7 @@ def test_empty_config_defaults_to_union() -> None:
     class Model(BaseModel):
         status: Status
 
-    schema = generator.generate_typescript_schema(Model, "Model", "1.0.0")
+    schema = generator.generate_schema(Model, "Model", "1.0.0")
 
     assert "'active'" in schema
     assert "export enum Status" not in schema
@@ -2307,11 +2297,11 @@ def test_enum_tracking_resets_between_calls(
     class Model2(BaseModel):
         status: Status2
 
-    schema1 = enum_generator.generate_typescript_schema(Model1, "Model1", "1.0.0")
+    schema1 = enum_generator.generate_schema(Model1, "Model1", "1.0.0")
     assert "export enum Status1 {" in schema1
     assert "export enum Status2" not in schema1
 
-    schema2 = enum_generator.generate_typescript_schema(Model2, "Model2", "1.0.0")
+    schema2 = enum_generator.generate_schema(Model2, "Model2", "1.0.0")
     assert "export enum Status2 {" in schema2
     assert "export enum Status1" not in schema2
 
@@ -2344,7 +2334,7 @@ def test_enum_style_complex_model(enum_generator: TypeScriptSchemaGenerator) -> 
         tags: list[str] = []
         created_at: datetime
 
-    schema = enum_generator.generate_typescript_schema(Task, "Task", "1.0.0")
+    schema = enum_generator.generate_schema(Task, "Task", "1.0.0")
 
     assert "export enum Priority {" in schema
     assert "export enum Status {" in schema
@@ -2377,7 +2367,7 @@ def test_typescript_interface_field_aliases(
         last_name: str = Field(alias="lastName")
         email_address: str = Field(alias="emailAddress")
 
-    schema = generator.generate_typescript_schema(UserProfile, "UserProfile", "1.0.0")
+    schema = generator.generate_schema(UserProfile, "UserProfile", "1.0.0")
 
     assert "export interface UserProfileV1_0_0 {" in schema
     assert "userId: string;" in schema
@@ -2400,9 +2390,7 @@ def test_typescript_type_alias_field_aliases(
         created_at: str = Field(alias="createdAt")
         user_agent: str | None = Field(default=None, alias="userAgent")
 
-    schema = type_generator.generate_typescript_schema(
-        APIRequest, "APIRequest", "1.0.0"
-    )
+    schema = type_generator.generate_schema(APIRequest, "APIRequest", "1.0.0")
 
     assert "export type APIRequestV1_0_0 = {" in schema
     assert "requestId: string;" in schema
@@ -2420,7 +2408,7 @@ def test_typescript_zod_field_aliases(
         product_name: str = Field(alias="productName")
         price_cents: int = Field(alias="priceCents")
 
-    schema = zod_generator.generate_typescript_schema(Product, "Product", "1.0.0")
+    schema = zod_generator.generate_schema(Product, "Product", "1.0.0")
 
     assert "export const ProductV1_0_0Schema = z.object({" in schema
     assert "productId: z.string()," in schema
@@ -2442,7 +2430,7 @@ def test_typescript_interface_mixed_aliases_and_regular_fields(
         name: str
         is_active: bool = Field(alias="isActive")
 
-    schema = generator.generate_typescript_schema(MixedFields, "MixedFields", "1.0.0")
+    schema = generator.generate_schema(MixedFields, "MixedFields", "1.0.0")
 
     assert "id: string;" in schema
     assert "createdAt: string;" in schema
@@ -2460,9 +2448,7 @@ def test_typescript_interface_optional_aliased_fields(
         middle_name: str | None = Field(default=None, alias="middleName")
         phone_number: str | None = Field(default=None, alias="phoneNumber")
 
-    schema = generator.generate_typescript_schema(
-        OptionalAliased, "OptionalAliased", "1.0.0"
-    )
+    schema = generator.generate_schema(OptionalAliased, "OptionalAliased", "1.0.0")
 
     assert "userId: string;" in schema
     assert "middleName?: string;" in schema
@@ -2478,9 +2464,7 @@ def test_typescript_zod_optional_aliased_fields(
         user_id: str = Field(alias="userId")
         middle_name: str | None = Field(default=None, alias="middleName")
 
-    schema = zod_generator.generate_typescript_schema(
-        OptionalAliased, "OptionalAliased", "1.0.0"
-    )
+    schema = zod_generator.generate_schema(OptionalAliased, "OptionalAliased", "1.0.0")
 
     assert "userId: z.string()," in schema
     assert "middleName: z.string().optional()," in schema
@@ -2495,9 +2479,7 @@ def test_typescript_interface_serialization_alias(
         internal_name: str = Field(serialization_alias="externalName")
         internal_id: int = Field(serialization_alias="externalId")
 
-    schema = generator.generate_typescript_schema(
-        SerializedModel, "SerializedModel", "1.0.0"
-    )
+    schema = generator.generate_schema(SerializedModel, "SerializedModel", "1.0.0")
 
     assert "externalName: string;" in schema
     assert "externalId: number;" in schema
@@ -2516,7 +2498,7 @@ def test_typescript_interface_nested_model_with_aliases(
         first_name: str = Field(alias="firstName")
         home_address: Address = Field(alias="homeAddress")
 
-    schema = generator.generate_typescript_schema(Person, "Person", "1.0.0")
+    schema = generator.generate_schema(Person, "Person", "1.0.0")
 
     assert "firstName: string;" in schema
     assert "homeAddress: Address;" in schema
@@ -2545,9 +2527,7 @@ def test_typescript_interface_discriminated_union(
     class EventContainer(BaseModel):
         event: Annotated[ClickEvent | ViewEvent, Field(discriminator="event_type")]
 
-    schema = generator.generate_typescript_schema(
-        EventContainer, "EventContainer", "1.0.0"
-    )
+    schema = generator.generate_schema(EventContainer, "EventContainer", "1.0.0")
 
     assert "export interface ClickEvent {" in schema
     assert "event_type: 'click';" in schema
@@ -2576,7 +2556,7 @@ def test_typescript_type_alias_discriminated_union(
             SuccessResponse | ErrorResponse, Field(discriminator="status")
         ]
 
-    schema = type_generator.generate_typescript_schema(Response, "Response", "1.0.0")
+    schema = type_generator.generate_schema(Response, "Response", "1.0.0")
 
     assert "status: 'success';" in schema
     assert "data: Record<string, any>;" in schema
@@ -2603,9 +2583,7 @@ def test_typescript_zod_discriminated_union(
             NotificationEmail | NotificationSMS, Field(discriminator="type")
         ]
 
-    schema = zod_generator.generate_typescript_schema(
-        Notification, "Notification", "1.0.0"
-    )
+    schema = zod_generator.generate_schema(Notification, "Notification", "1.0.0")
 
     assert "export const NotificationEmailSchema = z.object({" in schema
     assert "type: z.literal('email')," in schema
@@ -2641,7 +2619,7 @@ def test_typescript_interface_discriminated_union_with_enum(
             CardPayment | BankPayment, Field(discriminator="payment_type")
         ]
 
-    schema = generator.generate_typescript_schema(Payment, "Payment", "1.0.0")
+    schema = generator.generate_schema(Payment, "Payment", "1.0.0")
 
     assert "payment_type: 'card';" in schema
     assert "cardNumber: string;" in schema
@@ -2675,9 +2653,7 @@ def test_typescript_interface_discriminated_union_complex(
             Field(discriminator="action"),
         ]
 
-    schema = generator.generate_typescript_schema(
-        ActionContainer, "ActionContainer", "1.0.0"
-    )
+    schema = generator.generate_schema(ActionContainer, "ActionContainer", "1.0.0")
 
     assert "action: 'create';" in schema
     assert "resourceType: string;" in schema
@@ -2704,9 +2680,7 @@ def test_typescript_interface_extra_allow(
         config_name: str = Field(alias="configName")
         enabled: bool = True
 
-    schema = generator.generate_typescript_schema(
-        DynamicConfig, "DynamicConfig", "1.0.0"
-    )
+    schema = generator.generate_schema(DynamicConfig, "DynamicConfig", "1.0.0")
 
     assert "export interface DynamicConfigV1_0_0 {" in schema
     assert "configName: string;" in schema
@@ -2724,9 +2698,7 @@ def test_typescript_type_alias_extra_allow(
         id: str
         name: str
 
-    schema = type_generator.generate_typescript_schema(
-        FlexibleModel, "FlexibleModel", "1.0.0"
-    )
+    schema = type_generator.generate_schema(FlexibleModel, "FlexibleModel", "1.0.0")
 
     assert "export type FlexibleModelV1_0_0 = {" in schema
     assert "id: string;" in schema
@@ -2744,9 +2716,7 @@ def test_typescript_zod_extra_allow(
         core_field: str = Field(alias="coreField")
         version: int = 1
 
-    schema = zod_generator.generate_typescript_schema(
-        ExtensibleData, "ExtensibleData", "1.0.0"
-    )
+    schema = zod_generator.generate_schema(ExtensibleData, "ExtensibleData", "1.0.0")
 
     assert "export const ExtensibleDataV1_0_0Schema = z.object({" in schema
     assert "coreField: z.string()," in schema
@@ -2762,7 +2732,7 @@ def test_typescript_interface_extra_allow_empty_model(
     class EmptyDynamic(BaseModel):
         model_config = ConfigDict(extra="allow")
 
-    schema = generator.generate_typescript_schema(EmptyDynamic, "EmptyDynamic", "1.0.0")
+    schema = generator.generate_schema(EmptyDynamic, "EmptyDynamic", "1.0.0")
 
     assert "export interface EmptyDynamicV1_0_0 {" in schema
     assert "[key: string]: any;" in schema
@@ -2778,9 +2748,7 @@ def test_typescript_interface_extra_allow_with_optional_fields(
         required_field: str = Field(alias="requiredField")
         optional_field: str | None = Field(default=None, alias="optionalField")
 
-    schema = generator.generate_typescript_schema(
-        PartialDynamic, "PartialDynamic", "1.0.0"
-    )
+    schema = generator.generate_schema(PartialDynamic, "PartialDynamic", "1.0.0")
 
     assert "requiredField: string;" in schema
     assert "optionalField?: string;" in schema
@@ -2805,7 +2773,7 @@ def test_typescript_zod_extra_allow_with_discriminator(
     class Container(BaseModel):
         event: Annotated[FlexibleEventA | FlexibleEventB, Field(discriminator="type")]
 
-    schema = zod_generator.generate_typescript_schema(Container, "Container", "1.0.0")
+    schema = zod_generator.generate_schema(Container, "Container", "1.0.0")
 
     assert "export const FlexibleEventASchema = z.object({" in schema
     assert "type: z.literal('flexible_a')," in schema
@@ -2825,7 +2793,7 @@ def test_typescript_interface_without_extra_allow(
         id: str
         name: str
 
-    schema = generator.generate_typescript_schema(StrictModel, "StrictModel", "1.0.0")
+    schema = generator.generate_schema(StrictModel, "StrictModel", "1.0.0")
 
     assert "export interface StrictModelV1_0_0 {" in schema
     assert "id: string;" in schema
@@ -2842,9 +2810,7 @@ def test_typescript_zod_without_extra_allow(
         id: str
         name: str
 
-    schema = zod_generator.generate_typescript_schema(
-        StrictModel, "StrictModel", "1.0.0"
-    )
+    schema = zod_generator.generate_schema(StrictModel, "StrictModel", "1.0.0")
 
     assert "export const StrictModelV1_0_0Schema = z.object({" in schema
     assert "}).passthrough()" not in schema
@@ -2863,9 +2829,7 @@ def test_typescript_interface_all_features_combined(
         created_at: str = Field(alias="createdAt")
         user_id: str | None = Field(default=None, alias="userId")
 
-    schema = generator.generate_typescript_schema(
-        FlexibleEvent, "FlexibleEvent", "1.0.0"
-    )
+    schema = generator.generate_schema(FlexibleEvent, "FlexibleEvent", "1.0.0")
 
     assert "export interface FlexibleEventV1_0_0 {" in schema
     assert "event_type: 'custom';" in schema
@@ -2886,9 +2850,7 @@ def test_typescript_type_alias_all_features_combined(
         request_id: str = Field(alias="requestId")
         timestamp_ms: int = Field(alias="timestampMs")
 
-    schema = type_generator.generate_typescript_schema(
-        DynamicResponse, "DynamicResponse", "1.0.0"
-    )
+    schema = type_generator.generate_schema(DynamicResponse, "DynamicResponse", "1.0.0")
 
     assert "export type DynamicResponseV1_0_0 = {" in schema
     assert "response_type: 'dynamic';" in schema
@@ -2908,7 +2870,7 @@ def test_typescript_zod_all_features_combined(
         action_id: str = Field(alias="actionId")
         performed_by: str = Field(alias="performedBy")
 
-    schema = zod_generator.generate_typescript_schema(
+    schema = zod_generator.generate_schema(
         ExtensibleAction, "ExtensibleAction", "1.0.0"
     )
 
@@ -2937,7 +2899,7 @@ def test_typescript_interface_discriminated_union_with_extra_allow(
     class EventWrapper(BaseModel):
         event: Annotated[FlexibleEventA | FlexibleEventB, Field(discriminator="type")]
 
-    schema = generator.generate_typescript_schema(EventWrapper, "EventWrapper", "1.0.0")
+    schema = generator.generate_schema(EventWrapper, "EventWrapper", "1.0.0")
 
     assert "export interface FlexibleEventA {" in schema
     assert "type: 'a';" in schema
@@ -2963,7 +2925,7 @@ def test_typescript_interface_nested_with_all_features(
         main_id: str = Field(alias="mainId")
         metadata: MetadataModel
 
-    schema = generator.generate_typescript_schema(MainModel, "MainModel", "1.0.0")
+    schema = generator.generate_schema(MainModel, "MainModel", "1.0.0")
 
     assert "export interface MetadataModel {" in schema
     assert "createdAt: string;" in schema

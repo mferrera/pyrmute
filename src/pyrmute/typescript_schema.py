@@ -13,6 +13,7 @@ from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
 from ._registry import Registry
+from ._schema_generator import SchemaGeneratorBase
 from ._type_inspector import TypeInspector
 from .model_version import ModelVersion
 
@@ -20,13 +21,14 @@ from .model_version import ModelVersion
 class TypeScriptConfig(TypedDict, total=False):
     """Configuration options for TypeScript schema generation."""
 
+    include_docs: bool
     date_format: Literal["iso", "timestamp"]
     enum_style: Literal["union", "enum"]
     include_computed_fields: bool
     mark_computed_readonly: bool
 
 
-class TypeScriptSchemaGenerator:
+class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
     """Generates TypeScript schemas from Pydantic models."""
 
     _BASIC_TYPE_MAPPING: Mapping[type, str] = {
@@ -54,19 +56,25 @@ class TypeScriptSchemaGenerator:
             style: Output style - 'interface', 'type', or 'zod'.
             config: Optional configuration for schema generation.
         """
+        include_docs: bool = config.get("include_docs", True) if config else True
+        super().__init__(include_docs=include_docs)
         self.style = style
         self.config = config or TypeScriptConfig()
-        self._types_seen: set[str] = set()
         self._types_seen_collecting_enums: set[str] = set()
-        self._enums_encountered: dict[str, type[Enum]] = {}
-        self._nested_models: dict[str, type[BaseModel]] = {}
         self._versioned_name_map: dict[str, str] = {}
 
-    def generate_typescript_schema(
+    def _reset_state(self: Self) -> None:
+        """Reset internal state before generating a new schema."""
+        super()._reset_state()
+        self._types_seen_collecting_enums = set()
+        self._versioned_name_map = {}
+
+    def generate_schema(
         self: Self,
         model: type[BaseModel],
         name: str,
         version: str | ModelVersion | None = None,
+        registry_name_map: dict[str, str] | None = None,
     ) -> str:
         """Generate a TypeScript schema from a Pydantic model.
 
@@ -74,14 +82,13 @@ class TypeScriptSchemaGenerator:
             model: Pydantic model class.
             name: Model name.
             version: Optional model version.
+            registry_name_map: Optional mapping of class names to registry names.
 
         Returns:
             TypeScript schema code as a string.
         """
-        self._types_seen = set()
+        self._reset_state()
         self._types_seen_collecting_enums = set()
-        self._enums_encountered = {}
-        self._nested_models = {}
         self._versioned_name_map = {}
 
         versioned_name = self._get_versioned_name(name, version)
@@ -132,15 +139,6 @@ class TypeScriptSchemaGenerator:
         if self.style == "type":
             return self._generate_type_alias(model, type_name)
         return self._generate_interface(model, type_name)
-
-    def _collect_nested_models(self: Self, model: type[BaseModel]) -> None:
-        """Recursively collect all nested BaseModel types.
-
-        Args:
-            model: Pydantic model class to scan for nested models.
-        """
-        nested = TypeInspector.collect_nested_models(model, self._types_seen)
-        self._nested_models.update(nested)
 
     def _collect_enums_from_model(self: Self, model: type[BaseModel]) -> None:
         """Recursively collect all enums from a model and its nested models.
@@ -738,7 +736,7 @@ class TypeScriptExporter:
             TypeScript schema code.
         """
         model = self._registry.get_model(name, version)
-        schema_code = self.generator.generate_typescript_schema(model, name, version)
+        schema_code = self.generator.generate_schema(model, name, version)
 
         if output_path:
             output_path = Path(output_path)
@@ -770,9 +768,7 @@ class TypeScriptExporter:
 
             for version in versions:
                 model = self._registry.get_model(model_name, version)
-                schema_code = self.generator.generate_typescript_schema(
-                    model, model_name, version
-                )
+                schema_code = self.generator.generate_schema(model, model_name, version)
 
                 version_str = str(version).replace(".", "_")
                 filename = f"{model_name}_v{version_str}.ts"

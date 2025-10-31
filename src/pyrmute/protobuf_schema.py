@@ -14,11 +14,12 @@ from pydantic_core import PydanticUndefined
 
 from ._protobuf_types import ProtoEnum, ProtoField, ProtoFile, ProtoMessage, ProtoOneOf
 from ._registry import Registry
+from ._schema_generator import SchemaGeneratorBase
 from ._type_inspector import TypeInspector
 from .model_version import ModelVersion
 
 
-class ProtoSchemaGenerator:
+class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
     """Generates Protocol Buffer schemas from Pydantic models."""
 
     _BASIC_TYPE_MAPPING: Mapping[type, str] = {
@@ -48,10 +49,9 @@ class ProtoSchemaGenerator:
             include_docs: Whether to include field descriptions as comments.
             use_proto3: Use proto3 syntax (True) or proto2 (False).
         """
+        super().__init__(include_docs=include_docs)
         self.package = package
-        self.include_docs = include_docs
         self.use_proto3 = use_proto3
-        self._types_seen: set[str] = set()
         self._required_imports: set[str] = set()
         self._field_counter = 1
         self._tuple_counter = 0
@@ -61,6 +61,17 @@ class ProtoSchemaGenerator:
         self._versioned_name_map: dict[str, str] = {}
         self._types_seen_collecting_enums: set[str] = set()
 
+    def _reset_state(self: Self) -> None:
+        """Reset internal state before generating a new schema."""
+        super()._reset_state()
+        self._required_imports = set()
+        self._field_counter = 1
+        self._tuple_counter = 0
+        self._collected_enums = []
+        self._collected_nested_messages = []
+        self._current_model_class = ""
+        self._types_seen_collecting_enums = set()
+
     def _generate_proto_schema(  # noqa: C901, PLR0912
         self: Self,
         model: type[BaseModel],
@@ -68,16 +79,9 @@ class ProtoSchemaGenerator:
         version: str | ModelVersion,
     ) -> ProtoMessage:
         """Generate a Protocol Buffer schema from a Pydantic model."""
-        self._types_seen = set()
-        self._required_imports = set()
-        self._field_counter = 1
-        self._collected_enums = []
-        self._collected_nested_messages = []
-
+        self._reset_state()
         if not hasattr(self, "_versioned_name_map") or not self._versioned_name_map:
             self._versioned_name_map = {}
-
-        self._types_seen_collecting_enums = set()
 
         self._versioned_name_map[model.__name__] = name
         self._current_model_class = model.__name__
@@ -85,7 +89,6 @@ class ProtoSchemaGenerator:
         self._current_model = (model.__name__, name)
         self._types_seen.add(model.__name__)
 
-        self._nested_models: dict[str, type[BaseModel]] = {}
         self._collect_nested_models(model)
 
         for nested_class_name in self._nested_models:
@@ -139,15 +142,6 @@ class ProtoSchemaGenerator:
             message["oneofs"] = oneofs_to_add
 
         return message
-
-    def _collect_nested_models(self: Self, model: type[BaseModel]) -> None:
-        """Recursively collect all nested BaseModel types.
-
-        Args:
-            model: Pydantic model class to scan for nested models.
-        """
-        nested = TypeInspector.collect_nested_models(model, self._types_seen)
-        self._nested_models.update(nested)
 
     def _collect_enums_from_model(self: Self, model: type[BaseModel]) -> None:
         """Recursively collect all enums from a model and its nested models.
@@ -642,11 +636,11 @@ class ProtoSchemaGenerator:
 
         return message
 
-    def generate_proto_file(
+    def generate_schema(
         self: Self,
         model: type[BaseModel],
         name: str,
-        version: str | ModelVersion,
+        version: str | ModelVersion | None = None,
         registry_name_map: dict[str, str] | None = None,
     ) -> ProtoFile:
         """Generate a complete .proto file definition.
@@ -660,10 +654,12 @@ class ProtoSchemaGenerator:
         Returns:
             Complete proto file definition.
         """
+        self._reset_state()
+
         if registry_name_map:
             self._versioned_name_map = registry_name_map.copy()
 
-        message = self._generate_proto_schema(model, name, version)
+        message = self._generate_proto_schema(model, name, version or "1.0.0")
 
         all_messages = []
         all_messages.extend(self._collected_nested_messages)
@@ -1044,7 +1040,7 @@ class ProtoExporter:
                 registered_model = self._registry.get_model(model_name, model_version)
                 registry_name_map[registered_model.__name__] = model_name
 
-        proto_file = self.generator.generate_proto_file(
+        proto_file = self.generator.generate_schema(
             model, name, version, registry_name_map
         )
         proto_content = self.generator.proto_file_to_string(proto_file)
@@ -1091,9 +1087,7 @@ class ProtoExporter:
 
             for version in versions:
                 model = self._registry.get_model(model_name, version)
-                proto_file = self.generator.generate_proto_file(
-                    model, model_name, version
-                )
+                proto_file = self.generator.generate_schema(model, model_name, version)
 
                 version_str = str(version).replace(".", "_")
                 filename = f"{model_name}_v{version_str}.proto"

@@ -300,7 +300,7 @@ def test_long_descriptions_handled(description_length: int) -> None:
         field: str = Field(description=description)
 
     generator = ProtoSchemaGenerator(include_docs=True)
-    proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
+    proto_file = generator.generate_schema(Model, "Model", "1.0.0")
     proto_string = generator.proto_file_to_string(proto_file)
 
     assert isinstance(proto_string, str)
@@ -385,7 +385,7 @@ def test_proto_compiler_validation_sample() -> None:
         created_at: datetime
 
     generator = ProtoSchemaGenerator(package="test")
-    proto_file = generator.generate_proto_file(TestModel, "TestModel", "1.0.0")
+    proto_file = generator.generate_schema(TestModel, "TestModel", "1.0.0")
     proto_content = generator.proto_file_to_string(proto_file)
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -438,7 +438,7 @@ def test_generated_proto_compiles_with_protoc(
     Model = create_model("GeneratedModel", **fields)  # type: ignore[call-overload]
 
     generator = ProtoSchemaGenerator(package="integration_test")
-    proto_file = generator.generate_proto_file(Model, "GeneratedModel", "1.0.0")
+    proto_file = generator.generate_schema(Model, "GeneratedModel", "1.0.0")
     proto_content = generator.proto_file_to_string(proto_file)
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -474,7 +474,7 @@ def test_complex_generated_proto_compiles_with_protoc(model: Any) -> None:
         pytest.skip("protoc not installed")
 
     generator = ProtoSchemaGenerator(package="integration_test")
-    proto_file = generator.generate_proto_file(model, model.__name__, "1.0.0")
+    proto_file = generator.generate_schema(model, model.__name__, "1.0.0")
     proto_content = generator.proto_file_to_string(proto_file)
 
     with tempfile.TemporaryDirectory() as tmpdir:

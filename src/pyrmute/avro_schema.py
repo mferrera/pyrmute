@@ -15,6 +15,7 @@ from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
 from ._registry import Registry
+from ._schema_generator import SchemaGeneratorBase
 from ._type_inspector import TypeInspector
 from .avro_types import (
     AvroArraySchema,
@@ -32,7 +33,7 @@ from .avro_types import (
 from .model_version import ModelVersion
 
 
-class AvroSchemaGenerator:
+class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
     """Generates Apache Avro schemas from Pydantic models."""
 
     AVRO_SYMBOL_REGEX: Final = re.compile("[A-Za-z_][A-Za-z0-9_]*")
@@ -70,25 +71,32 @@ class AvroSchemaGenerator:
                 "com.mycompany.events").
             include_docs: Whether to include field descriptions in schemas.
         """
+        super().__init__(include_docs=include_docs)
         self.namespace = namespace
-        self.include_docs = include_docs
-        self._types_seen: set[str] = set()
         self._collected_enums: dict[str, CachedAvroEnumSchema] = {}
         self._current_model = ("", "")
 
-    def generate_avro_schema(
+    def _reset_state(self) -> None:
+        """Reset internal state before generating a new schema."""
+        super()._reset_state()
+        self._collected_enums = {}
+        self._current_model = ("", "")
+
+    def generate_schema(
         self: Self,
         model: type[BaseModel],
         name: str,
-        namespace_version: str | ModelVersion | None = None,
+        version: str | ModelVersion | None = None,
+        registry_name_map: dict[str, str] | None = None,
     ) -> AvroRecordSchema:
         """Generate an Avro schema from a Pydantic model.
 
         Args:
             model: Pydantic model class.
             name: Model name.
-            namespace_version: Optional namespace version. This is often the model
+            version: Optional namespace version. This is often the model
                 version.
+            registry_name_map: Optional mapping of class names to registry names.
 
         Returns:
             Avro record schema.
@@ -140,15 +148,14 @@ class AvroSchemaGenerator:
             # }
             ```
         """  # noqa: E501
-        self._types_seen = set()
-        self._collected_enums = {}
-        # Mark the root type as seen to prevent infinite recursion
+        self._reset_state()
+
         self._current_model = (model.__name__, name)
         self._types_seen.add(model.__name__)
 
         full_namespace = self.namespace
-        if namespace_version:
-            version_str = str(namespace_version).replace(".", "_")
+        if version:
+            version_str = str(version).replace(".", "_")
             full_namespace = f"{self.namespace}.v{version_str}"
 
         schema: AvroRecordSchema = {
@@ -671,9 +678,9 @@ class AvroExporter:
         """
         model = self._registry.get_model(name, version)
         schema = (
-            self.generator.generate_avro_schema(model, name, version)
+            self.generator.generate_schema(model, name, version)
             if versioned_namespace
-            else self.generator.generate_avro_schema(model, name)
+            else self.generator.generate_schema(model, name)
         )
 
         if output_path:
@@ -722,9 +729,9 @@ class AvroExporter:
             for version in versions:
                 model = self._registry.get_model(model_name, version)
                 schema = (
-                    self.generator.generate_avro_schema(model, model_name, version)
+                    self.generator.generate_schema(model, model_name, version)
                     if versioned_namespace
-                    else self.generator.generate_avro_schema(model, model_name)
+                    else self.generator.generate_schema(model, model_name)
                 )
 
                 version_str = str(version).replace(".", "_")

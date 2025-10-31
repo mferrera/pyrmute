@@ -654,8 +654,8 @@ def test_avro_generator_namespace_formatting(
     class TestModel(BaseModel):
         name: str
 
-    schema = avro_generator.generate_avro_schema(TestModel, "Test")
-    schema_versioned = avro_generator.generate_avro_schema(TestModel, "Test", "1.2.3")
+    schema = avro_generator.generate_schema(TestModel, "Test")
+    schema_versioned = avro_generator.generate_schema(TestModel, "Test", "1.2.3")
 
     assert schema["namespace"] == "com.test"
     assert schema_versioned["namespace"] == "com.test.v1_2_3"

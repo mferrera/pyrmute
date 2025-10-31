@@ -495,7 +495,7 @@ def test_multiline_comment_in_proto_string() -> None:
         field: str = Field(description="Field line 1\nField line 2")
 
     generator = ProtoSchemaGenerator(include_docs=True)
-    proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
+    proto_file = generator.generate_schema(Model, "Model", "1.0.0")
     proto_string = generator.proto_file_to_string(proto_file)
 
     assert "Model docstring line 1" in proto_string
@@ -604,7 +604,7 @@ def test_field_without_label_in_proto_string() -> None:
         value: str
 
     generator = ProtoSchemaGenerator(use_proto3=True)
-    proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
+    proto_file = generator.generate_schema(Model, "Model", "1.0.0")
     proto_string = generator.proto_file_to_string(proto_file)
 
     # In proto3, scalar fields don't need labels
@@ -668,7 +668,7 @@ def test_protobuf_model_with_unioned_iterable_oneof(
 
     generator = ProtoSchemaGenerator(package="integration_test")
     with pytest.raises(ValueError, match="Python iterables to ProtoBuf"):
-        generator.generate_proto_file(Model, "Model", "1.0.0")
+        generator.generate_schema(Model, "Model", "1.0.0")
 
 
 def test_protobuf_model_with_unioned_mapping_oneof(
@@ -686,7 +686,7 @@ def test_protobuf_model_with_unioned_mapping_oneof(
     with pytest.raises(
         ValueError, match="Cannot encode unions with Python dictionaries"
     ):
-        generator.generate_proto_file(Model, "Model", "1.0.0")
+        generator.generate_schema(Model, "Model", "1.0.0")
 
 
 def test_proto_file_with_options() -> None:
@@ -696,7 +696,7 @@ def test_proto_file_with_options() -> None:
         value: str
 
     generator = ProtoSchemaGenerator()
-    proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
+    proto_file = generator.generate_schema(Model, "Model", "1.0.0")
 
     proto_file["options"] = {
         "go_package": "github.com/example/api",
@@ -915,7 +915,7 @@ def test_proto_file_with_imports() -> None:
         timestamp: datetime
 
     generator = ProtoSchemaGenerator()
-    proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
+    proto_file = generator.generate_schema(Model, "Model", "1.0.0")
     proto_string = generator.proto_file_to_string(proto_file)
 
     assert "google/protobuf/timestamp.proto" in proto_string
@@ -1412,7 +1412,7 @@ def test_very_long_comment() -> None:
         field: str = Field(description=long_desc)
 
     generator = ProtoSchemaGenerator(include_docs=True)
-    proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
+    proto_file = generator.generate_schema(Model, "Model", "1.0.0")
     proto_string = generator.proto_file_to_string(proto_file)
 
     assert "x" * 100 in proto_string
@@ -1427,7 +1427,7 @@ def test_comment_with_proto_syntax() -> None:
         field: str = Field(description="message Status { ACTIVE = 1; }")
 
     generator = ProtoSchemaGenerator(include_docs=True)
-    proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
+    proto_file = generator.generate_schema(Model, "Model", "1.0.0")
     proto_string = generator.proto_file_to_string(proto_file)
 
     assert "// Model with message" in proto_string
@@ -1442,7 +1442,7 @@ def test_unicode_in_comments() -> None:
         field: str = Field(description="Unicode: 你好 мир שלום")
 
     generator = ProtoSchemaGenerator(include_docs=True)
-    proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
+    proto_file = generator.generate_schema(Model, "Model", "1.0.0")
     proto_string = generator.proto_file_to_string(proto_file)
 
     assert "🚀" in proto_string or "émojis" in proto_string
@@ -1543,7 +1543,7 @@ def test_multiple_timestamp_fields() -> None:
         deleted_at: datetime
 
     generator = ProtoSchemaGenerator()
-    proto_file = generator.generate_proto_file(Model, "Model", "1.0.0")
+    proto_file = generator.generate_schema(Model, "Model", "1.0.0")
 
     imports = proto_file.get("imports", [])
     timestamp_imports = [i for i in imports if "timestamp" in i.lower()]
@@ -1561,7 +1561,7 @@ def test_nested_timestamp_fields() -> None:
         own_timestamp: datetime
 
     generator = ProtoSchemaGenerator()
-    proto_file = generator.generate_proto_file(Outer, "Outer", "1.0.0")
+    proto_file = generator.generate_schema(Outer, "Outer", "1.0.0")
 
     assert "google/protobuf/timestamp.proto" in proto_file.get("imports", [])
 
