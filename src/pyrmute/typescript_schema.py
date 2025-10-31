@@ -399,6 +399,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
             return self._convert_tuple(python_type, field_info)
 
         if TypeInspector.is_base_model(python_type):
+            self._register_nested_model(python_type)
             return self._versioned_name_map.get(  # type: ignore[no-any-return]
                 python_type.__name__, python_type.__name__
             )
