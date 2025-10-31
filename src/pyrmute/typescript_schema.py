@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from ._registry import Registry
-from ._schema_generator import SchemaGeneratorBase
+from ._schema_generator import SchemaGeneratorBase, TypeInfo
 from ._type_inspector import TypeInspector
 from .model_version import ModelVersion
 
@@ -228,7 +228,8 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         """
         context = self._analyze_field(field_info)
         ts_name = self._get_field_name(field_name, field_info)
-        ts_type = self._convert_type(field_info.annotation, field_info)
+        type_info = self._convert_type(field_info.annotation, field_info)
+        ts_type = type_info.type_representation
 
         is_required = field_info.is_required()
         origin = get_origin(field_info.annotation)
@@ -273,8 +274,13 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
                     ts_name = self._get_computed_field_ts_name(
                         field_name, computed_field_info
                     )
-                    ts_type = self._convert_type(computed_field_info.return_type, None)
-                    lines.append(f"  {readonly_marker}{ts_name}: {ts_type};")
+                    type_info = self._convert_type(
+                        computed_field_info.return_type, None
+                    )
+                    lines.append(
+                        f"  {readonly_marker}{ts_name}: "
+                        f"{type_info.type_representation};"
+                    )
 
         return lines
 
@@ -340,26 +346,30 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
 
     def _convert_type(  # noqa: PLR0911, PLR0912, C901
         self: Self, python_type: Any, field_info: FieldInfo | None = None
-    ) -> str:
+    ) -> TypeInfo:
         """Convert Python type to TypeScript type."""
         if python_type is None or python_type is type(None):
-            return "null"
+            return TypeInfo(type_representation="null")
 
         if isinstance(python_type, str):
-            return "any"
+            return TypeInfo(type_representation="any")
 
         if python_type in self._BASIC_TYPE_MAPPING:
-            return self._BASIC_TYPE_MAPPING[python_type]
+            return TypeInfo(type_representation=self._BASIC_TYPE_MAPPING[python_type])
 
         if python_type in self._DATE_TYPE_MAPPING:
             date_format = self.config.get("date_format", "iso")
-            return self._DATE_TYPE_MAPPING[python_type].get(date_format, "string")
+            return TypeInfo(
+                type_representation=self._DATE_TYPE_MAPPING[python_type].get(
+                    date_format, "string"
+                )
+            )
 
         if python_type in (UUID, Path):
-            return "string"
+            return TypeInfo(type_representation="string")
 
         if python_type is Decimal:
-            return "number"
+            return TypeInfo(type_representation="number")
 
         if TypeInspector.is_enum(python_type):
             return self._convert_enum(python_type)
@@ -384,32 +394,37 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
 
         if TypeInspector.is_base_model(python_type):
             self._register_nested_model(python_type)
-            return self._get_model_schema_name(python_type.__name__)
+            model_name = self._get_model_schema_name(python_type.__name__)
+            return TypeInfo(type_representation=model_name)
 
         if hasattr(python_type, "__origin__") and python_type.__origin__ is Generic:
-            return "any"
+            return TypeInfo(type_representation="any")
 
-        return "any"
+        return TypeInfo(type_representation="any")
 
     def _convert_union(
         self: Self, args: tuple[Any, ...], field_info: FieldInfo | None
-    ) -> str:
+    ) -> TypeInfo:
         """Convert Union type to TypeScript."""
         non_none_types = [arg for arg in args if arg is not type(None)]
         has_none = type(None) in args
 
         if not non_none_types:
-            return "null"
+            return TypeInfo(type_representation="null")
 
         if len(non_none_types) == 1:
-            ts_type = self._convert_type(non_none_types[0], field_info)
+            type_info = self._convert_type(non_none_types[0], field_info)
+            ts_type = type_info.type_representation
             if has_none:
                 if field_info and not field_info.is_required():
-                    return ts_type
-                return f"{ts_type} | null"
-            return ts_type
+                    return TypeInfo(type_representation=ts_type)
+                return TypeInfo(type_representation=f"{ts_type} | null")
+            return type_info
 
-        union_types = [self._convert_type(arg, field_info) for arg in non_none_types]
+        union_types = []
+        for arg in non_none_types:
+            type_info = self._convert_type(arg, field_info)
+            union_types.append(type_info.type_representation)
 
         if has_none:
             if field_info and not field_info.is_required():
@@ -418,72 +433,80 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
                 union_types.append("null")
 
         unique_types = list(dict.fromkeys(union_types))
-        return " | ".join(unique_types)
+        return TypeInfo(type_representation=" | ".join(unique_types))
 
-    def _convert_literal(self: Self, args: tuple[Any, ...]) -> str:
+    def _convert_literal(self: Self, args: tuple[Any, ...]) -> TypeInfo:
         """Convert Literal type to TypeScript."""
         if not args:
-            return "never"
+            return TypeInfo(type_representation="never")
 
         literal_values = [self._format_literal_value(arg) for arg in args]
-        return " | ".join(literal_values)
+        return TypeInfo(type_representation=" | ".join(literal_values))
 
     def _convert_dict(
         self: Self, args: tuple[Any, ...], field_info: FieldInfo | None
-    ) -> str:
+    ) -> TypeInfo:
         """Convert dict type to TypeScript."""
         if args and len(args) == 2:  # noqa: PLR2004
-            value_type = self._convert_type(args[1], None)
-            return f"Record<string, {value_type}>"
-        return "Record<string, any>"
+            value_type_info = self._convert_type(args[1], None)
+            value_type = value_type_info.type_representation
+            return TypeInfo(type_representation=f"Record<string, {value_type}>")
+        return TypeInfo(type_representation="Record<string, any>")
 
     def _convert_list(
         self: Self, args: tuple[Any, ...], field_info: FieldInfo | None
-    ) -> str:
+    ) -> TypeInfo:
         """Convert list type to TypeScript."""
         if args:
-            item_type = self._convert_type(args[0], None)
-            return f"{item_type}[]"
-        return "any[]"
+            item_type_info = self._convert_type(args[0], None)
+            item_type = item_type_info.type_representation
+            return TypeInfo(type_representation=f"{item_type}[]")
+        return TypeInfo(type_representation="any[]")
 
     def _convert_tuple(
         self: Self, python_type: Any, field_info: FieldInfo | None
-    ) -> str:
+    ) -> TypeInfo:
         """Convert tuple type to TypeScript."""
         element_types = TypeInspector.get_tuple_element_types(python_type)
         if not element_types:
-            return "any[]"
+            return TypeInfo(type_representation="any[]")
 
         if len(element_types) == 2 and element_types[1] is Ellipsis:  # noqa: PLR2004
-            item_type = self._convert_type(element_types[0], None)
-            return f"{item_type}[]"
+            item_type_info = self._convert_type(element_types[0], None)
+            item_type = item_type_info.type_representation
+            return TypeInfo(type_representation=f"{item_type}[]")
 
-        element_types = [self._convert_type(element, None) for element in element_types]
-        return f"[{', '.join(element_types)}]"
+        ts_element_types = []
+        for element in element_types:
+            type_info = self._convert_type(element, None)
+            ts_element_types.append(type_info.type_representation)
+        return TypeInfo(type_representation=f"[{', '.join(ts_element_types)}]")
 
     def _should_collect_enum(self, enum_class: type[Enum]) -> bool:
         """Check if enum should be collected as a separate definition.
 
-        TypeScript only collects enums when using 'enum' style.  Union style inlines the
+        TypeScript only collects enums when using 'enum' style. Union style inlines the
         values.
         """
         return self.config.get("enum_style", "union") == "enum"
 
-    def _convert_enum(self: Self, enum_class: type[Enum]) -> str:
+    def _convert_enum(self: Self, enum_class: type[Enum]) -> TypeInfo:
         """Convert Python Enum to TypeScript type reference.
 
         Args:
             enum_class: Python Enum class.
 
         Returns:
-            TypeScript enum reference or union type.
+            TypeInfo with TypeScript enum reference or union type.
         """
         enum_name = enum_class.__name__
 
         if self._should_collect_enum(enum_class):
             self._register_enum(enum_class)
-            return enum_name
-        return self._convert_enum_to_union_type(enum_class)
+            return TypeInfo(type_representation=enum_name)
+
+        enum_union = self._convert_enum_to_union_type(enum_class)
+        return TypeInfo(type_representation=enum_union)
 
     def _convert_enum_to_union_type(self: Self, enum_class: type[Enum]) -> str:
         """Convert Python Enum to TypeScript union type (inline values).

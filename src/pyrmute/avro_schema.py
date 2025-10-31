@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from ._registry import Registry
-from ._schema_generator import SchemaGeneratorBase
+from ._schema_generator import SchemaGeneratorBase, TypeInfo
 from ._type_inspector import TypeInspector
 from .avro_types import (
     AvroArraySchema,
@@ -25,7 +25,6 @@ from .avro_types import (
     AvroMapSchema,
     AvroRecordSchema,
     AvroSchema,
-    AvroType,
     AvroUnion,
     CachedAvroEnumSchema,
 )
@@ -203,7 +202,8 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
 
         context = self._analyze_field(field_info)
 
-        avro_type = self._convert_type(field_info.annotation, field_info)
+        type_info = self._convert_type(field_info.annotation, field_info)
+        avro_type = type_info.type_representation
 
         if context["is_optional"]:
             # Includes None. Wrap in union with null first
@@ -234,7 +234,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
         self: Self,
         python_type: Any,
         field_info: FieldInfo | None = None,
-    ) -> AvroType:
+    ) -> TypeInfo:
         """Convert Python type annotation to Avro type.
 
         Args:
@@ -242,69 +242,85 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
             field_info: Optional field info for constraint checking.
 
         Returns:
-            Avro type specification (string, list, or dict).
+            TypeInfo containing Avro type specification (string, list, or dict).
         """
         if python_type is None:
-            return "null"
+            return TypeInfo(type_representation="null")
 
         if python_type is int:
             if field_info:
-                return self._optimize_int_type(field_info)
-            return "int"
+                return TypeInfo(type_representation=self._optimize_int_type(field_info))
+            return TypeInfo(type_representation="int")
 
         if python_type in self._LOGICAL_TYPE_MAPPING:
-            return self._LOGICAL_TYPE_MAPPING[python_type].copy()
+            return TypeInfo(
+                type_representation=self._LOGICAL_TYPE_MAPPING[python_type].copy()
+            )
 
         if TypeInspector.is_enum(python_type):
-            return self._convert_enum(python_type)
+            enum_result = self._convert_enum(python_type)
+            return TypeInfo(type_representation=enum_result)
 
         # Check for bare list or dict before checking origin
         if python_type is list:
             arr_schema: AvroArraySchema = {"type": "array", "items": "string"}
-            return arr_schema
+            return TypeInfo(type_representation=arr_schema)
 
         if python_type is dict:
             m_schema: AvroMapSchema = {"type": "map", "values": "string"}
-            return m_schema
+            return TypeInfo(type_representation=m_schema)
 
         origin = get_origin(python_type)
         if origin is not None:
             args = get_args(python_type)
 
             if TypeInspector.is_union_type(origin):
-                return self._convert_union(args)
+                union_result = self._convert_union(args)
+                return TypeInfo(type_representation=union_result)
 
             if TypeInspector.is_list_like(origin):
-                item_type = self._convert_type(args[0]) if args else "string"
+                item_type_info = (
+                    self._convert_type(args[0])
+                    if args
+                    else TypeInfo(type_representation="string")
+                )
+                item_type = item_type_info.type_representation
                 array_schema: AvroArraySchema = {"type": "array", "items": item_type}
-                return array_schema
+                return TypeInfo(type_representation=array_schema)
 
             if TypeInspector.is_dict_like(origin, python_type):
-                value_type = self._convert_type(args[1]) if len(args) > 1 else "string"
+                value_type_info = (
+                    self._convert_type(args[1])
+                    if len(args) > 1
+                    else TypeInfo(type_representation="string")
+                )
+                value_type = value_type_info.type_representation
                 map_schema: AvroMapSchema = {"type": "map", "values": value_type}
-                return map_schema
+                return TypeInfo(type_representation=map_schema)
 
             if origin is tuple:
-                return self._convert_tuple(python_type)
+                tuple_result = self._convert_tuple(python_type)
+                return TypeInfo(type_representation=tuple_result)
 
         if TypeInspector.is_base_model(python_type):
-            return self._generate_nested_record_schema(python_type)
+            record_result = self._generate_nested_record_schema(python_type)
+            return TypeInfo(type_representation=record_result)
 
         if python_type in self._BASIC_TYPE_MAPPING:
-            return self._BASIC_TYPE_MAPPING[python_type]
+            return TypeInfo(type_representation=self._BASIC_TYPE_MAPPING[python_type])
 
         type_str = str(python_type).lower()
         if "str" in type_str:
-            return "string"
+            return TypeInfo(type_representation="string")
         if "int" in type_str:
-            return "int"
+            return TypeInfo(type_representation="int")
         if "float" in type_str:
-            return "double"
+            return TypeInfo(type_representation="double")
         if "bool" in type_str:
-            return "boolean"
+            return TypeInfo(type_representation="boolean")
         if "bytes" in type_str:
-            return "bytes"
-        return "string"
+            return TypeInfo(type_representation="bytes")
+        return TypeInfo(type_representation="string")
 
     def _optimize_int_type(self: Self, field_info: FieldInfo) -> str:
         """Choose between int (32-bit) and long (64-bit) based on constraints.
@@ -423,7 +439,8 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
             if arg is type(None):
                 avro_types.append("null")
             else:
-                avro_type = self._convert_type(arg)
+                type_info = self._convert_type(arg)
+                avro_type = type_info.type_representation
                 if isinstance(avro_type, list):
                     # Flatten nested unions
                     avro_types.extend(avro_type)
@@ -474,7 +491,8 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
         type_strs: set[str] = set()
 
         for arg in element_types:
-            avro_type = self._convert_type(arg)
+            type_info = self._convert_type(arg)
+            avro_type = type_info.type_representation
             if isinstance(avro_type, list):
                 # Flatten unions
                 for t in avro_type:
