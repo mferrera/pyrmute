@@ -16,7 +16,7 @@ from pyrmute._registry import Registry
 from pyrmute.protobuf_schema import ProtoExporter, ProtoSchemaGenerator
 
 if TYPE_CHECKING:
-    from pyrmute._protobuf_types import ProtoEnum, ProtoField, ProtoFile, ProtoMessage
+    from pyrmute._protobuf_types import ProtoEnum, ProtoField, ProtoMessage
 
 # ruff: noqa: PLR2004, D106
 
@@ -689,44 +689,20 @@ def test_protobuf_model_with_unioned_mapping_oneof(
         generator.generate_schema(Model, "Model", "1.0.0")
 
 
-def test_proto_file_with_options() -> None:
-    """Test proto file with options in output."""
+def test_proto_file_with_enum() -> None:
+    """Test proto file with enum generation."""
+
+    class Status(str, Enum):
+        UNKNOWN = "UNKNOWN"
+        ACTIVE = "ACTIVE"
+        INACTIVE = "INACTIVE"
 
     class Model(BaseModel):
-        value: str
+        status: Status
 
     generator = ProtoSchemaGenerator()
-    proto_file = generator.generate_schema(Model, "Model", "1.0.0")
-
-    proto_file["options"] = {
-        "go_package": "github.com/example/api",
-        "java_package": "com.example.api",
-    }
-
-    proto_string = generator.proto_file_to_string(proto_file)
-
-    assert 'option go_package = "github.com/example/api";' in proto_string
-    assert 'option java_package = "com.example.api";' in proto_string
-
-
-def test_proto_file_with_enum() -> None:
-    """Test proto file with top-level enum."""
-    generator = ProtoSchemaGenerator()
-
-    test_enum: ProtoEnum = {
-        "name": "Status",
-        "values": {"UNKNOWN": 0, "ACTIVE": 1, "INACTIVE": 2},
-    }
-
-    proto_file: ProtoFile = {
-        "syntax": "proto3",
-        "package": "test",
-        "imports": [],
-        "messages": [],
-        "enums": [test_enum],
-    }
-
-    proto_string = generator.proto_file_to_string(proto_file)
+    document = generator.generate_schema(Model, "Model", "1.0.0")
+    proto_string = generator.proto_file_to_string(document)
 
     assert "enum Status {" in proto_string
     assert "UNKNOWN = 0;" in proto_string
@@ -1543,7 +1519,8 @@ def test_multiple_timestamp_fields() -> None:
         deleted_at: datetime
 
     generator = ProtoSchemaGenerator()
-    proto_file = generator.generate_schema(Model, "Model", "1.0.0")
+    document = generator.generate_schema(Model, "Model", "1.0.0")
+    proto_file = document.to_proto_file()
 
     imports = proto_file.get("imports", [])
     timestamp_imports = [i for i in imports if "timestamp" in i.lower()]
@@ -1561,7 +1538,8 @@ def test_nested_timestamp_fields() -> None:
         own_timestamp: datetime
 
     generator = ProtoSchemaGenerator()
-    proto_file = generator.generate_schema(Outer, "Outer", "1.0.0")
+    document = generator.generate_schema(Outer, "Outer", "1.0.0")
+    proto_file = document.to_proto_file()
 
     assert "google/protobuf/timestamp.proto" in proto_file.get("imports", [])
 

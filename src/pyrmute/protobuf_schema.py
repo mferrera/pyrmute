@@ -11,14 +11,15 @@ from uuid import UUID
 from pydantic import BaseModel, create_model
 from pydantic.fields import FieldInfo
 
-from ._protobuf_types import ProtoEnum, ProtoField, ProtoFile, ProtoMessage, ProtoOneOf
+from ._protobuf_types import ProtoEnum, ProtoField, ProtoMessage, ProtoOneOf
 from ._registry import Registry
+from ._schema_documents import ProtoSchemaDocument
 from ._schema_generator import SchemaGeneratorBase, TypeInfo
 from ._type_inspector import TypeInspector
 from .model_version import ModelVersion
 
 
-class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
+class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
     """Generates Protocol Buffer schemas from Pydantic models."""
 
     _BASIC_TYPE_MAPPING: Mapping[type, str] = {
@@ -585,7 +586,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
         name: str,
         version: str | ModelVersion | None = None,
         registry_name_map: dict[str, str] | None = None,
-    ) -> ProtoFile:
+    ) -> ProtoSchemaDocument:
         """Generate a complete .proto file definition.
 
         Args:
@@ -609,25 +610,25 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
         all_messages.extend(self._collected_nested_messages)
         all_messages.append(message)
 
-        proto_file: ProtoFile = {
-            "syntax": "proto3" if self.use_proto3 else "proto2",
-            "package": self.package,
-            "imports": sorted(self._required_imports),
-            "messages": all_messages,
-            "enums": self._enum_schemas,
-        }
+        return ProtoSchemaDocument(
+            syntax="proto3" if self.use_proto3 else "proto2",
+            package=self.package,
+            main=message,
+            auxiliary_messages=self._collected_nested_messages,
+            enums=self._enum_schemas,
+            imports=sorted(self._required_imports),
+        )
 
-        return proto_file
-
-    def proto_file_to_string(self: Self, proto_file: ProtoFile) -> str:
-        """Convert ProtoFile definition to .proto file string.
+    def proto_file_to_string(self: Self, document: ProtoSchemaDocument) -> str:
+        """Convert ProtoSchemaDocument definition to .proto file string.
 
         Args:
-            proto_file: Proto file definition.
+            document: Proto schema document.
 
         Returns:
             Proto file content as string.
         """
+        proto_file = document.to_proto_file()
         lines = []
 
         lines.append(f'syntax = "{proto_file["syntax"]}";')
@@ -984,10 +985,10 @@ class ProtoExporter:
                 registered_model = self._registry.get_model(model_name, model_version)
                 registry_name_map[registered_model.__name__] = model_name
 
-        proto_file = self.generator.generate_schema(
+        document = self.generator.generate_schema(
             model, name, version, registry_name_map
         )
-        proto_content = self.generator.proto_file_to_string(proto_file)
+        proto_content = self.generator.proto_file_to_string(document)
 
         if output_path:
             output_path = Path(output_path)
@@ -1037,7 +1038,7 @@ class ProtoExporter:
 
             for version in versions:
                 model = self._registry.get_model(model_name, version)
-                proto_file = self.generator.generate_schema(
+                document = self.generator.generate_schema(
                     model, model_name, version, registry_name_map
                 )
 
@@ -1045,7 +1046,7 @@ class ProtoExporter:
                 filename = f"{model_name}_v{version_str}.proto"
                 filepath = output_dir / filename
 
-                proto_content = self.generator.proto_file_to_string(proto_file)
+                proto_content = self.generator.proto_file_to_string(document)
                 filepath.write_text(proto_content)
 
                 all_schemas[model_name][str(version)] = proto_content
