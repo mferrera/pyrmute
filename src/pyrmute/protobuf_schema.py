@@ -63,11 +63,10 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
         self._required_imports: set[str] = set()
         self._field_counter = 1
         self._tuple_counter = 0
-        self._collected_enums: list[ProtoEnum] = []
         self._collected_nested_messages: list[ProtoMessage] = []
         self._current_model_class = ""
         self._versioned_name_map: dict[str, str] = {}
-        self._types_seen_collecting_enums: set[str] = set()
+        self._enum_schemas: list[ProtoEnum] = []
 
     def _reset_state(self: Self) -> None:
         """Reset internal state before generating a new schema."""
@@ -75,12 +74,11 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
         self._required_imports = set()
         self._field_counter = 1
         self._tuple_counter = 0
-        self._collected_enums = []
         self._collected_nested_messages = []
         self._current_model_class = ""
-        self._types_seen_collecting_enums = set()
+        self._enum_schemas = []
 
-    def _generate_proto_schema(  # noqa: C901, PLR0912
+    def _generate_proto_schema(
         self: Self,
         model: type[BaseModel],
         name: str,
@@ -98,16 +96,6 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
         self._types_seen.add(model.__name__)
 
         self._collect_nested_models(model)
-
-        for nested_class_name in self._nested_models:
-            if nested_class_name != model.__name__:
-                self._versioned_name_map[nested_class_name] = nested_class_name
-
-            self._collect_enums_from_model(model)
-
-        for nested_model in self._nested_models.values():
-            if nested_model.__name__ != model.__name__:
-                self._collect_enums_from_model(nested_model)
 
         for nested_class_name, nested_model in self._nested_models.items():
             if nested_class_name != model.__name__:
@@ -150,66 +138,6 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
             message["oneofs"] = oneofs_to_add
 
         return message
-
-    def _collect_enums_from_model(self: Self, model: type[BaseModel]) -> None:
-        """Recursively collect all enums from a model and its nested models.
-
-        Args:
-            model: Pydantic model class to scan for enums.
-        """
-        if not hasattr(self, "_types_seen_collecting_enums"):
-            self._types_seen_collecting_enums = set()
-
-        if model.__name__ in self._types_seen_collecting_enums:
-            return
-
-        self._types_seen_collecting_enums.add(model.__name__)
-
-        for field_info in model.model_fields.values():
-            self._collect_enums_from_type(field_info.annotation)
-
-    def _collect_enums_from_type(self: Self, python_type: Any) -> None:  # noqa: C901
-        """Recursively collect enums from a type annotation.
-
-        Args:
-            python_type: Python type to scan for enums.
-        """
-        if (
-            python_type is None
-            or python_type is type(None)
-            or isinstance(python_type, str)
-        ):
-            return
-
-        if TypeInspector.is_enum(python_type):
-            enum_name = python_type.__name__
-            if enum_name not in self._types_seen:
-                self._types_seen.add(enum_name)
-                enum_def = self._generate_enum_schema(python_type)
-                self._collected_enums.append(enum_def)
-            return
-
-        if TypeInspector.is_base_model(python_type):
-            self._collect_enums_from_model(python_type)
-            return
-
-        origin = get_origin(python_type)
-        args = get_args(python_type)
-
-        if TypeInspector.is_union_type(origin):
-            for arg in args:
-                if arg is not type(None):
-                    self._collect_enums_from_type(arg)
-            return
-
-        if TypeInspector.is_list_like(origin) or origin is tuple:
-            for arg in args:
-                self._collect_enums_from_type(arg)
-            return
-
-        if TypeInspector.is_dict_like(origin, python_type):
-            for arg in args:
-                self._collect_enums_from_type(arg)
 
     def _generate_oneof_fields(
         self: Self,
@@ -560,10 +488,10 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
         """
         enum_name = enum_class.__name__
 
-        if enum_name not in self._types_seen:
-            self._types_seen.add(enum_name)
+        if enum_name not in self._collected_enums:
+            self._register_enum(enum_class)
             enum_def = self._generate_enum_schema(enum_class)
-            self._collected_enums.append(enum_def)
+            self._enum_schemas.append(enum_def)
 
         return ProtoTypeInfo(type_name=enum_name, is_repeated=False)
 
@@ -681,7 +609,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
             "package": self.package,
             "imports": sorted(self._required_imports),
             "messages": all_messages,
-            "enums": self._collected_enums,
+            "enums": self._enum_schemas,
         }
 
         return proto_file

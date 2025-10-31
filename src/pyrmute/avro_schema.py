@@ -72,14 +72,14 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
         """
         super().__init__(include_docs=include_docs)
         self.namespace = namespace
-        self._collected_enums: dict[str, CachedAvroEnumSchema] = {}
         self._current_model = ("", "")
+        self._enum_schemas: dict[str, CachedAvroEnumSchema] = {}
 
     def _reset_state(self) -> None:
         """Reset internal state before generating a new schema."""
         super()._reset_state()
-        self._collected_enums = {}
         self._current_model = ("", "")
+        self._enum_schemas = {}
 
     def generate_schema(
         self: Self,
@@ -349,8 +349,10 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
         """
         enum_name = enum_class.__name__
 
-        if enum_name in self._collected_enums:
-            return self._collected_enums[enum_name]["namespace_ref"]
+        self._register_enum(enum_class)
+
+        if enum_name in self._enum_schemas:
+            return self._enum_schemas[enum_name]["namespace_ref"]
 
         symbols = []
         for member in enum_class:
@@ -373,7 +375,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
         }
 
         namespace_ref = f"{enum_namespace}.{enum_name}"
-        self._collected_enums[enum_name] = {
+        self._enum_schemas[enum_name] = {
             "schema": enum_schema,
             "namespace_ref": namespace_ref,
         }

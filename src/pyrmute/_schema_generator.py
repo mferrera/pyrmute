@@ -1,7 +1,8 @@
 """Base class for schema generators."""
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, Self, TypedDict, TypeVar
+from enum import Enum
+from typing import Any, Generic, Self, TypedDict, TypeVar
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
@@ -9,9 +10,6 @@ from pydantic_core import PydanticUndefined
 
 from ._type_inspector import TypeInspector
 from .model_version import ModelVersion
-
-if TYPE_CHECKING:
-    from enum import Enum
 
 SchemaType = TypeVar("SchemaType")
 
@@ -31,7 +29,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
     def __init__(self: Self, include_docs: bool = True):
         self.include_docs = include_docs
         self._types_seen: set[str] = set()
-        self._enums_encountered: dict[str, type[Enum]] = {}
+        self._collected_enums: dict[str, type[Enum]] = {}
         self._nested_models: dict[str, type[BaseModel]] = {}
 
     @abstractmethod
@@ -47,7 +45,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
     def _reset_state(self: Self) -> None:
         """Reset internal state before generating a new schema."""
         self._types_seen = set()
-        self._enums_encountered = {}
+        self._collected_enums = {}
         self._nested_models = {}
 
     @abstractmethod
@@ -163,3 +161,38 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
                 return None
 
         return None
+
+    def _should_collect_enum(self, enum_class: type[Enum]) -> bool:
+        """Check if enum should be collected as a separate definition.
+
+        Some formats (TypeScript union style) inline enum values instead of creating
+        separate enum definitions. This can be overriden in such cases.
+
+        Args:
+            enum_class: Enum class to check.
+
+        Returns:
+            True if enum should be collected as a definition.
+        """
+        return True
+
+    def _register_enum(self, enum_class: type[Enum]) -> None:
+        """Register an enum that's been encountered.
+
+        Args:
+            enum_class: Enum class to register.
+        """
+        enum_name = enum_class.__name__
+        if enum_name not in self._collected_enums:
+            self._collected_enums[enum_name] = enum_class
+
+    @abstractmethod
+    def _convert_enum(self, enum_class: type[Enum]) -> Any:
+        """Convert Python Enum to target format.
+
+        Args:
+            enum_class: Python Enum class.
+
+        Returns:
+            Enum representation in target format.
+        """
