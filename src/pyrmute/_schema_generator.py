@@ -64,12 +64,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
             Target schema type representation.
         """
 
-    def _collect_nested_models(self: Self, model: type[BaseModel]) -> None:
-        """Shared implementation using TypeInspector."""
-        nested = TypeInspector.collect_nested_models(model, self._types_seen)
-        self._nested_models.update(nested)
-
-    def _analyze_field(self, field_info: FieldInfo) -> FieldContext:
+    def _analyze_field(self: Self, field_info: FieldInfo) -> FieldContext:
         """Analyze field to determine its properties.
 
         This extracts common field analysis logic that all generators need.
@@ -97,7 +92,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
 
     @abstractmethod
     def _generate_field_schema(
-        self,
+        self: Self,
         field_name: str,
         field_info: FieldInfo,
         model: type[BaseModel],
@@ -113,7 +108,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
             Field schema in target format.
         """
 
-    def _get_field_name(self, field_name: str, field_info: FieldInfo) -> str:
+    def _get_field_name(self: Self, field_name: str, field_info: FieldInfo) -> str:
         """Get the schema field name, considering aliases.
 
         Default implementation returns the original field name.  Subclasses can override
@@ -128,7 +123,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
         """
         return field_name
 
-    def _has_default_value(self, field_info: FieldInfo) -> bool:
+    def _has_default_value(self: Self, field_info: FieldInfo) -> bool:
         """Check if field has a default value.
 
         Args:
@@ -142,7 +137,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
             or field_info.default_factory is not None
         )
 
-    def _get_default_value(self, field_info: FieldInfo) -> Any:
+    def _get_default_value(self: Self, field_info: FieldInfo) -> Any:
         """Get the default value for a field.
 
         Args:
@@ -162,7 +157,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
 
         return None
 
-    def _should_collect_enum(self, enum_class: type[Enum]) -> bool:
+    def _should_collect_enum(self: Self, enum_class: type[Enum]) -> bool:
         """Check if enum should be collected as a separate definition.
 
         Some formats (TypeScript union style) inline enum values instead of creating
@@ -176,7 +171,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
         """
         return True
 
-    def _register_enum(self, enum_class: type[Enum]) -> None:
+    def _register_enum(self: Self, enum_class: type[Enum]) -> None:
         """Register an enum that's been encountered.
 
         Args:
@@ -187,7 +182,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
             self._collected_enums[enum_name] = enum_class
 
     @abstractmethod
-    def _convert_enum(self, enum_class: type[Enum]) -> Any:
+    def _convert_enum(self: Self, enum_class: type[Enum]) -> Any:
         """Convert Python Enum to target format.
 
         Args:
@@ -196,3 +191,25 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
         Returns:
             Enum representation in target format.
         """
+
+    def _collect_nested_models(self: Self, model: type[BaseModel]) -> None:
+        """Recursively collect all nested BaseModel types.
+
+        This uses TypeInspector to find all nested models and stores them for later
+        schema generation.
+
+        Args:
+            model: Pydantic model class to scan for nested models.
+        """
+        nested = TypeInspector.collect_nested_models(model, self._types_seen)
+        self._nested_models.update(nested)
+
+    def _register_nested_model(self: Self, model: type[BaseModel]) -> None:
+        """Register a nested model that's been encountered.
+
+        Args:
+            model: Nested model to register.
+        """
+        model_name = model.__name__
+        if model_name not in self._nested_models and model_name not in self._types_seen:
+            self._nested_models[model_name] = model

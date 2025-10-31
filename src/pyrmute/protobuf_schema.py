@@ -444,6 +444,8 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoFile]):
         model_name = python_type.__name__
         proto_name = self._versioned_name_map.get(model_name, model_name)
 
+        self._register_nested_model(python_type)
+
         if model_name not in self._types_seen:
             self._types_seen.add(model_name)
 

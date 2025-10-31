@@ -152,6 +152,8 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
         self._current_model = (model.__name__, name)
         self._types_seen.add(model.__name__)
 
+        self._collect_nested_models(model)
+
         full_namespace = self.namespace
         if version:
             version_str = str(version).replace(".", "_")
@@ -530,6 +532,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
             ```
         """
         type_name = model.__name__
+        self._register_nested_model(model)
 
         # If we've seen this type before, just reference it
         if type_name in self._types_seen:
