@@ -10,7 +10,6 @@ from uuid import UUID
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
-from pydantic_core import PydanticUndefined
 
 from ._registry import Registry
 from ._schema_generator import SchemaGeneratorBase
@@ -249,29 +248,61 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         lines.append("};")
         return "\n".join(lines)
 
-    def _generate_field_lines(self: Self, model: type[BaseModel]) -> list[str]:
+    def _generate_field_schema(
+        self,
+        field_name: str,
+        field_info: FieldInfo,
+        model: type[BaseModel],
+    ) -> dict[str, Any]:
+        """Generate field schema information.
+
+        Returns a dict with all field information that can be formatted differently
+        based on style (interface/type/zod).
+
+        Args:
+            field_name: Name of the field.
+            field_info: Pydantic field info.
+            model: Parent model class.
+
+        Returns:
+            Field schema information dict.
+        """
+        context = self._analyze_field(field_info)
+        ts_name = self._get_field_ts_name(field_name, field_info)
+        ts_type = self._convert_type(field_info.annotation, field_info)
+
+        is_required = field_info.is_required()
+        origin = get_origin(field_info.annotation)
+
+        has_optional_marker = not is_required
+        if origin is Literal and context["has_default"]:
+            args = get_args(field_info.annotation)
+            if "default_value" in context and context["default_value"] in args:
+                has_optional_marker = False
+
+        return {
+            "name": ts_name,
+            "type": ts_type,
+            "optional": has_optional_marker,
+            "description": field_info.description if self.include_docs else None,
+            "context": context,
+        }
+
+    def _generate_field_lines(self, model: type[BaseModel]) -> list[str]:
         """Generate field definition lines for interface or type."""
         lines: list[str] = []
 
         for field_name, field_info in model.model_fields.items():
-            ts_name = self._get_field_ts_name(field_name, field_info)
-            ts_type = self._convert_type(field_info.annotation, field_info)
+            field_schema = self._generate_field_schema(field_name, field_info, model)
 
-            optional = (
-                ""
-                if field_info.is_required()
-                or (
-                    get_origin(field_info.annotation) is Literal
-                    and field_info.default != PydanticUndefined
-                    and field_info.default in get_args(field_info.annotation)
-                )
-                else "?"
+            optional_marker = "?" if field_schema["optional"] else ""
+
+            if field_schema["description"]:
+                lines.append(f"  /** {field_schema['description']} */")
+
+            lines.append(
+                f"  {field_schema['name']}{optional_marker}: {field_schema['type']};"
             )
-
-            if field_info.description:
-                lines.append(f"  /** {field_info.description} */")
-
-            lines.append(f"  {ts_name}{optional}: {ts_type};")
 
         include_computed = self.config.get("include_computed_fields", True)
         if hasattr(model, "model_computed_fields") and include_computed:
@@ -288,6 +319,30 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
 
         return lines
 
+    def _generate_zod_fields(self, model: type[BaseModel]) -> str:
+        """Generate Zod field definitions."""
+        field_parts: list[str] = []
+
+        for field_name, field_info in model.model_fields.items():
+            field_schema = self._generate_field_schema(field_name, field_info, model)
+
+            validator = self._convert_zod(field_info.annotation, field_info)
+
+            field_parts.append(f"\n  {field_schema['name']}: {validator},")
+
+        if hasattr(model, "model_computed_fields"):
+            for field_name, computed_field_info in model.model_computed_fields.items():
+                if hasattr(computed_field_info, "return_type"):
+                    ts_name = self._get_computed_field_ts_name(
+                        field_name, computed_field_info
+                    )
+                    validator = self._convert_zod(computed_field_info.return_type, None)
+                    field_parts.append(f"\n  {ts_name}: {validator},")
+
+        if field_parts:
+            return "".join(field_parts) + "\n"
+        return ""
+
     def _generate_zod_schema(self: Self, model: type[BaseModel], name: str) -> str:
         """Generate Zod schema."""
         schema_name = f"{name}Schema"
@@ -303,28 +358,6 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
             f"export type {name} = z.infer<typeof {schema_name}>;",
         ]
         return "\n".join(lines)
-
-    def _generate_zod_fields(self: Self, model: type[BaseModel]) -> str:
-        """Generate Zod field definitions."""
-        field_parts: list[str] = []
-
-        for field_name, field_info in model.model_fields.items():
-            ts_name = self._get_field_ts_name(field_name, field_info)
-            validator = self._convert_zod(field_info.annotation, field_info)
-            field_parts.append(f"\n  {ts_name}: {validator},")
-
-        if hasattr(model, "model_computed_fields"):
-            for field_name, computed_field_info in model.model_computed_fields.items():
-                if hasattr(computed_field_info, "return_type"):
-                    ts_name = self._get_computed_field_ts_name(
-                        field_name, computed_field_info
-                    )
-                    validator = self._convert_zod(computed_field_info.return_type, None)
-                    field_parts.append(f"\n  {ts_name}: {validator},")
-
-        if field_parts:
-            return "".join(field_parts) + "\n"
-        return ""
 
     def _get_field_ts_name(self: Self, field_name: str, field_info: FieldInfo) -> str:
         """Get TypeScript field name, using alias if present."""
