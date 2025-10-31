@@ -1,6 +1,7 @@
 """Base class for schema generators."""
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Generic, Self, TypedDict, TypeVar
 
@@ -21,6 +22,29 @@ class FieldContext(TypedDict, total=False):
     is_repeated: bool
     has_default: bool
     default_value: Any
+
+
+@dataclass
+class TypeInfo:
+    """Common type information across schema generators.
+
+    This provides a standardized way to represent type conversion results
+    across different schema formats (Avro, Protocol Buffers, TypeScript).
+
+    Attributes:
+        type_representation: The actual type in the target format.
+            - For Avro: AvroType (str, list, or dict)
+            - For Protobuf: str (the proto type name like "string", "int32")
+            - For TypeScript: str (the TS type like "string", "number")
+        is_optional: Whether the type allows None/null values.
+        is_repeated: Whether the type represents a collection/array.
+        metadata: Additional format-specific metadata.
+    """
+
+    type_representation: Any
+    is_optional: bool = False
+    is_repeated: bool = False
+    metadata: dict[str, Any] | None = field(default_factory=dict)
 
 
 class SchemaGeneratorBase(ABC, Generic[SchemaType]):
@@ -55,7 +79,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
         self: Self,
         python_type: Any,
         field_info: FieldInfo | None = None,
-    ) -> Any:
+    ) -> TypeInfo:
         """Convert Python type annotation to target schema type.
 
         Args:

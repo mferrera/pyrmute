@@ -1569,12 +1569,8 @@ def test_avro_schema_int_negative_range_exceeds_32bit(manager: ModelManager) -> 
 def test_avro_schema_int_without_field_info(manager: ModelManager) -> None:
     """Test int type falls back to basic mapping when no field_info."""
     generator = AvroSchemaGenerator(namespace="com.test")
-
-    # Call _convert_type with None field_info
-    avro_type = generator._convert_type(int, field_info=None)
-
-    # Should return basic mapping default
-    assert avro_type == "int"
+    type_info = generator._convert_type(int, field_info=None)
+    assert type_info.type_representation == "int"
 
 
 def test_avro_schema_int_without_metadata(manager: ModelManager) -> None:
@@ -1755,10 +1751,8 @@ def test_avro_schema_nested_anyhttpurl_with_value(manager: ModelManager) -> None
 def test_avro_schema_none_type_annotation(manager: ModelManager) -> None:
     """Test handling of None as type annotation."""
     generator = AvroSchemaGenerator(namespace="com.test")
-
-    # None annotation should return "null"
-    avro_type = generator._convert_type(None)
-    assert avro_type == "null"
+    type_info = generator._convert_type(None)
+    assert type_info.type_representation == "null"
 
 
 def test_avro_schema_complex_union_with_none(manager: ModelManager) -> None:
@@ -1809,8 +1803,8 @@ def test_avro_schema_string_type_hints(manager: ModelManager) -> None:
         def __str__(self) -> str:
             return "typing.List[str]"
 
-    result = generator._convert_type(FakeAnnotation())
-    assert result == "string"
+    type_info = generator._convert_type(FakeAnnotation())
+    assert type_info.type_representation == "string"
 
 
 # ============================================================================

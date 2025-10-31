@@ -884,7 +884,7 @@ def test_unknown_type_defaults_to_string() -> None:
     generator = ProtoSchemaGenerator()
     proto_type = generator._convert_type(CustomType, None)
 
-    assert proto_type.type_name == "string"
+    assert proto_type.type_representation == "string"
     assert proto_type.is_repeated is False
 
 
@@ -893,7 +893,7 @@ def test_none_annotation_defaults_to_string() -> None:
     generator = ProtoSchemaGenerator()
     proto_type = generator._convert_type(None, None)
 
-    assert proto_type.type_name == "string"
+    assert proto_type.type_representation == "string"
     assert proto_type.is_repeated is False
 
 
