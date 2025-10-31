@@ -108,9 +108,9 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         if self.config.get("enum_style") == "enum" and self._enums_encountered:
             # Get the right method.
             enum_declarations = (
-                self._enum_to_zod_declaration
+                self._convert_enum_zod_declaration
                 if self.style == "zod"
-                else self._enum_to_typescript
+                else self._convert_enum
             )
             schemas.extend(
                 enum_declarations(enum_class)
@@ -255,7 +255,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
 
         for field_name, field_info in model.model_fields.items():
             ts_name = self._get_field_ts_name(field_name, field_info)
-            ts_type = self._python_type_to_typescript(field_info.annotation, field_info)
+            ts_type = self._convert_type(field_info.annotation, field_info)
 
             optional = (
                 ""
@@ -283,9 +283,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
                     ts_name = self._get_computed_field_ts_name(
                         field_name, computed_field_info
                     )
-                    ts_type = self._python_type_to_typescript(
-                        computed_field_info.return_type, None
-                    )
+                    ts_type = self._convert_type(computed_field_info.return_type, None)
                     lines.append(f"  {readonly_marker}{ts_name}: {ts_type};")
 
         return lines
@@ -312,7 +310,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
 
         for field_name, field_info in model.model_fields.items():
             ts_name = self._get_field_ts_name(field_name, field_info)
-            validator = self._python_type_to_zod(field_info.annotation, field_info)
+            validator = self._convert_zod(field_info.annotation, field_info)
             field_parts.append(f"\n  {ts_name}: {validator},")
 
         if hasattr(model, "model_computed_fields"):
@@ -321,9 +319,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
                     ts_name = self._get_computed_field_ts_name(
                         field_name, computed_field_info
                     )
-                    validator = self._python_type_to_zod(
-                        computed_field_info.return_type, None
-                    )
+                    validator = self._convert_zod(computed_field_info.return_type, None)
                     field_parts.append(f"\n  {ts_name}: {validator},")
 
         if field_parts:
@@ -350,7 +346,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         """Check if model allows extra fields."""
         return model.model_config.get("extra") == "allow"
 
-    def _python_type_to_typescript(  # noqa: PLR0911, PLR0912, C901
+    def _convert_type(  # noqa: PLR0911, PLR0912, C901
         self: Self, python_type: Any, field_info: FieldInfo | None = None
     ) -> str:
         """Convert Python type to TypeScript type."""
@@ -374,25 +370,25 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
             return "number"
 
         if TypeInspector.is_enum(python_type):
-            return self._enum_to_typescript_type(python_type)
+            return self._convert_enum_type(python_type)
 
         origin = get_origin(python_type)
         args = get_args(python_type)
 
         if TypeInspector.is_union_type(origin):
-            return self._union_to_typescript(args, field_info)
+            return self._convert_union(args, field_info)
 
         if origin is Literal:
-            return self._literal_to_typescript(args)
+            return self._convert_literal(args)
 
         if TypeInspector.is_dict_like(origin, python_type):
-            return self._dict_to_typescript(args, field_info)
+            return self._convert_dict(args, field_info)
 
         if TypeInspector.is_list_like(origin):
-            return self._list_to_typescript(args, field_info)
+            return self._convert_list(args, field_info)
 
         if origin is tuple:
-            return self._tuple_to_typescript(python_type, field_info)
+            return self._convert_tuple(python_type, field_info)
 
         if TypeInspector.is_base_model(python_type):
             return self._versioned_name_map.get(  # type: ignore[no-any-return]
@@ -404,7 +400,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
 
         return "any"
 
-    def _union_to_typescript(
+    def _convert_union(
         self: Self, args: tuple[Any, ...], field_info: FieldInfo | None
     ) -> str:
         """Convert Union type to TypeScript."""
@@ -415,16 +411,14 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
             return "null"
 
         if len(non_none_types) == 1:
-            ts_type = self._python_type_to_typescript(non_none_types[0], field_info)
+            ts_type = self._convert_type(non_none_types[0], field_info)
             if has_none:
                 if field_info and not field_info.is_required():
                     return ts_type
                 return f"{ts_type} | null"
             return ts_type
 
-        union_types = [
-            self._python_type_to_typescript(arg, field_info) for arg in non_none_types
-        ]
+        union_types = [self._convert_type(arg, field_info) for arg in non_none_types]
 
         if has_none:
             if field_info and not field_info.is_required():
@@ -435,7 +429,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         unique_types = list(dict.fromkeys(union_types))
         return " | ".join(unique_types)
 
-    def _literal_to_typescript(self: Self, args: tuple[Any, ...]) -> str:
+    def _convert_literal(self: Self, args: tuple[Any, ...]) -> str:
         """Convert Literal type to TypeScript."""
         if not args:
             return "never"
@@ -443,25 +437,25 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         literal_values = [self._format_literal_value(arg) for arg in args]
         return " | ".join(literal_values)
 
-    def _dict_to_typescript(
+    def _convert_dict(
         self: Self, args: tuple[Any, ...], field_info: FieldInfo | None
     ) -> str:
         """Convert dict type to TypeScript."""
         if args and len(args) == 2:  # noqa: PLR2004
-            value_type = self._python_type_to_typescript(args[1], None)
+            value_type = self._convert_type(args[1], None)
             return f"Record<string, {value_type}>"
         return "Record<string, any>"
 
-    def _list_to_typescript(
+    def _convert_list(
         self: Self, args: tuple[Any, ...], field_info: FieldInfo | None
     ) -> str:
         """Convert list type to TypeScript."""
         if args:
-            item_type = self._python_type_to_typescript(args[0], None)
+            item_type = self._convert_type(args[0], None)
             return f"{item_type}[]"
         return "any[]"
 
-    def _tuple_to_typescript(
+    def _convert_tuple(
         self: Self, python_type: Any, field_info: FieldInfo | None
     ) -> str:
         """Convert tuple type to TypeScript."""
@@ -470,15 +464,13 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
             return "any[]"
 
         if len(element_types) == 2 and element_types[1] is Ellipsis:  # noqa: PLR2004
-            item_type = self._python_type_to_typescript(element_types[0], None)
+            item_type = self._convert_type(element_types[0], None)
             return f"{item_type}[]"
 
-        element_types = [
-            self._python_type_to_typescript(element, None) for element in element_types
-        ]
+        element_types = [self._convert_type(element, None) for element in element_types]
         return f"[{', '.join(element_types)}]"
 
-    def _enum_to_typescript_type(self: Self, enum_class: type[Enum]) -> str:
+    def _convert_enum_type(self: Self, enum_class: type[Enum]) -> str:
         """Convert Python Enum to TypeScript type."""
         enum_style = self.config.get("enum_style", "union")
 
@@ -498,7 +490,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
 
         return " | ".join(values)
 
-    def _enum_to_typescript(self: Self, enum_class: type[Enum]) -> str:
+    def _convert_enum(self: Self, enum_class: type[Enum]) -> str:
         """Generate TypeScript enum declaration."""
         lines = [f"export enum {enum_class.__name__} {{"]
 
@@ -524,7 +516,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
             return "null"
         return str(arg)
 
-    def _python_type_to_zod(  # noqa: PLR0911, PLR0912, C901
+    def _convert_zod(  # noqa: PLR0911, PLR0912, C901
         self: Self, python_type: Any, field_info: FieldInfo | None
     ) -> str:
         """Convert Python type to Zod validator."""
@@ -545,7 +537,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         args = get_args(python_type)
 
         if TypeInspector.is_union_type(origin):
-            return self._union_to_zod(args, field_info)
+            return self._convert_union_zod(args, field_info)
 
         if origin is Literal:
             if args:
@@ -563,19 +555,19 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
 
         if TypeInspector.is_dict_like(origin, python_type):
             if args and len(args) == 2:  # noqa: PLR2004
-                value_validator = self._python_type_to_zod(args[1], None)
+                value_validator = self._convert_zod(args[1], None)
                 return f"z.record({value_validator})"
             return "z.record(z.any())"
 
         if TypeInspector.is_list_like(origin):
             if args:
-                item_validator = self._python_type_to_zod(args[0], None)
+                item_validator = self._convert_zod(args[0], None)
                 return f"z.array({item_validator})"
             return "z.array(z.any())"
 
         if origin is tuple:
             if args:
-                validators = [self._python_type_to_zod(a, field_info) for a in args]
+                validators = [self._convert_zod(a, field_info) for a in args]
                 return f"z.tuple([{', '.join(validators)}])"
             return "z.array(z.any())"
 
@@ -608,11 +600,11 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
             return "z.string()"
 
         if TypeInspector.is_enum(python_type):
-            return self._enum_to_zod(python_type)
+            return self._convert_enum_zod(python_type)
 
         return "z.any()"
 
-    def _union_to_zod(
+    def _convert_union_zod(
         self: Self, args: tuple[Any, ...], field_info: FieldInfo | None
     ) -> str:
         """Convert union type to Zod validator."""
@@ -623,7 +615,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
             return "z.null()"
 
         if len(non_none_args) == 1:
-            base_validator = self._python_type_to_zod(non_none_args[0], None)
+            base_validator = self._convert_zod(non_none_args[0], None)
             if has_none:
                 return (
                     f"{base_validator}.optional()"
@@ -632,7 +624,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
                 )
             return base_validator
 
-        validators = [self._python_type_to_zod(arg, None) for arg in non_none_args]
+        validators = [self._convert_zod(arg, None) for arg in non_none_args]
         union_validator = f"z.union([{', '.join(validators)}])"
 
         if has_none:
@@ -681,7 +673,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
 
         return base
 
-    def _enum_to_zod(self: Self, enum_class: type[Enum]) -> str:
+    def _convert_enum_zod(self: Self, enum_class: type[Enum]) -> str:
         """Convert Python Enum to Zod validator."""
         values = [
             f"'{member.value}'" if isinstance(member.value, str) else str(member.value)
@@ -689,7 +681,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         ]
         return f"z.enum([{', '.join(values)}])"
 
-    def _enum_to_zod_declaration(self: Self, enum_class: type[Enum]) -> str:
+    def _convert_enum_zod_declaration(self: Self, enum_class: type[Enum]) -> str:
         """Generate Zod enum declaration."""
         values = [
             f"'{member.value}'" if isinstance(member.value, str) else str(member.value)

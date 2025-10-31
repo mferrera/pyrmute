@@ -196,7 +196,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
         if self.include_docs and field_info.description:
             field_schema["doc"] = field_info.description
 
-        avro_type = self._python_type_to_avro(field_info.annotation, field_info)
+        avro_type = self._convert_type(field_info.annotation, field_info)
         is_nullable = TypeInspector.is_optional_type(field_info.annotation)
         has_default = (
             field_info.default is not PydanticUndefined
@@ -242,7 +242,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
         field_schema["type"] = avro_type
         return field_schema
 
-    def _python_type_to_avro(  # noqa: PLR0911, PLR0912, C901
+    def _convert_type(  # noqa: PLR0911, PLR0912, C901
         self: Self,
         python_type: Any,
         field_info: FieldInfo | None = None,
@@ -268,7 +268,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
             return self._LOGICAL_TYPE_MAPPING[python_type].copy()
 
         if TypeInspector.is_enum(python_type):
-            return self._enum_to_avro(python_type)
+            return self._convert_enum(python_type)
 
         # Check for bare list or dict before checking origin
         if python_type is list:
@@ -284,22 +284,20 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
             args = get_args(python_type)
 
             if TypeInspector.is_union_type(origin):
-                return self._union_to_avro(args)
+                return self._convert_union(args)
 
             if TypeInspector.is_list_like(origin):
-                item_type = self._python_type_to_avro(args[0]) if args else "string"
+                item_type = self._convert_type(args[0]) if args else "string"
                 array_schema: AvroArraySchema = {"type": "array", "items": item_type}
                 return array_schema
 
             if TypeInspector.is_dict_like(origin, python_type):
-                value_type = (
-                    self._python_type_to_avro(args[1]) if len(args) > 1 else "string"
-                )
+                value_type = self._convert_type(args[1]) if len(args) > 1 else "string"
                 map_schema: AvroMapSchema = {"type": "map", "values": value_type}
                 return map_schema
 
             if origin is tuple:
-                return self._tuple_to_avro(python_type)
+                return self._convert_tuple(python_type)
 
         if TypeInspector.is_base_model(python_type):
             return self._generate_nested_record_schema(python_type)
@@ -341,7 +339,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
 
         return "int"
 
-    def _enum_to_avro(self: Self, enum_class: type[Enum]) -> AvroEnumSchema | str:
+    def _convert_enum(self: Self, enum_class: type[Enum]) -> AvroEnumSchema | str:
         """Convert Python Enum to Avro enum type.
 
         Args:
@@ -414,7 +412,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
 
         return f"{self.namespace}.{module}"
 
-    def _union_to_avro(self: Self, args: tuple[Any, ...]) -> AvroUnion:
+    def _convert_union(self: Self, args: tuple[Any, ...]) -> AvroUnion:
         """Convert Union type to Avro union.
 
         Args:
@@ -435,7 +433,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
             if arg is type(None):
                 avro_types.append("null")
             else:
-                avro_type = self._python_type_to_avro(arg)
+                avro_type = self._convert_type(arg)
                 if isinstance(avro_type, list):
                     # Flatten nested unions
                     avro_types.extend(avro_type)
@@ -454,7 +452,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
 
         return unique_types
 
-    def _tuple_to_avro(self: Self, python_type: Any) -> AvroArraySchema:
+    def _convert_tuple(self: Self, python_type: Any) -> AvroArraySchema:
         """Convert tuple type to Avro array with union of item types.
 
         Avro doesn't have a true tuple type (fixed-length with heterogeneous types),
@@ -486,7 +484,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroRecordSchema]):
         type_strs: set[str] = set()
 
         for arg in element_types:
-            avro_type = self._python_type_to_avro(arg)
+            avro_type = self._convert_type(arg)
             if isinstance(avro_type, list):
                 # Flatten unions
                 for t in avro_type:
