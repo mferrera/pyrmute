@@ -1,5 +1,6 @@
 """TypeScript schema generation from Pydantic models."""
 
+import contextlib
 from collections.abc import Mapping
 from datetime import date, datetime, time
 from decimal import Decimal
@@ -59,13 +60,11 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         super().__init__(include_docs=include_docs)
         self.style = style
         self.config = config or TypeScriptConfig()
-        self._types_seen_collecting_enums: set[str] = set()
         self._versioned_name_map: dict[str, str] = {}
 
     def _reset_state(self: Self) -> None:
         """Reset internal state before generating a new schema."""
         super()._reset_state()
-        self._types_seen_collecting_enums = set()
         self._versioned_name_map = {}
 
     def generate_schema(
@@ -87,16 +86,13 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
             TypeScript schema code as a string.
         """
         self._reset_state()
-        self._types_seen_collecting_enums = set()
-        self._versioned_name_map = {}
 
         versioned_name = self._get_versioned_name(name, version)
         self._versioned_name_map[model.__name__] = versioned_name
 
-        if self.config.get("enum_style") == "enum":
-            self._collect_enums_from_model(model)
-
         self._collect_nested_models(model)
+        if self.config.get("enum_style", "union") == "enum":
+            self._collect_all_enums(model)
 
         schemas: list[str] = []
 
@@ -104,17 +100,18 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
             schemas.append("import { z } from 'zod';")
             schemas.append("")
 
-        if self.config.get("enum_style") == "enum" and self._enums_encountered:
-            # Get the right method.
-            enum_declarations = (
-                self._convert_enum_zod_declaration
-                if self.style == "zod"
-                else self._convert_enum
-            )
-            schemas.extend(
-                enum_declarations(enum_class)
-                for enum_class in self._enums_encountered.values()
-            )
+        if self._collected_enums:
+            if self.style == "zod":
+                enum_declarations = [
+                    self._generate_zod_enum_declaration(enum_class)
+                    for enum_class in self._collected_enums.values()
+                ]
+            else:
+                enum_declarations = [
+                    self._generate_enum_declaration(enum_class)
+                    for enum_class in self._collected_enums.values()
+                ]
+            schemas.extend(enum_declarations)
             schemas.append("")
 
         for nested_name, nested_model in self._nested_models.items():
@@ -129,39 +126,26 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
 
         return "\n\n".join(schemas)
 
-    def _generate_schema_for_model(
-        self: Self, model: type[BaseModel], type_name: str
-    ) -> str:
-        """Generate schema for a specific model."""
-        if self.style == "zod":
-            return self._generate_zod_schema(model, type_name)
-        if self.style == "type":
-            return self._generate_type_alias(model, type_name)
-        return self._generate_interface(model, type_name)
+    def _collect_all_enums(self: Self, model: type[BaseModel]) -> None:
+        """Pre-traverse model to collect all enums.
 
-    def _collect_enums_from_model(self: Self, model: type[BaseModel]) -> None:
-        """Recursively collect all enums from a model and its nested models.
+        This is needed when using enum style to ensure enum declarations
+        are generated before they're referenced.
 
         Args:
-            model: Pydantic model class to scan for enums.
+            model: Model to collect enums from.
         """
-        if model.__name__ in self._types_seen_collecting_enums:
-            return
-
-        self._types_seen_collecting_enums.add(model.__name__)
-
         for field_info in model.model_fields.values():
             self._collect_enums_from_type(field_info.annotation)
 
-        if hasattr(model, "model_computed_fields"):
-            for computed_field_info in model.model_computed_fields.values():
-                if hasattr(computed_field_info, "return_type"):
-                    self._collect_enums_from_type(computed_field_info.return_type)
+        for nested_model in self._nested_models.values():
+            for field_info in nested_model.model_fields.values():
+                self._collect_enums_from_type(field_info.annotation)
 
-    def _collect_enums_from_type(  # noqa: C901
-        self: Self, python_type: Any
-    ) -> None:
+    def _collect_enums_from_type(self: Self, python_type: Any) -> None:
         """Recursively collect enums from a type annotation.
+
+        This calls _convert_type which will register enums via _register_enum.
 
         Args:
             python_type: Python type to scan for enums.
@@ -173,33 +157,24 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         ):
             return
 
-        if TypeInspector.is_enum(python_type):
-            enum_style = self.config.get("enum_style", "union")
-            if enum_style == "enum":
-                self._enums_encountered[python_type.__name__] = python_type
-            return
+        with contextlib.suppress(Exception):
+            self._convert_type(python_type, None)
 
-        if TypeInspector.is_base_model(python_type):
-            self._collect_enums_from_model(python_type)
-            return
-
-        origin = get_origin(python_type)
         args = get_args(python_type)
-
-        if TypeInspector.is_union_type(origin):
+        if args:
             for arg in args:
-                if arg is not type(None):
+                if arg is not type(None) and arg is not Ellipsis:
                     self._collect_enums_from_type(arg)
-            return
 
-        if TypeInspector.is_list_like(origin) or origin is tuple:
-            for arg in args:
-                self._collect_enums_from_type(arg)
-            return
-
-        if TypeInspector.is_dict_like(origin, python_type):
-            for arg in args:
-                self._collect_enums_from_type(arg)
+    def _generate_schema_for_model(
+        self: Self, model: type[BaseModel], type_name: str
+    ) -> str:
+        """Generate schema for a specific model."""
+        if self.style == "zod":
+            return self._generate_zod_schema(model, type_name)
+        if self.style == "type":
+            return self._generate_type_alias(model, type_name)
+        return self._generate_interface(model, type_name)
 
     def _get_versioned_name(
         self: Self, name: str, version: str | ModelVersion | None
@@ -403,7 +378,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
             return "number"
 
         if TypeInspector.is_enum(python_type):
-            return self._convert_enum_type(python_type)
+            return self._convert_enum(python_type)
 
         origin = get_origin(python_type)
         args = get_args(python_type)
@@ -503,13 +478,39 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
         element_types = [self._convert_type(element, None) for element in element_types]
         return f"[{', '.join(element_types)}]"
 
-    def _convert_enum_type(self: Self, enum_class: type[Enum]) -> str:
-        """Convert Python Enum to TypeScript type."""
-        enum_style = self.config.get("enum_style", "union")
+    def _should_collect_enum(self, enum_class: type[Enum]) -> bool:
+        """Check if enum should be collected as a separate definition.
 
-        if enum_style == "enum":
-            return enum_class.__name__
+        TypeScript only collects enums when using 'enum' style.  Union style inlines the
+        values.
+        """
+        return self.config.get("enum_style", "union") == "enum"
 
+    def _convert_enum(self: Self, enum_class: type[Enum]) -> str:
+        """Convert Python Enum to TypeScript type reference.
+
+        Args:
+            enum_class: Python Enum class.
+
+        Returns:
+            TypeScript enum reference or union type.
+        """
+        enum_name = enum_class.__name__
+
+        if self._should_collect_enum(enum_class):
+            self._register_enum(enum_class)
+            return enum_name
+        return self._convert_enum_to_union_type(enum_class)
+
+    def _convert_enum_to_union_type(self: Self, enum_class: type[Enum]) -> str:
+        """Convert Python Enum to TypeScript union type (inline values).
+
+        Args:
+            enum_class: Python Enum class.
+
+        Returns:
+            TypeScript union type string.
+        """
         values = []
         for member in enum_class:
             if isinstance(member.value, str):
@@ -523,8 +524,15 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
 
         return " | ".join(values)
 
-    def _convert_enum(self: Self, enum_class: type[Enum]) -> str:
-        """Generate TypeScript enum declaration."""
+    def _generate_enum_declaration(self: Self, enum_class: type[Enum]) -> str:
+        """Generate TypeScript enum declaration.
+
+        Args:
+            enum_class: Python Enum class.
+
+        Returns:
+            TypeScript enum declaration string.
+        """
         lines = [f"export enum {enum_class.__name__} {{"]
 
         for member in enum_class:
@@ -535,6 +543,23 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[str]):
 
         lines.append("}")
         return "\n".join(lines)
+
+    def _generate_zod_enum_declaration(self: Self, enum_class: type[Enum]) -> str:
+        """Generate Zod enum declaration.
+
+        Args:
+            enum_class: Python Enum class.
+
+        Returns:
+            Zod enum schema string.
+        """
+        values = [
+            f"'{member.value}'" if isinstance(member.value, str) else str(member.value)
+            for member in enum_class
+        ]
+        return (
+            f"export const {enum_class.__name__}Schema = z.enum([{', '.join(values)}]);"
+        )
 
     def _format_literal_value(self: Self, arg: Any) -> str:
         """Format a literal value for TypeScript/Zod."""
