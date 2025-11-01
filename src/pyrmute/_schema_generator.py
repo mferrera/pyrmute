@@ -35,7 +35,7 @@ class TypeInfo:
     type_representation: Any
     is_optional: bool = False
     is_repeated: bool = False
-    metadata: dict[str, Any] = field(default_factory=dict)
+    optional_marker: bool = False
 
 
 @dataclass
