@@ -271,7 +271,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
     def _get_field_name(self: Self, field_name: str, field_info: FieldInfo) -> str:
         """Get the schema field name, considering aliases.
 
-        Default implementation returns the original field name.  Subclasses can override
+        Default implementation returns the original field name. Subclasses can override
         to handle aliases differently.
 
         Args:
