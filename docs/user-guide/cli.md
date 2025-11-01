@@ -534,11 +534,16 @@ pyrmute export -f FORMAT -o OUTPUT_DIR
 - `json-schema` - JSON Schema format
 - `avro` - Apache Avro schemas
 - `protobuf` - Protocol Buffer schemas
+- `typescript` - TypeScript interfaces and Zod schemas
 
 **Optional flags:**
 
 - `-m, --manager NAME` - Manager name (default: "default")
 - `-c, --config PATH` - Path to config file
+- `--organization STYLE` - Directory organization (TypeScript only): "flat",
+      "major_version", "model"
+- `--barrel-exports/--no-barrel-exports` - Generate index.ts files (TypeScript
+      only, default: enabled)
 
 **Examples:**
 
@@ -549,34 +554,95 @@ pyrmute export -f json-schema -o ./schemas
 ```
 
 Export Avro schemas:
+
 ```bash
 pyrmute export -f avro -o ./avro
 ```
 
 Export ProtoBuf schemas:
+
 ```bash
 pyrmute export -f protobuf -o ./protos
 ```
 
-Export TypeScript schemas:
+Export TypeScript schemas (flat organization):
+
 ```bash
-pyrmute export -f typescript -o ./protos
+pyrmute export -f typescript -o ./types
+```
+
+Export TypeScript with major_version organization (recommended):
+
+```bash
+pyrmute export -f typescript -o ./types --organization major_version
+```
+
+Export TypeScript organized by model:
+
+```bash
+pyrmute export -f typescript -o ./types --organization model
+```
+
+Export TypeScript without barrel exports:
+
+```bash
+pyrmute export -f typescript -o ./types --organization major_version --no-barrel-exports
 ```
 
 **Success output:**
 
 ```
-✓ Exported JSON Schema schemas to ./schemas/
+✓ Exported TypeScript schemas (major_version) with barrel exports to ./types/
 ```
 
-**Directory structure:**
+**Directory structure (flat):**
+
 ```
-schemas/
-├── User_v1_0_0.json
-├── User_v2_0_0.json
-├── Order_v1_0_0.json
-└── Product_v1_0_0.json
+types/
+├── User.v1.0.0.ts
+├── User.v2.0.0.ts
+├── Order.v1.0.0.ts
+└── Product.v1.0.0.ts
 ```
+
+**Directory structure (major_version):**
+
+```
+types/
+├── v1/
+│   ├── User.v1.0.0.ts
+│   ├── User.v1.1.0.ts
+│   ├── Order.v1.0.0.ts
+│   ├── Product.v1.0.0.ts
+│   └── index.ts
+├── v2/
+│   ├── User.v2.0.0.ts
+│   ├── Order.v2.0.0.ts
+│   └── index.ts
+└── index.ts
+```
+
+**Directory structure (model):**
+
+```
+types/
+├── User/
+│   ├── 1.0.0.ts
+│   ├── 1.1.0.ts
+│   ├── 2.0.0.ts
+│   └── index.ts
+├── Order/
+│   ├── 1.0.0.ts
+│   ├── 2.0.0.ts
+│   └── index.ts
+├── Product/
+│   ├── 1.0.0.ts
+│   └── index.ts
+└── index.ts
+```
+
+**Note:** The `--organization` and `--barrel-exports` flags only apply to
+TypeScript exports. They are ignored for other formats.
 
 ## Common Workflows
 

@@ -787,6 +787,8 @@ class TypeScriptExporter:
         name: str,
         version: str | ModelVersion,
         output_path: str | Path | None = None,
+        organization: Literal["flat", "major_version", "model"] = "flat",
+        include_barrel_exports: bool = True,
     ) -> str:
         """Export a single model version as a TypeScript schema.
 
@@ -794,6 +796,12 @@ class TypeScriptExporter:
             name: Model name.
             version: Model version.
             output_path: Optional file path to save schema.
+            organization: Directory structure for output files:
+                - 'flat': All files in output directory (Model.v1.0.0.ts)
+                - 'major_version': Organize by major version (v1/Model.v1.0.0.ts)
+                - 'model': Organize by model name (Model/1.0.0.ts)
+            include_barrel_exports: Whether to generate index.ts files for easier
+                imports.
 
         Returns:
             TypeScript schema code.
@@ -804,19 +812,43 @@ class TypeScriptExporter:
 
         if output_path:
             output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(schema_code)
+
+            version_obj = (
+                ModelVersion.parse(version) if isinstance(version, str) else version
+            )
+
+            if organization == "major_version":
+                version_dir = output_path / f"v{version_obj.major}"
+                version_dir.mkdir(parents=True, exist_ok=True)
+                filepath = version_dir / f"{name}.v{version_obj}.ts"
+            elif organization == "model":
+                model_dir = output_path / name
+                model_dir.mkdir(parents=True, exist_ok=True)
+                filepath = model_dir / f"{version_obj}.ts"
+            else:  # flat
+                output_path.mkdir(parents=True, exist_ok=True)
+                filepath = output_path / f"{name}.v{version_obj}.ts"
+
+            filepath.write_text(schema_code)
 
         return schema_code
 
     def export_all_schemas(
         self: Self,
         output_dir: str | Path,
+        organization: Literal["flat", "major_version", "model"] = "flat",
+        include_barrel_exports: bool = True,
     ) -> dict[str, dict[str, str]]:
         """Export all registered models as TypeScript schemas.
 
         Args:
             output_dir: Directory to save schema files.
+            organization: Directory structure for output files:
+                - 'flat': All files in output directory (Model.v1.0.0.ts)
+                - 'major_version': Organize by major version (v1/Model.v1.0.0.ts)
+                - 'model': Organize by model name (Model/1.0.0.ts)
+            include_barrel_exports: Whether to generate index.ts files for easier
+                imports.
 
         Returns:
             Dictionary mapping model names to version to schema code.
@@ -835,12 +867,82 @@ class TypeScriptExporter:
                 module = self.generator.generate_schema(model, model_name, version)
                 schema_code = module.to_string()
 
-                version_str = str(version).replace(".", "_")
-                filename = f"{model_name}_v{version_str}.ts"
-                filepath = output_dir / filename
+                version_obj = (
+                    ModelVersion.parse(version) if isinstance(version, str) else version
+                )
+
+                if organization == "major_version":
+                    version_dir = output_dir / f"v{version_obj.major}"
+                    version_dir.mkdir(exist_ok=True)
+                    filepath = version_dir / f"{model_name}.v{version_obj}.ts"
+                elif organization == "model":
+                    model_dir = output_dir / model_name
+                    model_dir.mkdir(exist_ok=True)
+                    filepath = model_dir / f"{version_obj}.ts"
+                else:  # flat
+                    filepath = output_dir / f"{model_name}.v{version_obj}.ts"
 
                 filepath.write_text(schema_code)
-
                 all_schemas[model_name][str(version)] = schema_code
 
+        if include_barrel_exports and organization != "flat":
+            if organization == "major_version":
+                self._generate_barrel_exports_major_version(output_dir)
+            elif organization == "model":
+                self._generate_barrel_exports_model(output_dir)
+
         return all_schemas
+
+    def _generate_barrel_exports_major_version(self: Self, output_dir: Path) -> None:
+        """Generate index.ts files for major version exports.
+
+        Args:
+            output_dir: Base output directory.
+        """
+        for version_dir in sorted(output_dir.glob("v*")):
+            if version_dir.is_dir():
+                exports = [
+                    f"export * from './{f.stem}';"
+                    for f in sorted(version_dir.glob("*.ts"))
+                    if f.name != "index.ts"
+                ]
+                if exports:
+                    (version_dir / "index.ts").write_text("\n".join(exports) + "\n")
+
+        version_dirs = sorted(output_dir.glob("v*"), key=lambda p: int(p.name[1:]))
+        if version_dirs:
+            latest_version_dir = version_dirs[-1]
+            root_index = f"export * from './{latest_version_dir.name}';\n"
+            (output_dir / "index.ts").write_text(root_index)
+
+    def _generate_barrel_exports_model(self: Self, output_dir: Path) -> None:
+        """Generate index.ts files for major version exports.
+
+        Args:
+            output_dir: Base output directory.
+        """
+        for model_dir in sorted(output_dir.iterdir()):
+            if model_dir.is_dir() and not model_dir.name.startswith("."):
+                version_files = sorted(
+                    model_dir.glob("*.ts"),
+                    key=lambda p: ModelVersion.parse(p.stem)
+                    if p.name != "index.ts"
+                    else ModelVersion(0, 0, 0),
+                )
+                version_files = [f for f in version_files if f.name != "index.ts"]
+                if version_files:
+                    latest = version_files[-1]
+                    index_content = f"export * from './{latest.stem}';\n"
+                    (model_dir / "index.ts").write_text(index_content)
+
+        model_dirs = sorted(
+            [
+                d
+                for d in output_dir.iterdir()
+                if d.is_dir() and not d.name.startswith(".")
+            ],
+            key=lambda p: p.name,
+        )
+        if model_dirs:
+            exports = [f"export * from './{d.name}';" for d in model_dirs]
+            (output_dir / "index.ts").write_text("\n".join(exports) + "\n")

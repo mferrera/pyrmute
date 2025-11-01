@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 from pydantic import ValidationError
@@ -261,7 +261,7 @@ def diff(  # noqa: PLR0913
 
 
 @app.command()
-def export(
+def export(  # noqa: PLR0913
     format: Annotated[
         str,
         typer.Option(..., "--format", "-f", help="Export format"),
@@ -269,10 +269,48 @@ def export(
     output: Annotated[
         Path, typer.Option(..., "--output", "-o", help="Output directory")
     ],
+    organization: Annotated[
+        Literal["flat", "major_version", "model"],
+        typer.Option(
+            ...,
+            "--organization",
+            help="Directory organization. Only applies to TypeScript exports.",
+        ),
+    ] = "flat",
+    barrel_exports: Annotated[
+        bool,
+        typer.Option(
+            ...,
+            "--barrel-exports/--no-barrel-exports",
+            help=(
+                "Generate index.ts barrel exports. Only applies to TypeScript exports "
+                "with non-flat organization."
+            ),
+        ),
+    ] = True,
     manager: ManagerOption = "default",
     config: ConfigOption = None,
 ) -> None:
-    """Export schemas to specified format."""
+    """Export schemas to specified format.
+
+    Examples:
+        # Export TypeScript schemas with flat organization (default)
+        pyrmute export -f typescript -o ./types
+
+        # Export TypeScript organized by major version with barrel exports
+        pyrmute export -f typescript -o ./types --organization major_version
+
+        # Export TypeScript organized by model
+        pyrmute export -f typescript -o ./types --organization model
+
+        # Export without barrel exports
+        pyrmute export -f typescript -o ./types --organization major_version --no-barrel-exports
+
+        # Export other formats (organization options ignored)
+        pyrmute export -f avro -o ./avro
+        pyrmute export -f protobuf -o ./proto
+        pyrmute export -f json-schema -o ./schemas
+    """  # noqa: E501
     format_map = {
         "avro": ("dump_avro_schemas", "Avro"),
         "protobuf": ("dump_proto_schemas", "Protocol Buffer"),
@@ -291,9 +329,35 @@ def export(
 
         method_name, display_name = format_map[format]
         method = getattr(mgr, method_name)
-        method(output)
 
-        print_success(f"Exported {display_name} schemas to {output}/", manager)
+        if format == "typescript":
+            method(
+                output, organization=organization, include_barrel_exports=barrel_exports
+            )
+
+            org_info = ""
+            if organization != "flat":
+                org_info = f" ({organization})"
+                if barrel_exports:
+                    org_info += " with barrel exports"
+
+            print_success(
+                f"Exported {display_name} schemas{org_info} to {output}/", manager
+            )
+        else:
+            if organization != "flat":
+                console.print(
+                    "[yellow]Note: --organization is only supported for TypeScript "
+                    "exports[/yellow]"
+                )
+            if not barrel_exports:
+                console.print(
+                    "[yellow]Note: --barrel-exports is only supported for TypeScript "
+                    "exports[/yellow]"
+                )
+
+            method(output)
+            print_success(f"Exported {display_name} schemas to {output}/", manager)
 
     except ConfigError as e:
         print_error(str(e))

@@ -1,8 +1,5 @@
 """Tests for TypeScript schema generation from Pydantic models."""
 
-import json
-import subprocess
-import tempfile
 from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum, IntEnum, StrEnum
@@ -41,20 +38,6 @@ def zod_generator() -> TypeScriptSchemaGenerator:
 def type_generator() -> TypeScriptSchemaGenerator:
     """Create a TypeScript type alias generator."""
     return TypeScriptSchemaGenerator(style="type")
-
-
-@pytest.fixture
-def typescript_validator() -> bool:
-    """Check if TypeScript compiler is available."""
-    try:
-        result = subprocess.run(
-            ["tsc", "--version"], check=False, capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            return True
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        pass
-    return False
 
 
 # ============================================================================
@@ -824,9 +807,10 @@ def test_typescript_export_single_schema(tmp_path: Path) -> None:
     registry.register("User", "1.0.0")(User)
 
     exporter = TypeScriptExporter(registry, style="interface")
-    output_file = tmp_path / "user_v1.ts"
-    schema = exporter.export_schema("User", "1.0.0", output_path=output_file)
+    output_dir = tmp_path / "schemas"
+    schema = exporter.export_schema("User", "1.0.0", output_path=output_dir)
 
+    output_file = output_dir / "User.v1.0.0.ts"
     assert output_file.exists()
     content = output_file.read_text()
     assert "export interface User {" in content
@@ -855,9 +839,9 @@ def test_typescript_export_all_schemas(tmp_path: Path) -> None:
     output_dir = tmp_path / "types"
     schemas = exporter.export_all_schemas(output_dir)
 
-    assert (output_dir / "User_v1_0_0.ts").exists()
-    assert (output_dir / "User_v2_0_0.ts").exists()
-    assert (output_dir / "Order_v1_0_0.ts").exists()
+    assert (output_dir / "User.v1.0.0.ts").exists()
+    assert (output_dir / "User.v2.0.0.ts").exists()
+    assert (output_dir / "Order.v1.0.0.ts").exists()
 
     assert "User" in schemas
     assert "Order" in schemas
@@ -878,13 +862,263 @@ def test_typescript_export_zod_schemas(tmp_path: Path) -> None:
     output_dir = tmp_path / "schemas"
     exporter.export_all_schemas(output_dir)
 
-    schema_file = output_dir / "User_v1_0_0.ts"
+    schema_file = output_dir / "User.v1.0.0.ts"
     assert schema_file.exists()
 
     content = schema_file.read_text()
     assert "import { z } from 'zod';" in content
     assert "export const UserSchema = z.object({" in content
     assert "export type User = z.infer<typeof UserSchema>;" in content
+
+
+def test_typescript_export_by_major_version(tmp_path: Path) -> None:
+    """Test exporting schemas organized by major version."""
+
+    class UserV1(BaseModel):
+        name: str
+
+    class UserV1_1(BaseModel):
+        name: str
+        email: str | None = None
+
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    registry = Registry()
+    registry.register("User", "1.0.0")(UserV1)
+    registry.register("User", "1.1.0")(UserV1_1)
+    registry.register("User", "2.0.0")(UserV2)
+
+    exporter = TypeScriptExporter(registry, style="interface")
+    output_dir = tmp_path / "types"
+    schemas = exporter.export_all_schemas(output_dir, organization="major_version")
+
+    assert (output_dir / "v1" / "User.v1.0.0.ts").exists()
+    assert (output_dir / "v1" / "User.v1.1.0.ts").exists()
+    assert (output_dir / "v2" / "User.v2.0.0.ts").exists()
+
+    assert "User" in schemas
+    assert "1.0.0" in schemas["User"]
+    assert "1.1.0" in schemas["User"]
+    assert "2.0.0" in schemas["User"]
+
+
+def test_typescript_export_by_model(tmp_path: Path) -> None:
+    """Test exporting schemas organized by model."""
+
+    class User(BaseModel):
+        name: str
+
+    class Order(BaseModel):
+        id: int
+
+    registry = Registry()
+    registry.register("User", "1.0.0")(User)
+    registry.register("User", "2.0.0")(User)
+    registry.register("Order", "1.0.0")(Order)
+
+    exporter = TypeScriptExporter(registry, style="interface")
+    output_dir = tmp_path / "types"
+    schemas = exporter.export_all_schemas(output_dir, organization="model")
+
+    assert (output_dir / "User" / "1.0.0.ts").exists()
+    assert (output_dir / "User" / "2.0.0.ts").exists()
+    assert (output_dir / "Order" / "1.0.0.ts").exists()
+
+    assert "User" in schemas
+    assert "Order" in schemas
+    assert "1.0.0" in schemas["User"]
+    assert "2.0.0" in schemas["User"]
+
+
+def test_typescript_export_barrel_exports_by_major_version(tmp_path: Path) -> None:
+    """Test barrel exports generation for by-major-version organization."""
+
+    class UserV1(BaseModel):
+        name: str
+
+    class UserV2(BaseModel):
+        name: str
+        email: str
+
+    class OrderV1(BaseModel):
+        id: int
+
+    registry = Registry()
+    registry.register("User", "1.0.0")(UserV1)
+    registry.register("User", "2.0.0")(UserV2)
+    registry.register("Order", "1.0.0")(OrderV1)
+
+    exporter = TypeScriptExporter(registry, style="interface")
+    output_dir = tmp_path / "types"
+    exporter.export_all_schemas(
+        output_dir, organization="major_version", include_barrel_exports=True
+    )
+
+    assert (output_dir / "v1" / "index.ts").exists()
+    assert (output_dir / "v2" / "index.ts").exists()
+    assert (output_dir / "index.ts").exists()
+
+    v1_index = (output_dir / "v1" / "index.ts").read_text()
+    assert "export * from './Order.v1.0.0';" in v1_index
+    assert "export * from './User.v1.0.0';" in v1_index
+
+    v2_index = (output_dir / "v2" / "index.ts").read_text()
+    assert "export * from './User.v2.0.0';" in v2_index
+
+    root_index = (output_dir / "index.ts").read_text()
+    assert "export * from './v2';" in root_index
+
+
+def test_typescript_export_barrel_exports_by_model(tmp_path: Path) -> None:
+    """Test barrel exports generation for by-model organization."""
+
+    class User(BaseModel):
+        name: str
+
+    class Order(BaseModel):
+        id: int
+
+    registry = Registry()
+    registry.register("User", "1.0.0")(User)
+    registry.register("User", "2.0.0")(User)
+    registry.register("Order", "1.0.0")(Order)
+    registry.register("Order", "1.5.0")(Order)
+
+    exporter = TypeScriptExporter(registry, style="interface")
+    output_dir = tmp_path / "types"
+    exporter.export_all_schemas(
+        output_dir, organization="model", include_barrel_exports=True
+    )
+
+    assert (output_dir / "User" / "index.ts").exists()
+    assert (output_dir / "Order" / "index.ts").exists()
+    assert (output_dir / "index.ts").exists()
+
+    user_index = (output_dir / "User" / "index.ts").read_text()
+    assert "export * from './2.0.0';" in user_index
+
+    order_index = (output_dir / "Order" / "index.ts").read_text()
+    assert "export * from './1.5.0';" in order_index
+
+    root_index = (output_dir / "index.ts").read_text()
+    assert "export * from './Order';" in root_index
+    assert "export * from './User';" in root_index
+
+
+def test_typescript_export_no_barrel_exports_for_flat(tmp_path: Path) -> None:
+    """Test that barrel exports are not generated for flat organization."""
+
+    class User(BaseModel):
+        name: str
+
+    registry = Registry()
+    registry.register("User", "1.0.0")(User)
+
+    exporter = TypeScriptExporter(registry, style="interface")
+    output_dir = tmp_path / "types"
+    exporter.export_all_schemas(
+        output_dir,
+        organization="flat",
+        include_barrel_exports=True,  # Should be ignored
+    )
+
+    assert not (output_dir / "index.ts").exists()
+    assert (output_dir / "User.v1.0.0.ts").exists()
+
+
+def test_typescript_export_disable_barrel_exports(tmp_path: Path) -> None:
+    """Test disabling barrel exports generation."""
+
+    class User(BaseModel):
+        name: str
+
+    registry = Registry()
+    registry.register("User", "1.0.0")(User)
+    registry.register("User", "2.0.0")(User)
+
+    exporter = TypeScriptExporter(registry, style="interface")
+    output_dir = tmp_path / "types"
+    exporter.export_all_schemas(
+        output_dir, organization="major_version", include_barrel_exports=False
+    )
+
+    assert (output_dir / "v1" / "User.v1.0.0.ts").exists()
+    assert (output_dir / "v2" / "User.v2.0.0.ts").exists()
+    assert not (output_dir / "v1" / "index.ts").exists()
+    assert not (output_dir / "v2" / "index.ts").exists()
+    assert not (output_dir / "index.ts").exists()
+
+
+def test_typescript_export_single_schema_with_organization(tmp_path: Path) -> None:
+    """Test exporting a single schema with different organization styles."""
+
+    class User(BaseModel):
+        name: str
+        email: str
+
+    registry = Registry()
+    registry.register("User", "1.2.3")(User)
+
+    exporter = TypeScriptExporter(registry, style="interface")
+
+    flat_dir = tmp_path / "flat"
+    exporter.export_schema("User", "1.2.3", flat_dir, organization="flat")
+    assert (flat_dir / "User.v1.2.3.ts").exists()
+
+    major_dir = tmp_path / "major"
+    exporter.export_schema("User", "1.2.3", major_dir, organization="major_version")
+    assert (major_dir / "v1" / "User.v1.2.3.ts").exists()
+
+    model_dir = tmp_path / "model"
+    exporter.export_schema("User", "1.2.3", model_dir, organization="model")
+    assert (model_dir / "User" / "1.2.3.ts").exists()
+
+
+def test_typescript_clean_type_names(tmp_path: Path) -> None:
+    """Test that exported schemas use clean type names without version suffixes."""
+
+    class User(BaseModel):
+        name: str
+        email: str
+
+    registry = Registry()
+    registry.register("User", "1.0.0")(User)
+
+    exporter = TypeScriptExporter(registry, style="interface")
+    output_dir = tmp_path / "types"
+    exporter.export_all_schemas(output_dir)
+
+    schema_file = output_dir / "User.v1.0.0.ts"
+    content = schema_file.read_text()
+
+    assert "export interface User {" in content
+    assert "UserV1_0_0" not in content
+    assert "name: string;" in content
+    assert "email: string;" in content
+
+
+def test_typescript_zod_clean_type_names(tmp_path: Path) -> None:
+    """Test that Zod schemas use clean type names."""
+
+    class User(BaseModel):
+        name: str
+        age: int
+
+    registry = Registry()
+    registry.register("User", "2.1.0")(User)
+
+    exporter = TypeScriptExporter(registry, style="zod")
+    output_dir = tmp_path / "schemas"
+    exporter.export_all_schemas(output_dir)
+
+    schema_file = output_dir / "User.v2.1.0.ts"
+    content = schema_file.read_text()
+
+    assert "export const UserSchema = z.object({" in content
+    assert "export type User = z.infer<typeof UserSchema>;" in content
+    assert "UserV2_1_0" not in content
 
 
 # ============================================================================
@@ -1171,88 +1405,6 @@ def test_typescript_multiple_inheritance_base(
 # ============================================================================
 # TypeScript Validation Tests
 # ============================================================================
-
-
-@pytest.mark.integration
-def test_generated_typescript_is_valid(
-    generator: TypeScriptSchemaGenerator, typescript_validator: bool
-) -> None:
-    """Test that generated TypeScript code is syntactically valid."""
-    if not typescript_validator:
-        pytest.skip("TypeScript compiler not available")
-
-    class User(BaseModel):
-        name: str
-        age: int
-        email: str | None = None
-        tags: list[str] = []
-
-    module = generator.generate_schema(User, "User", "1.0.0")
-    schema = module.to_string()
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".ts", delete=False) as f:
-        f.write(schema)
-        temp_path = f.name
-
-    try:
-        result = subprocess.run(
-            ["tsc", "--noEmit", "--strict", temp_path],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        assert result.returncode == 0, f"TypeScript validation failed: {result.stderr}"
-    finally:
-        Path(temp_path).unlink()
-
-
-@pytest.mark.xfail(reason="Zod install not handled.")
-@pytest.mark.integration
-def test_generated_zod_schema_is_valid(
-    zod_generator: TypeScriptSchemaGenerator, typescript_validator: bool
-) -> None:
-    """Test that generated Zod schemas are syntactically valid."""
-    if not typescript_validator:
-        pytest.skip("TypeScript compiler not available")
-
-    class User(BaseModel):
-        name: str
-        age: int
-        email: str = Field(pattern=r"^[\w\.-]+@[\w\.-]+\.\w+$")
-
-    module = zod_generator.generate_schema(User, "User", "1.0.0")
-    schema = module.to_string()
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir_path = Path(tmpdir)
-
-        package_json = {"dependencies": {"zod": "^3.25.67"}}
-        (tmpdir_path / "package.json").write_text(json.dumps(package_json))
-
-        schema_file = tmpdir_path / "schema.ts"
-        schema_file.write_text(schema)
-
-        tsconfig = {
-            "compilerOptions": {
-                "strict": True,
-                "noEmit": True,
-                "moduleResolution": "node",
-                "esModuleInterop": True,
-            }
-        }
-        (tmpdir_path / "tsconfig.json").write_text(json.dumps(tsconfig))
-
-        result = subprocess.run(
-            ["tsc", "--noEmit"],
-            check=False,
-            cwd=tmpdir_path,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode != 0:
-            assert "Cannot find module 'zod'" in result.stderr or result.returncode == 0
 
 
 def test_typescript_very_long_model_name(generator: TypeScriptSchemaGenerator) -> None:

@@ -63,7 +63,7 @@ Output:
 /**
  * User account information.
  */
-export interface UserV1_0_0 {
+export interface User {
   /** User's full name */
   name: string;
   /** User's email address */
@@ -84,7 +84,7 @@ ts_schema = manager.get_typescript_schema("User", "1.0.0", style="interface")
 ```
 
 ```typescript
-export interface UserV1_0_0 {
+export interface User {
   name: string;
   email: string;
   age: number;
@@ -97,7 +97,7 @@ ts_schema = manager.get_typescript_schema("User", "1.0.0", style="type")
 ```
 
 ```typescript
-export type UserV1_0_0 = {
+export type User = {
   name: string;
   email: string;
   age: number;
@@ -112,13 +112,13 @@ ts_schema = manager.get_typescript_schema("User", "1.0.0", style="zod")
 ```typescript
 import { z } from 'zod';
 
-export const UserV1_0_0Schema = z.object({
+export const UserSchema = z.object({
   name: z.string(),
   email: z.string(),
   age: z.number().int().gte(0).lte(150),
 });
 
-export type UserV1_0_0 = z.infer<typeof UserV1_0_0Schema>;
+export type User = z.infer<typeof UserSchema>;
 ```
 
 Note how Pydantic constraints are preserved in the Zod schema.
@@ -197,7 +197,7 @@ class EventV1(BaseModel):
 Generated TypeScript:
 
 ```typescript
-export interface EventV1_0_0 {
+export interface Event {
   event_id: string;
   timestamp: string;
   date: string;
@@ -209,7 +209,7 @@ export interface EventV1_0_0 {
 Generated Zod:
 
 ```typescript
-export const EventV1_0_0Schema = z.object({
+export const EventSchema = z.object({
   event_id: z.string().uuid(),
   timestamp: z.string().datetime(),
   date: z.string().date(),
@@ -236,7 +236,7 @@ class CollectionsV1(BaseModel):
 Generated TypeScript:
 
 ```typescript
-export interface CollectionsV1_0_0 {
+export interface Collections {
   tags: string[];
   scores: number[];
   unique_ids: string[];
@@ -253,7 +253,7 @@ Complex nested structures are fully supported:
 ```python
 @manager.model("Complex", "1.0.0")
 class ComplexV1(BaseModel):
-    matrix: list[list[int]]                    # -> number[][]
+    matrix: list[list[int]]                   # -> number[][]
     nested_dict: dict[str, dict[str, str]]    # -> Record<string, Record<string, string>>
     records: list[dict[str, int]]             # -> Record<string, number>[]
     groups: dict[str, list[str]]              # -> Record<string, string[]>
@@ -262,7 +262,7 @@ class ComplexV1(BaseModel):
 Generated TypeScript:
 
 ```typescript
-export interface ComplexV1_0_0 {
+export interface Complex {
   matrix: number[][];
   nested_dict: Record<string, Record<string, string>>;
   records: Record<string, number>[];
@@ -287,7 +287,7 @@ class UserV1(BaseModel):
 Generated TypeScript:
 
 ```typescript
-export interface UserV1_0_0 {
+export interface User {
   name: string;
   email?: string;
   age?: number;
@@ -300,16 +300,16 @@ TypeScript distinguishes between nullable and optional fields:
 ```python
 @manager.model("Model", "1.0.0")
 class ModelV1(BaseModel):
-    required_nullable: str | None   # Required, can be null
+    required_nullable: str | None           # Required, can be null
     optional_with_default: str = "default"  # Optional, cannot be null
     optional_nullable: str | None = None    # Optional, treated as omittable
 ```
 
 Generated TypeScript:
 ```typescript
-export interface ModelV1_0_0 {
-  required_nullable: string | null;  // Must be provided
-  optional_with_default?: string;    // Can be omitted
+export interface Model {
+  required_nullable: string | null;   // Must be provided
+  optional_with_default?: string;     // Can be omitted
   optional_nullable?: string;         // Can be omitted (null treated as omittable)
 }
 ```
@@ -342,7 +342,7 @@ class TaskV1(BaseModel):
 Generated TypeScript (default: union):
 
 ```typescript
-export interface TaskV1_0_0 {
+export interface Task {
   name: string;
   status: 'pending' | 'active' | 'completed';
 }
@@ -351,7 +351,7 @@ export interface TaskV1_0_0 {
 Generated Zod:
 
 ```typescript
-export const TaskV1_0_0Schema = z.object({
+export const TaskSchema = z.object({
   name: z.string(),
   status: z.enum(['pending', 'active', 'completed']),
 });
@@ -377,7 +377,7 @@ enum Status {
   COMPLETED = 'completed'
 }
 
-export interface TaskV1_0_0 {
+export interface Task {
   name: string;
   status: Status;
 }
@@ -415,35 +415,35 @@ class EventContainerV1(BaseModel):
 
 Generated TypeScript:
 ```typescript
-export interface ClickEventV1_0_0 {
+export interface ClickEvent {
   event_type: 'click';  // Required, not optional
   elementId: string;
   x: number;
   y: number;
 }
 
-export interface ViewEventV1_0_0 {
+export interface ViewEvent {
   event_type: 'view';  // Required, not optional
   pageUrl: string;
   duration: number;
 }
 
-export interface EventContainerV1_0_0 {
-  event: ClickEventV1_0_0 | ViewEventV1_0_0;
+export interface EventContainer {
+  event: ClickEvent | ViewEvent;
 }
 ```
 
 **Type narrowing in TypeScript:**
 
 ```typescript
-function handleEvent(container: EventContainerV1_0_0) {
+function handleEvent(container: EventContainer) {
   switch (container.event.event_type) {
     case 'click':
-      // TypeScript knows this is ClickEventV1_0_0
+      // TypeScript knows this is ClickEvent
       console.log(`Clicked at ${container.event.x}, ${container.event.y}`);
       break;
     case 'view':
-      // TypeScript knows this is ViewEventV1_0_0
+      // TypeScript knows this is ViewEvent
       console.log(`Viewed ${container.event.pageUrl}`);
       break;
   }
@@ -491,20 +491,20 @@ class PaymentV1(BaseModel):
 
 Generated TypeScript:
 ```typescript
-export interface CardPaymentV1_0_0 {
+export interface CardPayment {
   method: 'card';  // Uses enum value, not 'PaymentMethod.CARD'
   cardNumber: string;
   cvv: string;
 }
 
-export interface BankPaymentV1_0_0 {
+export interface BankPayment {
   method: 'bank';
   accountNumber: string;
   routingNumber: string;
 }
 
-export interface PaymentV1_0_0 {
-  payment: CardPaymentV1_0_0 | BankPaymentV1_0_0;
+export interface Payment {
+  payment: CardPayment | BankPayment;
 }
 ```
 
@@ -515,27 +515,27 @@ Discriminated unions work with Zod's discriminated union validation:
 ```typescript
 import { z } from 'zod';
 
-export const ClickEventV1_0_0Schema = z.object({
+export const ClickEventSchema = z.object({
   event_type: z.literal('click'),
   elementId: z.string(),
   x: z.number().int(),
   y: z.number().int(),
 });
 
-export const ViewEventV1_0_0Schema = z.object({
+export const ViewEventSchema = z.object({
   event_type: z.literal('view'),
   pageUrl: z.string(),
   duration: z.number().int(),
 });
 
-export const EventContainerV1_0_0Schema = z.object({
-  event: z.union([ClickEventV1_0_0Schema, ViewEventV1_0_0Schema]),
+export const EventContainerSchema = z.object({
+  event: z.union([ClickEventSchema, ViewEventSchema]),
 });
 
 // Runtime validation with type narrowing
-const event = EventContainerV1_0_0Schema.parse(data);
+const event = EventContainerSchema.parse(data);
 if (event.event.event_type === 'click') {
-  // TypeScript knows event.event is ClickEventV1_0_0
+  // TypeScript knows event.event is ClickEvent
   console.log(event.event.elementId);
 }
 ```
@@ -557,7 +557,7 @@ class ConfigV1(BaseModel):
 Generated TypeScript:
 
 ```typescript
-export interface ConfigV1_0_0 {
+export interface Config {
   environment: 'dev' | 'staging' | 'prod';
   log_level: 'debug' | 'info' | 'warning' | 'error';
 }
@@ -577,7 +577,7 @@ class FlexibleV1(BaseModel):
 Generated TypeScript:
 
 ```typescript
-export interface FlexibleV1_0_0 {
+export interface Flexible {
   value: string | number;
   data: string | Record<string, string>;
 }
@@ -604,15 +604,15 @@ class UserV1(BaseModel):
 Generated TypeScript:
 
 ```typescript
-export interface AddressV1_0_0 {
+export interface Address {
   street: string;
   city: string;
   zip_code: string;
 }
 
-export interface UserV1_0_0 {
+export interface User {
   name: string;
-  address: AddressV1_0_0;
+  address: Address;
 }
 ```
 
@@ -630,9 +630,9 @@ class TreeNodeV1(BaseModel):
 Generated TypeScript:
 
 ```typescript
-export interface TreeNodeV1_0_0 {
+export interface TreeNode {
   value: number;
-  children?: TreeNodeV1_0_0[];
+  children?: TreeNode[];
 }
 ```
 
@@ -660,7 +660,7 @@ Generated TypeScript:
 /**
  * Generic API response wrapper.
  */
-export interface ApiResponseV1_0_0<T> {
+export interface ApiResponse<T> {
   data?: T;
   error?: string;
   success?: boolean;
@@ -681,7 +681,7 @@ class KeyValuePairV1(BaseModel, Generic[K, V]):
 ```
 
 ```typescript
-export interface KeyValuePairV1_0_0<K, V> {
+export interface KeyValuePair<K, V> {
   key: K;
   value: V;
 }
@@ -709,7 +709,7 @@ class PersonV1(BaseModel):
 Generated TypeScript:
 
 ```typescript
-export interface PersonV1_0_0 {
+export interface Person {
   first_name: string;
   last_name: string;
   full_name: string;
@@ -727,7 +727,7 @@ ts_schema = manager.get_typescript_schema(
 ```
 
 ```typescript
-export interface PersonV1_0_0 {
+export interface Person {
   first_name: string;
   last_name: string;
   readonly full_name: string;
@@ -829,7 +829,7 @@ class UserV1(BaseModel):
 Generated Zod:
 
 ```typescript
-export const UserV1_0_0Schema = z.object({
+export const UserSchema = z.object({
   username: z.string().min(3).max(20),
   email: z.string().regex(/^[\w\.-]+@[\w\.-]+\.\w+$/),
   age: z.number().int().gte(0).lte(150),
@@ -867,7 +867,7 @@ class FlexibleConfigV1(BaseModel):
 
 Generated TypeScript:
 ```typescript
-export interface FlexibleConfigV1_0_0 {
+export interface FlexibleConfig {
   name: string;
   value: number;
   [key: string]: any;  // Allows additional properties
@@ -876,7 +876,7 @@ export interface FlexibleConfigV1_0_0 {
 
 Generated Zod:
 ```typescript
-export const FlexibleConfigV1_0_0Schema = z.object({
+export const FlexibleConfigSchema = z.object({
   name: z.string(),
   value: z.number().int(),
 }).passthrough();  // Allows additional properties
@@ -884,35 +884,129 @@ export const FlexibleConfigV1_0_0Schema = z.object({
 
 ## Exporting Schemas
 
-### Export All Schemas
+### Export Organization
 
-Export all registered models to a directory:
+Control how TypeScript files are organized in the output directory:
+
+**Flat organization (default):**
+
+All files in a single directory with version in filename:
 
 ```python
-# Export interfaces
-manager.dump_typescript_schemas("frontend/types/", style="interface")
-
-# Export Zod schemas
-manager.dump_typescript_schemas("frontend/schemas/", style="zod")
-
-# Export both
-manager.dump_typescript_schemas("frontend/types/", style="interface")
-manager.dump_typescript_schemas("frontend/schemas/", style="zod")
+manager.dump_typescript_schemas("frontend/types/", organization="flat")
 ```
 
 Directory structure:
 
 ```
-frontend/
-├── types/
-│   ├── User_v1_0_0.ts
-│   ├── Order_v1_0_0.ts
-│   └── Product_v1_0_0.ts
-└── schemas/
-    ├── User_v1_0_0.ts
-    ├── Order_v1_0_0.ts
-    └── Product_v1_0_0.ts
+frontend/types/
+├── User.v1.0.0.ts
+├── User.v2.0.0.ts
+├── Order.v1.0.0.ts
+└── Product.v1.0.0.ts
 ```
+
+**By major version:**
+
+Organize by major version directories (recommended for semantic versioning):
+
+```python
+manager.dump_typescript_schemas(
+    "frontend/types/",
+    organization="major_version",
+    include_barrel_exports=True
+)
+```
+
+Directory structure:
+
+```
+frontend/types/
+├── v1/
+│   ├── User.v1.0.0.ts
+│   ├── User.v1.1.0.ts
+│   ├── Order.v1.0.0.ts
+│   └── index.ts          # Barrel export
+├── v2/
+│   ├── User.v2.0.0.ts
+│   └── index.ts          # Barrel export
+└── index.ts              # Re-exports latest (v2)
+```
+
+**By model:**
+
+Organize by model name:
+
+```python
+manager.dump_typescript_schemas(
+    "frontend/types/",
+    organization="model",
+    include_barrel_exports=True
+)
+```
+
+Directory structure:
+
+```
+frontend/types/
+├── User/
+│   ├── 1.0.0.ts
+│   ├── 1.1.0.ts
+│   ├── 2.0.0.ts
+│   └── index.ts          # Re-exports latest (2.0.0)
+├── Order/
+│   ├── 1.0.0.ts
+│   └── index.ts          # Re-exports latest (1.0.0)
+└── index.ts              # Re-exports all models
+```
+
+**Using barrel exports:**
+
+With `include_barrel_exports=True` (default for non-flat organizations), you
+can import more easily:
+
+```typescript
+// Import latest from version directory
+import { User } from './types/v1';
+
+// Import latest version overall
+import { User, Order } from './types';
+
+// Import specific version when needed
+import { User as UserV1 } from './types/v1/User.v1.0.0';
+import { User as UserV2 } from './types/v2/User.v2.0.0';
+```
+
+**Disable barrel exports:**
+```python
+manager.dump_typescript_schemas(
+    "frontend/types/",
+    organization="major_version",
+    include_barrel_exports=False
+)
+```
+
+This creates only the schema files without `index.ts` files.
+
+**CLI usage:**
+
+```bash
+# Flat organization (default)
+pyrmute export -f typescript -o ./types
+
+# By major version with barrel exports
+pyrmute export -f typescript -o ./types --organization major_version
+
+# By model
+pyrmute export -f typescript -o ./types --organization model
+
+# Without barrel exports
+pyrmute export -f typescript -o ./types --organization major_version --no-barrel-exports
+```
+
+**Recommendation:** Use `major_version` for most projects with semantic
+versioning. It groups compatible versions together (same major version = no
+breaking changes) while keeping the full version in filenames for reference.
 
 ### Export Single Schema
 
@@ -923,6 +1017,78 @@ schema = manager.get_typescript_schema("User", "1.0.0")
 # Write to file
 from pathlib import Path
 Path("types/user.ts").write_text(schema)
+```
+
+### Export All Schemas
+
+Export all registered models to a directory:
+
+```python
+# Export interfaces with flat organization (default)
+manager.dump_typescript_schemas("frontend/types/", style="interface")
+
+# Export with major_version organization (recommended)
+manager.dump_typescript_schemas(
+    "frontend/types/",
+    style="interface",
+    organization="major_version",
+    include_barrel_exports=True
+)
+
+# Export Zod schemas
+manager.dump_typescript_schemas(
+    "frontend/schemas/",
+    style="zod",
+    organization="major_version"
+)
+
+# Export both interfaces and Zod schemas
+manager.dump_typescript_schemas(
+    "frontend/types/",
+    style="interface",
+    organization="major_version"
+)
+manager.dump_typescript_schemas(
+    "frontend/schemas/",
+    style="zod",
+    organization="major_version"
+)
+```
+
+Directory structure (flat):
+
+```
+frontend/
+├── types/
+│   ├── User.v1.0.0.ts
+│   ├── Order.v1.0.0.ts
+│   └── Product.v1.0.0.ts
+└── schemas/
+    ├── User.v1.0.0.ts
+    ├── Order.v1.0.0.ts
+    └── Product.v1.0.0.ts
+```
+
+Directory structure (major_version):
+
+```
+frontend/
+├── types/
+│   ├── v1/
+│   │   ├── User.v1.0.0.ts
+│   │   ├── Order.v1.0.0.ts
+│   │   ├── Product.v1.0.0.ts
+│   │   └── index.ts
+│   ├── v2/
+│   │   ├── User.v2.0.0.ts
+│   │   └── index.ts
+│   └── index.ts
+└── schemas/
+    ├── v1/
+    │   ├── User.v1.0.0.ts
+    │   ├── Order.v1.0.0.ts
+    │   └── index.ts
+    └── index.ts
 ```
 
 ### Integration with Build Process
@@ -940,16 +1106,18 @@ def generate_typescript_types() -> None:
     # Import all models
     from app import models  # Your models module
 
-    # Export interfaces
+    # Export interfaces with major_version organization
     output_dir = Path("frontend/src/types/generated")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     manager.dump_typescript_schemas(
         str(output_dir),
-        style="interface"
+        style="interface",
+        organization="major_version",
+        include_barrel_exports=True
     )
 
-    print(f"Generated {len(manager.registry)} TypeScript interfaces")
+    print(f"Generated TypeScript schemas for {len(manager.list_models())} models")
 
 
 if __name__ == "__main__":
@@ -963,8 +1131,29 @@ Run during development:
 {
   "scripts": {
     "generate-types": "python scripts/generate_types.py",
-    "dev": "npm run generate-types && vite"
+    "dev": "npm run generate-types && vite",
+    "prebuild": "npm run generate-types"
   }
+}
+```
+
+Using the generated types:
+
+```typescript
+// Import from barrel exports
+import { User, Order } from '@/types/generated';
+
+// Import specific version when needed
+import { User as UserV1 } from '@/types/generated/v1/User.v1.0.0';
+import { User as UserV2 } from '@/types/generated/v2/User.v2.0.0';
+
+// Use in your components
+interface UserCardProps {
+  user: User;  // Latest version
+}
+
+export function UserCard({ user }: UserCardProps) {
+  return <div>{user.name}</div>;
 }
 ```
 
@@ -994,7 +1183,7 @@ class UserV2(BaseModel):
 Generated TypeScript (v2):
 
 ```typescript
-export interface UserV2_0_0 {
+export interface User {
   name: string;
   email: string;
   phone?: string;     // New field
@@ -1035,7 +1224,7 @@ class UserV2(BaseModel):
 ```
 
 ```typescript
-export interface UserV2_0_0 {
+export interface User {
   name: string;
   email: string;
   /** DEPRECATED: Use email instead */
@@ -1071,27 +1260,43 @@ class UserResponseV1(BaseModel):
 
 
 # Export for frontend
-manager.dump_typescript_schemas("frontend/src/types/", style="interface")
-manager.dump_typescript_schemas("frontend/src/schemas/", style="zod")
+manager.dump_typescript_schemas(
+    "frontend/src/types/",
+    style="interface",
+    organization="major_version"
+)
+manager.dump_typescript_schemas(
+    "frontend/src/schemas/",
+    style="zod",
+    organization="major_version"
+)
 ```
 
 Frontend usage:
-
 ```typescript
-import type { CreateUserRequestV1_0_0, UserResponseV1_0_0 } from './types';
-import { UserResponseV1_0_0Schema } from './schemas';
+// Import from barrel exports
+import type { CreateUserRequest, UserResponse } from '@/types/v1';
+import { UserResponseSchema } from '@/schemas/v1';
 
-async function createUser(data: CreateUserRequestV1_0_0): Promise<UserResponseV1_0_0> {
+async function createUser(data: CreateUserRequest): Promise<UserResponse> {
   const response = await fetch('/api/users', {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
 
   const json = await response.json();
 
-  // Runtime validation
-  return UserResponseV1_0_0Schema.parse(json);
+  // Runtime validation with Zod
+  return UserResponseSchema.parse(json);
 }
+
+// Usage
+const newUser = await createUser({
+  name: 'Alice',
+  email: 'alice@example.com',
+  password: 'secret123'
+});
 ```
 
 ### Form Validation
@@ -1105,35 +1310,56 @@ class LoginFormV1(BaseModel):
     email: str = Field(pattern=r"^[\w\.-]+@[\w\.-]+\.\w+$")
     password: str = Field(min_length=8, max_length=100)
     remember_me: bool = False
+
+
+# Export
+manager.dump_typescript_schemas(
+    "frontend/src/schemas/",
+    style="zod",
+    organization="major_version"
+)
 ```
 
 Frontend with Zod:
-
 ```typescript
-import { LoginFormV1_0_0Schema } from './schemas';
+import { LoginFormSchema } from '@/schemas/v1';
 
 // Integrate with React Hook Form
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
+import type { LoginForm } from '@/schemas/v1';
 
 function LoginForm() {
-  const form = useForm({
-    resolver: zodResolver(LoginFormV1_0_0Schema),
+  const form = useForm<LoginForm>({
+    resolver: zodResolver(LoginFormSchema),
   });
 
   // Form automatically validates with backend rules
+  const onSubmit = (data: LoginForm) => {
+    console.log('Valid form data:', data);
+  };
+
+  return (
+    <form onSubmit={form.handleSubmit(onSubmit)}>
+      <input {...form.register('email')} />
+      <input {...form.register('password')} type="password" />
+      <input {...form.register('remember_me')} type="checkbox" />
+      <button type="submit">Login</button>
+    </form>
+  );
 }
 ```
 
 ### WebSocket Events
 
 ```python
-from typing import Literal
+from typing import Literal, Annotated
+from pydantic import Field
 
 
 @manager.model("ChatMessage", "1.0.0")
 class ChatMessageV1(BaseModel):
-    type: Literal["message"]
+    type: Literal["message"] = "message"
     user_id: str
     content: str
     timestamp: datetime
@@ -1141,47 +1367,70 @@ class ChatMessageV1(BaseModel):
 
 @manager.model("UserJoined", "1.0.0")
 class UserJoinedV1(BaseModel):
-    type: Literal["user_joined"]
+    type: Literal["user_joined"] = "user_joined"
     user_id: str
     username: str
 
 
 @manager.model("UserLeft", "1.0.0")
 class UserLeftV1(BaseModel):
-    type: Literal["user_left"]
+    type: Literal["user_left"] = "user_left"
     user_id: str
 
 
-# Union type for all events
-from typing import Union
-WebSocketEvent = Union[ChatMessageV1, UserJoinedV1, UserLeftV1]
+@manager.model("WebSocketEvent", "1.0.0")
+class WebSocketEventV1(BaseModel):
+    event: Annotated[
+        ChatMessageV1 | UserJoinedV1 | UserLeftV1,
+        Field(discriminator="type")
+    ]
+
+
+# Export
+manager.dump_typescript_schemas(
+    "frontend/src/types/",
+    style="interface",
+    organization="major_version"
+)
 ```
 
 Frontend usage:
 
 ```typescript
-type WebSocketEvent =
-  | ChatMessageV1_0_0
-  | UserJoinedV1_0_0
-  | UserLeftV1_0_0;
+import type {
+  ChatMessage,
+  UserJoined,
+  UserLeft,
+  WebSocketEvent
+} from '@/types/v1';
 
-function handleMessage(event: WebSocketEvent) {
-  // TypeScript discriminated union
+function handleMessage(container: WebSocketEvent) {
+  const event = container.event;
+
+  // TypeScript discriminated union with type narrowing
   switch (event.type) {
     case 'message':
-      // event is ChatMessageV1_0_0
-      console.log(event.content);
+      // TypeScript knows event is ChatMessage
+      console.log(`${event.user_id}: ${event.content}`);
       break;
     case 'user_joined':
-      // event is UserJoinedV1_0_0
-      console.log(`${event.username} joined`);
+      // TypeScript knows event is UserJoined
+      console.log(`${event.username} joined the chat`);
       break;
     case 'user_left':
-      // event is UserLeftV1_0_0
-      console.log(`User ${event.user_id} left`);
+      // TypeScript knows event is UserLeft
+      console.log(`User ${event.user_id} left the chat`);
       break;
   }
 }
+
+// WebSocket setup
+const ws = new WebSocket('ws://localhost:8000/ws');
+
+ws.onmessage = (msg) => {
+  const event: WebSocketEvent = JSON.parse(msg.data);
+  handleMessage(event);
+};
 ```
 
 ### API Response Wrappers
@@ -1199,18 +1448,50 @@ class ApiResponseV1(BaseModel, Generic[T]):
     error: str | None = None
     success: bool
     timestamp: datetime
+
+
+@manager.model("User", "1.0.0")
+class UserV1(BaseModel):
+    id: str
+    name: str
+    email: str
+
+
+# Export
+manager.dump_typescript_schemas(
+    "frontend/src/types/",
+    style="interface",
+    organization="major_version"
+)
 ```
 
 Frontend usage:
 
 ```typescript
-// Type-safe API responses
-type UserListResponse = ApiResponseV1_0_0<UserResponseV1_0_0[]>;
-type UserDetailResponse = ApiResponseV1_0_0<UserResponseV1_0_0>;
+import type { ApiResponse, User } from '@/types/v1';
+
+// Type-safe API responses with generics
+type UserListResponse = ApiResponse<User[]>;
+type UserDetailResponse = ApiResponse<User>;
 
 async function getUsers(): Promise<UserListResponse> {
   const response = await fetch('/api/users');
-  return response.json();
+  const data: UserListResponse = await response.json();
+
+  if (data.success && data.data) {
+    return data;
+  }
+  throw new Error(data.error || 'Unknown error');
+}
+
+async function getUser(id: string): Promise<User> {
+  const response = await fetch(`/api/users/${id}`);
+  const data: UserDetailResponse = await response.json();
+
+  if (data.success && data.data) {
+    return data.data;
+  }
+  throw new Error(data.error || 'User not found');
 }
 ```
 
@@ -1235,6 +1516,22 @@ class PaginatedResponseV1(BaseModel, Generic[T]):
     has_prev: bool
 ```
 
+Frontend usage:
+
+```typescript
+import type { PaginationParams, PaginatedResponse, User } from '@/types/v1';
+
+async function getUsers(params: PaginationParams): Promise<PaginatedResponse<User>> {
+  const query = new URLSearchParams({
+    page: params.page.toString(),
+    page_size: params.page_size.toString(),
+  });
+
+  const response = await fetch(`/api/users?${query}`);
+  return response.json();
+}
+```
+
 ### Error Responses
 
 ```python
@@ -1256,6 +1553,30 @@ class ErrorResponseV1(BaseModel):
     timestamp: datetime
 ```
 
+Frontend usage:
+
+```typescript
+import type { ErrorResponse } from '@/types/v1';
+
+async function handleApiCall<T>(
+  apiCall: () => Promise<Response>
+): Promise<T> {
+  try {
+    const response = await apiCall();
+
+    if (!response.ok) {
+      const error: ErrorResponse = await response.json();
+      throw new Error(`${error.error_code}: ${error.message}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('API call failed:', error);
+    throw error;
+  }
+}
+```
+
 ### Filters and Search
 
 ```python
@@ -1268,10 +1589,33 @@ class UserFilterV1(BaseModel):
     created_before: datetime | None = None
 ```
 
+Frontend usage:
+
+```typescript
+import type { UserFilter, User } from '@/types/v1';
+
+function buildQueryParams(filter: UserFilter): URLSearchParams {
+  const params = new URLSearchParams();
+
+  if (filter.search) params.set('search', filter.search);
+  if (filter.role) params.set('role', filter.role);
+  if (filter.active !== null) params.set('active', filter.active.toString());
+  if (filter.created_after) params.set('created_after', filter.created_after.toISOString());
+  if (filter.created_before) params.set('created_before', filter.created_before.toISOString());
+
+  return params;
+}
+
+async function searchUsers(filter: UserFilter): Promise<User[]> {
+  const params = buildQueryParams(filter);
+  const response = await fetch(`/api/users/search?${params}`);
+  return response.json();
+}
+```
+
 ## Testing
 
 ### Validate Generated Types
-
 ```python
 import subprocess
 from pathlib import Path
@@ -1281,27 +1625,76 @@ def test_typescript_validity() -> None:
     """Test that generated TypeScript is syntactically valid."""
     # Generate schemas
     output_dir = Path("test_types")
-    manager.dump_typescript_schemas(str(output_dir), style="interface")
+    manager.dump_typescript_schemas(
+        str(output_dir),
+        style="interface",
+        organization="major_version"
+    )
+
+    # Collect all TypeScript files
+    ts_files = list(output_dir.rglob("*.ts"))
 
     # Run TypeScript compiler in check mode
     result = subprocess.run(
-        ["tsc", "--noEmit", "--strict", str(output_dir / "*.ts")],
+        ["tsc", "--noEmit", "--strict"] + [str(f) for f in ts_files],
         capture_output=True,
         text=True
     )
 
-    assert result.returncode == 0, f"TypeScript errors: {result.stderr}"
+    assert result.returncode == 0, f"TypeScript errors: {result.stdout}"
 
 
-def test_zod_schemas():
+def test_zod_schemas() -> None:
     """Test that Zod schemas are valid."""
     output_dir = Path("test_schemas")
-    manager.dump_typescript_schemas(str(output_dir), style="zod")
+    manager.dump_typescript_schemas(
+        str(output_dir),
+        style="zod",
+        organization="major_version"
+    )
+
+    # Collect all TypeScript files
+    ts_files = list(output_dir.rglob("*.ts"))
 
     # TypeScript compiler validates Zod schemas
     result = subprocess.run(
-        ["tsc", "--noEmit", str(output_dir / "*.ts")],
-        capture_output=True
+        ["tsc", "--noEmit", "--moduleResolution", "node"] + [str(f) for f in ts_files],
+        capture_output=True,
+        cwd=str(output_dir.parent)
+    )
+
+    assert result.returncode == 0, f"Zod schema errors: {result.stdout}"
+
+
+def test_barrel_exports() -> None:
+    """Test that barrel exports work correctly."""
+    output_dir = Path("test_exports")
+    manager.dump_typescript_schemas(
+        str(output_dir),
+        style="interface",
+        organization="major_version",
+        include_barrel_exports=True
+    )
+
+    # Check that index files exist
+    assert (output_dir / "index.ts").exists()
+    assert (output_dir / "v1" / "index.ts").exists()
+
+    # Create a test file that imports from barrel exports
+    test_file = output_dir.parent / "test-imports.ts"
+    test_file.write_text("""
+import { User, Order } from './test_exports';
+import * as V1 from './test_exports/v1';
+
+const user: User = { name: 'Alice', email: 'alice@example.com' };
+const userV1: V1.User = user;
+""")
+
+    # Validate the imports work
+    result = subprocess.run(
+        ["tsc", "--noEmit", "--strict", str(test_file)],
+        capture_output=True,
+        cwd=str(output_dir.parent)
     )
 
     assert result.returncode == 0
@@ -1309,36 +1702,72 @@ def test_zod_schemas():
 
 ### Runtime Validation
 
+For runtime validation testing, use Node.js/Jest:
+
+```typescript
+// test/validation.test.ts
+import { UserSchema, type User } from '../types/v1';
+
+describe('User validation', () => {
+  it('validates correct data', () => {
+    const valid: User = {
+      name: 'Alice',
+      email: 'alice@example.com',
+      age: 30
+    };
+
+    expect(() => UserSchema.parse(valid)).not.toThrow();
+  });
+
+  it('rejects invalid data', () => {
+    const invalid = {
+      name: 'Alice',
+      email: 'not-an-email',
+      age: -5
+    };
+
+    expect(() => UserSchema.parse(invalid)).toThrow();
+  });
+
+  it('validates optional fields', () => {
+    const minimal: User = {
+      name: 'Bob',
+      email: 'bob@example.com'
+    };
+
+    expect(() => UserSchema.parse(minimal)).not.toThrow();
+  });
+});
+```
+
+### Integration Testing
+
+Test that frontend and backend stay in sync:
+
 ```python
-def test_zod_validation() -> None:
-    """Test that Zod schemas validate correctly."""
-    # This would be a Node.js test
-    # test/validation.test.ts:
-    """
-    import { UserV1_0_0Schema } from '../types';
+# tests/test_type_generation.py
+import json
+from pathlib import Path
 
-    describe('User validation', () => {
-      it('validates correct data', () => {
-        const valid = {
-          name: 'Alice',
-          email: 'alice@example.com',
-          age: 30
-        };
 
-        expect(() => UserV1_0_0Schema.parse(valid)).not.toThrow();
-      });
+def test_frontend_types_match_backend() -> None:
+    """Ensure generated types match backend models."""
+    # Generate types
+    output_dir = Path("frontend/src/types/generated")
+    manager.dump_typescript_schemas(
+        str(output_dir),
+        organization="major_version"
+    )
 
-      it('rejects invalid data', () => {
-        const invalid = {
-          name: 'Alice',
-          email: 'not-an-email',
-          age: -5
-        };
+    # Verify critical types exist
+    assert (output_dir / "v1" / "User.v1.0.0.ts").exists()
+    assert (output_dir / "v1" / "index.ts").exists()
 
-        expect(() => UserV1_0_0Schema.parse(invalid)).toThrow();
-      });
-    });
-    """
+    # Check that type content is correct
+    user_type = (output_dir / "v1" / "User.v1.0.0.ts").read_text()
+    assert "export interface User" in user_type
+    assert "name: string" in user_type
+    assert "email: string" in user_type
 ```
 
 ## Troubleshooting
@@ -1376,10 +1805,10 @@ If TypeScript complains about types:
 
 ```typescript
 // Use type assertion
-const user = data as UserV1_0_0;
+const user = data as User;
 
 // Or validate with Zod
-const user = UserV1_0_0Schema.parse(data);
+const user = UserSchema.parse(data);
 ```
 
 ### Circular Dependencies
@@ -1388,9 +1817,9 @@ For recursive types, TypeScript may need help:
 
 ```typescript
 // If TypeScript can't resolve recursive types
-export interface TreeNodeV1_0_0 {
+export interface TreeNode {
   value: number;
-  children?: TreeNodeV1_0_0[]; // May need explicit annotation
+  children?: TreeNode[]; // May need explicit annotation
 }
 ```
 
