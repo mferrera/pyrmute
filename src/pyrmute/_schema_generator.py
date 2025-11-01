@@ -73,6 +73,7 @@ class FieldSchema:
     description: str | None = None
     constraints: dict[str, Any] = field(default_factory=dict)
     is_computed: bool = False
+    aliases: list[str] = field(default_factory=list)
 
 
 class SchemaGeneratorBase(ABC, Generic[SchemaType]):
@@ -172,6 +173,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
 
         description = field_info.description if self.include_docs else None
         constraints = self._extract_constraints(field_info)
+        aliases = self._collect_field_aliases(field_name, schema_name, field_info)
 
         return FieldSchema(
             name=schema_name,
@@ -181,6 +183,7 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
             description=description,
             constraints=constraints,
             is_computed=False,
+            aliases=aliases,
         )
 
     def _extract_constraints(self: Self, field_info: FieldInfo) -> dict[str, Any]:
@@ -206,6 +209,46 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
             constraints["string"] = string
 
         return constraints
+
+    def _collect_field_aliases(
+        self: Self,
+        python_name: str,
+        schema_name: str,
+        field_info: FieldInfo,
+    ) -> list[str]:
+        """Collect all aliases for a field.
+
+        This gathers the Python name and any Pydantic aliases that differ from the
+        chosen schema name.
+
+        Args:
+            python_name: Original Python field name.
+            schema_name: Chosen schema field name.
+            field_info: Pydantic field info.
+
+        Returns:
+            List of aliases (may be empty).
+        """
+        aliases: list[str] = []
+
+        if python_name != schema_name:
+            aliases.append(python_name)
+
+        if (
+            field_info.alias
+            and field_info.alias != schema_name
+            and field_info.alias not in aliases
+        ):
+            aliases.append(field_info.alias)
+
+        if (
+            field_info.serialization_alias
+            and field_info.serialization_alias != schema_name
+            and field_info.serialization_alias not in aliases
+        ):
+            aliases.append(field_info.serialization_alias)
+
+        return aliases
 
     @abstractmethod
     def _generate_field_schema(
