@@ -75,7 +75,7 @@ def test_typescript_interface_basic_types(generator: TypeScriptSchemaGenerator) 
     module = generator.generate_schema(BasicTypes, "BasicTypes", "1.0.0")
     schema = module.to_string()
 
-    assert "export interface BasicTypesV1_0_0 {" in schema
+    assert "export interface BasicTypes {" in schema
     assert "name: string;" in schema
     assert "age: number;" in schema
     assert "height: number;" in schema
@@ -96,7 +96,7 @@ def test_typescript_type_alias_basic_types(
     module = type_generator.generate_schema(BasicTypes, "BasicTypes", "1.0.0")
     schema = module.to_string()
 
-    assert "export type BasicTypesV1_0_0 = {" in schema
+    assert "export type BasicTypes = {" in schema
     assert "name: string;" in schema
     assert "age: number;" in schema
     assert "is_active: boolean;" in schema
@@ -115,15 +115,12 @@ def test_typescript_zod_basic_types(zod_generator: TypeScriptSchemaGenerator) ->
     schema = module.to_string()
 
     assert "import { z } from 'zod';" in schema
-    assert "export const BasicTypesV1_0_0Schema = z.object({" in schema
+    assert "export const BasicTypesSchema = z.object({" in schema
     assert "name: z.string()," in schema
     assert "age: z.number().int()," in schema
     assert "height: z.number()," in schema
     assert "is_active: z.boolean()," in schema
-    assert (
-        "export type BasicTypesV1_0_0 = z.infer<typeof BasicTypesV1_0_0Schema>;"
-        in schema
-    )
+    assert "export type BasicTypes = z.infer<typeof BasicTypesSchema>;" in schema
 
 
 # ============================================================================
@@ -772,7 +769,7 @@ def test_typescript_interface_version_in_name(
     module = generator.generate_schema(User, "User", "1.0.0")
     schema = module.to_string()
 
-    assert "export interface UserV1_0_0 {" in schema
+    assert "export interface User {" in schema
 
 
 def test_typescript_interface_multiple_versions(
@@ -790,8 +787,8 @@ def test_typescript_interface_multiple_versions(
     schema_v1 = generator.generate_schema(UserV1, "User", "1.0.0").to_string()
     schema_v2 = generator.generate_schema(UserV2, "User", "2.0.0").to_string()
 
-    assert "export interface UserV1_0_0 {" in schema_v1
-    assert "export interface UserV2_0_0 {" in schema_v2
+    assert "export interface User {" in schema_v1
+    assert "export interface User {" in schema_v2
     assert "email: string;" in schema_v2
     assert "email: string;" not in schema_v1
 
@@ -807,8 +804,8 @@ def test_typescript_zod_version_in_name(
     module = zod_generator.generate_schema(User, "User", "1.0.0")
     schema = module.to_string()
 
-    assert "export const UserV1_0_0Schema = z.object({" in schema
-    assert "export type UserV1_0_0 = z.infer<typeof UserV1_0_0Schema>;" in schema
+    assert "export const UserSchema = z.object({" in schema
+    assert "export type User = z.infer<typeof UserSchema>;" in schema
 
 
 # ============================================================================
@@ -832,7 +829,7 @@ def test_typescript_export_single_schema(tmp_path: Path) -> None:
 
     assert output_file.exists()
     content = output_file.read_text()
-    assert "export interface UserV1_0_0 {" in content
+    assert "export interface User {" in content
     assert schema == content
 
 
@@ -886,8 +883,8 @@ def test_typescript_export_zod_schemas(tmp_path: Path) -> None:
 
     content = schema_file.read_text()
     assert "import { z } from 'zod';" in content
-    assert "export const UserV1_0_0Schema = z.object({" in content
-    assert "export type UserV1_0_0 = z.infer<typeof UserV1_0_0Schema>;" in content
+    assert "export const UserSchema = z.object({" in content
+    assert "export type User = z.infer<typeof UserSchema>;" in content
 
 
 # ============================================================================
@@ -958,7 +955,7 @@ def test_typescript_recursive_model(generator: TypeScriptSchemaGenerator) -> Non
     schema = module.to_string()
 
     assert "value: number;" in schema
-    assert "children?: TreeNodeV1_0_0[];" in schema
+    assert "children?: TreeNode[];" in schema
 
 
 def test_typescript_recursive_model_version_same(
@@ -974,7 +971,7 @@ def test_typescript_recursive_model_version_same(
     schema = module.to_string()
 
     assert "value: number;" in schema
-    assert "children?: TreeNodeV1_0_0[];" in schema
+    assert "children?: TreeNode[];" in schema
 
 
 def test_typescript_recursive_model_enum_mode(
@@ -992,7 +989,7 @@ def test_typescript_recursive_model_enum_mode(
     schema = module.to_string()
 
     assert "value: number;" in schema
-    assert "children?: TreeNodeV1_0_0[];" in schema
+    assert "children?: TreeNode[];" in schema
 
 
 def test_typescript_complex_nested_collections(
@@ -1128,7 +1125,7 @@ def test_typescript_empty_model(generator: TypeScriptSchemaGenerator) -> None:
     module = generator.generate_schema(Empty, "Empty", "1.0.0")
     schema = module.to_string()
 
-    assert "export interface EmptyV1_0_0 {" in schema
+    assert "export interface Empty {" in schema
     assert "}" in schema
 
 
@@ -1145,7 +1142,7 @@ def test_typescript_model_with_forward_reference(
     schema = module.to_string()
 
     assert "value: number;" in schema
-    assert "next?: NodeV1_0_0;" in schema
+    assert "next?: Node;" in schema
 
 
 def test_typescript_multiple_inheritance_base(
@@ -1299,7 +1296,7 @@ def test_typescript_circular_reference(generator: TypeScriptSchemaGenerator) -> 
     schema = module.to_string()
 
     assert "name: string;" in schema
-    assert "spouse?: PersonV1_0_0;" in schema
+    assert "spouse?: Person;" in schema
     assert "friends" in schema
 
 
@@ -1382,8 +1379,8 @@ def test_typescript_zod_generates_both_schema_and_type(
     module = zod_generator.generate_schema(User, "User", "1.0.0")
     schema = module.to_string()
 
-    assert "export const UserV1_0_0Schema = z.object({" in schema
-    assert "export type UserV1_0_0 = z.infer<typeof UserV1_0_0Schema>;" in schema
+    assert "export const UserSchema = z.object({" in schema
+    assert "export type User = z.infer<typeof UserSchema>;" in schema
 
 
 def test_typescript_generic_model_abstract(
@@ -1402,8 +1399,8 @@ def test_typescript_generic_model_abstract(
     schema = module.to_string()
 
     # Should generate a generic interface with type parameter
-    # Expected: export interface ApiResponseV1_0_0<T> {
-    assert "export interface ApiResponseV1_0_0" in schema
+    # Expected: export interface ApiResponse<T> {
+    assert "export interface ApiResponse" in schema
     # The generic parameter might be handled in different ways
     # At minimum, the fields should be present
     assert "data?: T;" in schema or "data?: any;" in schema
@@ -1429,7 +1426,7 @@ def test_typescript_generic_model_concrete(
     module = generator.generate_schema(UserResponse, "UserResponse", "1.0.0")
     schema = module.to_string()
 
-    assert "export interface UserResponseV1_0_0" in schema
+    assert "export interface UserResponse" in schema
     assert "data?: User | null;" in schema or "data?:" in schema
     assert "error?: string;" in schema
 
@@ -1444,7 +1441,7 @@ def test_typescript_multiple_type_params(generator: TypeScriptSchemaGenerator) -
     module = generator.generate_schema(KeyValuePair, "KeyValuePair", "1.0.0")
     schema = module.to_string()
 
-    assert "export interface KeyValuePairV1_0_0" in schema
+    assert "export interface KeyValuePair" in schema
     assert "key:" in schema
     assert "value:" in schema
 
@@ -1459,7 +1456,7 @@ def test_typescript_nested_generics(generator: TypeScriptSchemaGenerator) -> Non
     module = generator.generate_schema(Wrapper, "Wrapper", "1.0.0")
     schema = module.to_string()
 
-    assert "export interface WrapperV1_0_0" in schema
+    assert "export interface Wrapper" in schema
     assert "value:" in schema
     assert "items:" in schema
 
@@ -1474,7 +1471,7 @@ def test_typescript_zod_generic_model(zod_generator: TypeScriptSchemaGenerator) 
     schema = module.to_string()
 
     # Zod doesn't really support generics in the same way
-    assert "export const ContainerV1_0_0Schema" in schema
+    assert "export const ContainerSchema" in schema
     assert "content:" in schema
 
 
@@ -1495,7 +1492,7 @@ def test_typescript_bounded_type_var(generator: TypeScriptSchemaGenerator) -> No
     module = generator.generate_schema(Shelter, "Shelter", "1.0.0")
     schema = module.to_string()
 
-    assert "export interface ShelterV1_0_0" in schema
+    assert "export interface Shelter" in schema
     assert "animals:" in schema
 
 
@@ -1509,7 +1506,7 @@ def test_typescript_constrained_type_var(generator: TypeScriptSchemaGenerator) -
     module = generator.generate_schema(NumericContainer, "NumericContainer", "1.0.0")
     schema = module.to_string()
 
-    assert "export interface NumericContainerV1_0_0" in schema
+    assert "export interface NumericContainer" in schema
     assert "value:" in schema
 
 
@@ -2180,7 +2177,7 @@ def test_enum_style_enum_order(enum_generator: TypeScriptSchemaGenerator) -> Non
     schema = module.to_string()
 
     enum_pos = schema.find("export enum Priority")
-    interface_pos = schema.find("export interface TaskV1_0_0")
+    interface_pos = schema.find("export interface Task")
 
     assert enum_pos < interface_pos
     assert enum_pos >= 0
@@ -2208,7 +2205,7 @@ def test_enum_style_type_alias(enum_type_generator: TypeScriptSchemaGenerator) -
     assert "export enum Status {" in schema
     assert "PENDING = 'pending'," in schema
 
-    assert "export type TaskV1_0_0 = {" in schema
+    assert "export type Task = {" in schema
     assert "status: Status;" in schema
 
 
@@ -2229,7 +2226,7 @@ def test_enum_style_empty_enum(enum_generator: TypeScriptSchemaGenerator) -> Non
 
     module = enum_generator.generate_schema(Model, "Model", "1.0.0")
     schema = module.to_string()
-    assert "export interface ModelV1_0_0" in schema
+    assert "export interface Model" in schema
 
 
 def test_enum_style_special_characters(
@@ -2449,7 +2446,7 @@ def test_enum_style_complex_model(enum_generator: TypeScriptSchemaGenerator) -> 
     assert "export enum Priority {" in schema
     assert "export enum Status {" in schema
 
-    assert "export interface TaskV1_0_0 {" in schema
+    assert "export interface Task {" in schema
     assert "priority: Priority;" in schema
     assert "status?: Status;" in schema  # Has default
 
@@ -2480,7 +2477,7 @@ def test_typescript_interface_field_aliases(
     module = generator.generate_schema(UserProfile, "UserProfile", "1.0.0")
     schema = module.to_string()
 
-    assert "export interface UserProfileV1_0_0 {" in schema
+    assert "export interface UserProfile {" in schema
     assert "userId: string;" in schema
     assert "firstName: string;" in schema
     assert "lastName: string;" in schema
@@ -2504,7 +2501,7 @@ def test_typescript_type_alias_field_aliases(
     module = type_generator.generate_schema(APIRequest, "APIRequest", "1.0.0")
     schema = module.to_string()
 
-    assert "export type APIRequestV1_0_0 = {" in schema
+    assert "export type APIRequest = {" in schema
     assert "requestId: string;" in schema
     assert "createdAt: string;" in schema
     assert "userAgent?: string;" in schema
@@ -2523,7 +2520,7 @@ def test_typescript_zod_field_aliases(
     module = zod_generator.generate_schema(Product, "Product", "1.0.0")
     schema = module.to_string()
 
-    assert "export const ProductV1_0_0Schema = z.object({" in schema
+    assert "export const ProductSchema = z.object({" in schema
     assert "productId: z.string()," in schema
     assert "productName: z.string()," in schema
     assert "priceCents: z.number().int()," in schema
@@ -2806,7 +2803,7 @@ def test_typescript_interface_extra_allow(
     module = generator.generate_schema(DynamicConfig, "DynamicConfig", "1.0.0")
     schema = module.to_string()
 
-    assert "export interface DynamicConfigV1_0_0 {" in schema
+    assert "export interface DynamicConfig {" in schema
     assert "configName: string;" in schema
     assert "enabled?: boolean;" in schema
     assert "[key: string]: any;" in schema
@@ -2825,7 +2822,7 @@ def test_typescript_type_alias_extra_allow(
     module = type_generator.generate_schema(FlexibleModel, "FlexibleModel", "1.0.0")
     schema = module.to_string()
 
-    assert "export type FlexibleModelV1_0_0 = {" in schema
+    assert "export type FlexibleModel = {" in schema
     assert "id: string;" in schema
     assert "name: string;" in schema
     assert "[key: string]: any;" in schema
@@ -2844,7 +2841,7 @@ def test_typescript_zod_extra_allow(
     module = zod_generator.generate_schema(ExtensibleData, "ExtensibleData", "1.0.0")
     schema = module.to_string()
 
-    assert "export const ExtensibleDataV1_0_0Schema = z.object({" in schema
+    assert "export const ExtensibleDataSchema = z.object({" in schema
     assert "coreField: z.string()," in schema
     assert "version: z.number().int()," in schema
     assert "}).passthrough();" in schema
@@ -2861,7 +2858,7 @@ def test_typescript_interface_extra_allow_empty_model(
     module = generator.generate_schema(EmptyDynamic, "EmptyDynamic", "1.0.0")
     schema = module.to_string()
 
-    assert "export interface EmptyDynamicV1_0_0 {" in schema
+    assert "export interface EmptyDynamic {" in schema
     assert "[key: string]: any;" in schema
 
 
@@ -2925,7 +2922,7 @@ def test_typescript_interface_without_extra_allow(
     module = generator.generate_schema(StrictModel, "StrictModel", "1.0.0")
     schema = module.to_string()
 
-    assert "export interface StrictModelV1_0_0 {" in schema
+    assert "export interface StrictModel {" in schema
     assert "id: string;" in schema
     assert "name: string;" in schema
     assert "[key: string]: any;" not in schema
@@ -2943,7 +2940,7 @@ def test_typescript_zod_without_extra_allow(
     module = zod_generator.generate_schema(StrictModel, "StrictModel", "1.0.0")
     schema = module.to_string()
 
-    assert "export const StrictModelV1_0_0Schema = z.object({" in schema
+    assert "export const StrictModelSchema = z.object({" in schema
     assert "}).passthrough()" not in schema
     assert ".passthrough()" not in schema
 
@@ -2963,7 +2960,7 @@ def test_typescript_interface_all_features_combined(
     module = generator.generate_schema(FlexibleEvent, "FlexibleEvent", "1.0.0")
     schema = module.to_string()
 
-    assert "export interface FlexibleEventV1_0_0 {" in schema
+    assert "export interface FlexibleEvent {" in schema
     assert "event_type: 'custom';" in schema
     assert "eventId: string;" in schema
     assert "createdAt: string;" in schema
@@ -2985,7 +2982,7 @@ def test_typescript_type_alias_all_features_combined(
     module = type_generator.generate_schema(DynamicResponse, "DynamicResponse", "1.0.0")
     schema = module.to_string()
 
-    assert "export type DynamicResponseV1_0_0 = {" in schema
+    assert "export type DynamicResponse = {" in schema
     assert "response_type: 'dynamic';" in schema
     assert "requestId: string;" in schema
     assert "timestampMs: number;" in schema
@@ -3008,7 +3005,7 @@ def test_typescript_zod_all_features_combined(
     )
     schema = module.to_string()
 
-    assert "export const ExtensibleActionV1_0_0Schema = z.object({" in schema
+    assert "export const ExtensibleActionSchema = z.object({" in schema
     assert "action_type: z.literal('extensible')," in schema
     assert "actionId: z.string()," in schema
     assert "performedBy: z.string()," in schema
@@ -3066,7 +3063,7 @@ def test_typescript_interface_nested_with_all_features(
     assert "export interface MetadataModel {" in schema
     assert "createdAt: string;" in schema
     assert "updatedAt: string;" in schema
-    assert "export interface MainModelV1_0_0 {" in schema
+    assert "export interface MainModel {" in schema
     assert "mainId: string;" in schema
     assert "metadata: MetadataModel;" in schema
     lines = schema.split("\n")
@@ -3076,7 +3073,7 @@ def test_typescript_interface_nested_with_all_features(
         if "interface MetadataModel" in line:
             metadata_block = True
             main_block = False
-        elif "interface MainModelV1_0_0" in line:
+        elif "interface MainModel" in line:
             metadata_block = False
             main_block = True
         elif "[key: string]: any;" in line:
