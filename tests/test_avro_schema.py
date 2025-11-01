@@ -685,6 +685,62 @@ def test_avro_schema_multiple_versions_different_schemas(manager: ModelManager) 
 
 
 # ============================================================================
+# Alias tests
+# ============================================================================
+
+
+def test_avro_alias_used_over_python_name(manager: ModelManager) -> None:
+    """Test that different versions generate different Avro schemas."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        email_address: str = Field(alias="email")
+
+    schema = manager.get_avro_schema("User", "1.0.0", namespace="com.test")
+
+    assert len(schema["fields"]) == 1
+    assert schema["fields"][0] == {
+        "name": "email",
+        "type": "string",
+        "aliases": ["email_address"],
+    }
+
+
+def test_avro_serialization_alias_used_over_python_name(manager: ModelManager) -> None:
+    """Test that different versions generate different Avro schemas."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        email_address: str = Field(serialization_alias="email")
+
+    schema = manager.get_avro_schema("User", "1.0.0", namespace="com.test")
+
+    assert len(schema["fields"]) == 1
+    assert schema["fields"][0] == {
+        "name": "email",
+        "type": "string",
+        "aliases": ["email_address"],
+    }
+
+
+def test_avro_serialization_alias_used_over_alias(manager: ModelManager) -> None:
+    """Test that different versions generate different Avro schemas."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        email_address: str = Field(serialization_alias="email", alias="emailAddress")
+
+    schema = manager.get_avro_schema("User", "1.0.0", namespace="com.test")
+
+    assert len(schema["fields"]) == 1
+    assert schema["fields"][0] == {
+        "name": "email",
+        "type": "string",
+        "aliases": ["email_address", "emailAddress"],
+    }
+
+
+# ============================================================================
 # File Export Tests
 # ============================================================================
 

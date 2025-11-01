@@ -135,6 +135,25 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
             enums={k: v["schema"] for k, v in self._generated_enum_schemas.items()},
         )
 
+    def _get_field_name(self: Self, field_name: str, field_info: FieldInfo) -> str:
+        """Get the schema field name, considering aliases.
+
+        For Avro, prefer serialization_alias over alias, as it's explicitly for
+        serialization purposes.
+
+        Args:
+            field_name: Original Python field name.
+            field_info: Pydantic field info.
+
+        Returns:
+            Field name to use in schema.
+        """
+        if field_info.serialization_alias:
+            return field_info.serialization_alias
+        if field_info.alias:
+            return field_info.alias
+        return field_name
+
     def _generate_field_schema(
         self: Self,
         field_name: str,
@@ -168,6 +187,9 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
 
         if self.include_docs and field_schema.description:
             avro_field["doc"] = field_schema.description
+
+        if field_schema.aliases:
+            avro_field["aliases"] = field_schema.aliases
 
         if field_schema.context.is_optional:
             if isinstance(avro_type, list):
