@@ -14,7 +14,7 @@ from pydantic.fields import FieldInfo
 from ._protobuf_types import ProtoEnum, ProtoField, ProtoMessage, ProtoOneOf
 from ._registry import Registry
 from ._schema_documents import ProtoSchemaDocument
-from ._schema_generator import SchemaGeneratorBase, TypeInfo
+from ._schema_generator import FieldSchema, SchemaGeneratorBase, TypeInfo
 from ._type_inspector import TypeInspector
 from .model_version import ModelVersion
 
@@ -284,28 +284,38 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
         Returns:
             Protocol Buffer field definition.
         """
-        field_schema: ProtoField = {
-            "name": field_name,
-            "type": "string",
+        field_schema = self._build_field_schema(field_name, field_info, model)
+        return self._format_proto_field(field_schema)
+
+    def _format_proto_field(self: Self, field_schema: FieldSchema) -> ProtoField:
+        """Format intermediate field schema as Protocol Buffer field.
+
+        Args:
+            field_schema: Intermediate field representation.
+
+        Returns:
+            Protocol Buffer field definition.
+        """
+        proto_field: ProtoField = {
+            "name": field_schema.name,
+            "type": field_schema.type_info.type_representation,
             "number": self._field_counter,
         }
         self._field_counter += 1
 
-        if self.include_docs and field_info.description:
-            field_schema["comment"] = field_info.description
+        # Add documentation
+        if field_schema.description:
+            proto_field["comment"] = field_schema.description
 
-        context = self._analyze_field(field_info)
-
-        type_info = self._convert_type(field_info.annotation, field_info)
-        if type_info.is_repeated:
-            field_schema["label"] = "repeated"
-        elif context["is_optional"] or context["has_default"]:
-            field_schema["label"] = "optional"
+        # Set field label based on optionality and repetition
+        if field_schema.type_info.is_repeated:
+            proto_field["label"] = "repeated"
+        elif field_schema.context.is_optional or field_schema.context.has_default:
+            proto_field["label"] = "optional"
         elif not self.use_proto3:
-            field_schema["label"] = "required"
+            proto_field["label"] = "required"
 
-        field_schema["type"] = type_info.type_representation
-        return field_schema
+        return proto_field
 
     def _convert_type(  # noqa: PLR0911, C901
         self: Self,

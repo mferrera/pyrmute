@@ -14,7 +14,7 @@ from pydantic.fields import FieldInfo
 
 from ._registry import Registry
 from ._schema_documents import TypeScriptModule
-from ._schema_generator import SchemaGeneratorBase, TypeInfo
+from ._schema_generator import FieldSchema, SchemaGeneratorBase, TypeInfo
 from ._type_inspector import TypeInspector
 from .model_version import ModelVersion
 
@@ -224,7 +224,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
         field_name: str,
         field_info: FieldInfo,
         model: type[BaseModel],
-    ) -> dict[str, Any]:
+    ) -> FieldSchema:
         """Generate field schema information.
 
         Returns a dict with all field information that can be formatted differently
@@ -238,27 +238,23 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
         Returns:
             Field schema information dict.
         """
-        context = self._analyze_field(field_info)
-        ts_name = self._get_field_name(field_name, field_info)
-        type_info = self._convert_type(field_info.annotation, field_info)
-        ts_type = type_info.type_representation
+        field_schema = self._build_field_schema(field_name, field_info, model)
 
         is_required = field_info.is_required()
         origin = get_origin(field_info.annotation)
 
         has_optional_marker = not is_required
-        if origin is Literal and context["has_default"]:
+        if origin is Literal and field_schema.context.has_default:
             args = get_args(field_info.annotation)
-            if "default_value" in context and context["default_value"] in args:
+            if (
+                field_schema.context.default_value is not None
+                and field_schema.context.default_value in args
+            ):
                 has_optional_marker = False
 
-        return {
-            "name": ts_name,
-            "type": ts_type,
-            "optional": has_optional_marker,
-            "description": field_info.description if self.include_docs else None,
-            "context": context,
-        }
+        field_schema.type_info.metadata["optional_marker"] = has_optional_marker
+
+        return field_schema
 
     def _generate_field_lines(self, model: type[BaseModel]) -> list[str]:
         """Generate field definition lines for interface or type."""
@@ -267,13 +263,18 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
         for field_name, field_info in model.model_fields.items():
             field_schema = self._generate_field_schema(field_name, field_info, model)
 
-            optional_marker = "?" if field_schema["optional"] else ""
+            optional_marker = (
+                "?"
+                if field_schema.type_info.metadata.get("optional_marker", False)
+                else ""
+            )
 
-            if field_schema["description"]:
-                lines.append(f"  /** {field_schema['description']} */")
+            if field_schema.description:
+                lines.append(f"  /** {field_schema.description} */")
 
             lines.append(
-                f"  {field_schema['name']}{optional_marker}: {field_schema['type']};"
+                f"  {field_schema.name}{optional_marker}: "
+                f"{field_schema.type_info.type_representation};"
             )
 
         include_computed = self.config.get("include_computed_fields", True)
@@ -305,7 +306,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
 
             validator = self._convert_zod(field_info.annotation, field_info)
 
-            field_parts.append(f"\n  {field_schema['name']}: {validator},")
+            field_parts.append(f"\n  {field_schema.name}: {validator},")
 
         if hasattr(model, "model_computed_fields"):
             for field_name, computed_field_info in model.model_computed_fields.items():

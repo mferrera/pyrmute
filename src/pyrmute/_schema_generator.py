@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Generic, Self, TypedDict, TypeVar
+from typing import Any, Generic, Self, TypeVar
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
@@ -13,15 +13,6 @@ from ._type_inspector import TypeInspector
 from .model_version import ModelVersion
 
 SchemaType = TypeVar("SchemaType")
-
-
-class FieldContext(TypedDict, total=False):
-    """Context information for field generation."""
-
-    is_optional: bool
-    is_repeated: bool
-    has_default: bool
-    default_value: Any
 
 
 @dataclass
@@ -44,7 +35,44 @@ class TypeInfo:
     type_representation: Any
     is_optional: bool = False
     is_repeated: bool = False
-    metadata: dict[str, Any] | None = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class FieldContext:
+    """Context information for field generation."""
+
+    is_optional: bool
+    is_repeated: bool = False
+    has_default: bool = False
+    default_value: Any = None
+
+
+@dataclass
+class FieldSchema:
+    """Intermediate field representation after analysis but before formatting.
+
+    This provides a common structure across all schema generators that contains
+    all the information needed to format a field in any target format.
+
+    Attributes:
+        name: Field name to use in the schema (may differ from Python name due to
+            aliases).
+        python_name: Original Python field name.
+        type_info: Converted type information.
+        context: Field context with optionality, defaults, etc.
+        description: Field documentation/description.
+        constraints: Field constraints (min/max length, numeric bounds, etc.).
+        is_computed: Whether this is a computed field (read-only).
+    """
+
+    name: str
+    python_name: str
+    type_info: TypeInfo
+    context: FieldContext
+    description: str | None = None
+    constraints: dict[str, Any] = field(default_factory=dict)
+    is_computed: bool = False
 
 
 class SchemaGeneratorBase(ABC, Generic[SchemaType]):
@@ -104,17 +132,76 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
         is_optional = TypeInspector.is_optional_type(field_info.annotation)
         has_default = self._has_default_value(field_info)
 
-        context: FieldContext = {
-            "is_optional": is_optional,
-            "has_default": has_default,
-        }
-
+        default_value = None
         if has_default:
             default_value = self._get_default_value(field_info)
-            if default_value is not None:
-                context["default_value"] = default_value
 
-        return context
+        return FieldContext(
+            is_optional=is_optional,
+            has_default=has_default,
+            default_value=default_value,
+        )
+
+    def _build_field_schema(
+        self: Self,
+        field_name: str,
+        field_info: FieldInfo,
+        model: type[BaseModel],
+    ) -> FieldSchema:
+        """Build intermediate field schema representation.
+
+        This is the common analysis phase that extracts all field information
+        before format-specific rendering.
+
+        Args:
+            field_name: Name of the field.
+            field_info: Pydantic field info.
+            model: Parent model class.
+
+        Returns:
+            Intermediate field schema.
+        """
+        schema_name = self._get_field_name(field_name, field_info)
+
+        context = self._analyze_field(field_info)
+        type_info = self._convert_type(field_info.annotation, field_info)
+
+        description = field_info.description if self.include_docs else None
+        constraints = self._extract_constraints(field_info)
+
+        return FieldSchema(
+            name=schema_name,
+            python_name=field_name,
+            type_info=type_info,
+            context=context,
+            description=description,
+            constraints=constraints,
+            is_computed=False,
+        )
+
+    def _extract_constraints(self: Self, field_info: FieldInfo) -> dict[str, Any]:
+        """Extract field constraints for validation.
+
+        Default implementation extracts common constraints. Subclasses can
+        override to extract format-specific constraints.
+
+        Args:
+            field_info: Pydantic field info.
+
+        Returns:
+            Dictionary of constraints.
+        """
+        constraints: dict[str, Any] = {}
+
+        numeric = TypeInspector.get_numeric_constraints(field_info)
+        if any(v is not None for v in numeric.values()):
+            constraints["numeric"] = numeric
+
+        string = TypeInspector.get_string_constraints(field_info)
+        if any(v is not None for v in string.values()):
+            constraints["string"] = string
+
+        return constraints
 
     @abstractmethod
     def _generate_field_schema(

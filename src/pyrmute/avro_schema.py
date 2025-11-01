@@ -15,7 +15,7 @@ from pydantic.fields import FieldInfo
 
 from ._registry import Registry
 from ._schema_documents import AvroSchemaDocument
-from ._schema_generator import SchemaGeneratorBase, TypeInfo
+from ._schema_generator import FieldSchema, SchemaGeneratorBase, TypeInfo
 from ._type_inspector import TypeInspector
 from .avro_types import (
     AvroArraySchema,
@@ -152,41 +152,45 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
         Returns:
             Avro field schema.
         """
-        field_schema: AvroField = {"name": field_name, "type": "string"}
+        field_schema = self._build_field_schema(field_name, field_info, model)
+        return self._format_avro_field(field_schema)
 
-        # Add documentation
-        if self.include_docs and field_info.description:
-            field_schema["doc"] = field_info.description
+    def _format_avro_field(self: Self, field_schema: FieldSchema) -> AvroField:
+        """Format intermediate field schema as Avro field.
 
-        context = self._analyze_field(field_info)
+        Args:
+            field_schema: Intermediate field representation.
 
-        type_info = self._convert_type(field_info.annotation, field_info)
-        avro_type = type_info.type_representation
+        Returns:
+            Avro field schema.
+        """
+        avro_field: AvroField = {"name": field_schema.name, "type": "string"}
+        avro_type = field_schema.type_info.type_representation
 
-        if context["is_optional"]:
-            # Includes None. Wrap in union with null first
+        if self.include_docs and field_schema.description:
+            avro_field["doc"] = field_schema.description
+
+        if field_schema.context.is_optional:
             if isinstance(avro_type, list):
-                # Remove null if present and re-add at the front
                 avro_type = [t for t in avro_type if t != "null"]
                 avro_type.insert(0, "null")
             else:
                 avro_type = ["null", avro_type]
 
-            if "default_value" in context:
-                field_schema["default"] = self._convert_default_value(
-                    context["default_value"]
+            if field_schema.context.default_value is not None:
+                avro_field["default"] = self._convert_default_value(
+                    field_schema.context.default_value
                 )
             else:
-                field_schema["default"] = None
-        elif context["has_default"]:
-            # Has default but not nullable. Just set the default
-            if "default_value" in context:
-                field_schema["default"] = self._convert_default_value(
-                    context["default_value"]
+                avro_field["default"] = None
+        elif field_schema.context.has_default:
+            if field_schema.context.default_value is not None:
+                avro_field["default"] = self._convert_default_value(
+                    field_schema.context.default_value
                 )
 
-        field_schema["type"] = avro_type
-        return field_schema
+        avro_field["type"] = avro_type
+        return avro_field
 
     def _convert_type(  # noqa: PLR0911, PLR0912, C901
         self: Self,
