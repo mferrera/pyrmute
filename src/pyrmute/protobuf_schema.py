@@ -264,6 +264,23 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
             return typ.__name__
         return str(typ)
 
+    def _get_field_name(self: Self, field_name: str, field_info: FieldInfo) -> str:
+        """Get the schema field name, considering aliases.
+
+        Prefers alias over serialization_alias, with python_name as fallback. If
+        serialization_alias is provided, it will be used as json_name option.
+
+        Args:
+            field_name: Original Python field name.
+            field_info: Pydantic field info.
+
+        Returns:
+            Field name to use in schema.
+        """
+        if field_info.alias:
+            return field_info.alias
+        return field_name
+
     def _generate_field_schema(
         self: Self,
         field_name: str,
@@ -299,11 +316,15 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
         }
         self._field_counter += 1
 
-        # Add documentation
         if field_schema.description:
             proto_field["comment"] = field_schema.description
 
-        # Set field label based on optionality and repetition
+        if field_schema.aliases:
+            for alias in field_schema.aliases:
+                if alias not in (field_schema.name, field_schema.python_name):
+                    proto_field["options"] = {"json_name": alias}
+                    break
+
         if field_schema.type_info.is_repeated:
             proto_field["label"] = "repeated"
         elif field_schema.context.is_optional or field_schema.context.has_default:
@@ -898,15 +919,30 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
                 ]
             )
 
+        options_str = ""
+        if field.get("options"):
+            option_parts = []
+            for key, value in field["options"].items():
+                if isinstance(value, str):
+                    option_parts.append(f'{key} = "{value}"')
+                elif isinstance(value, bool):
+                    option_parts.append(f"{key} = {str(value).lower()}")
+                else:
+                    option_parts.append(f"{key} = {value}")
+
+            if option_parts:
+                options_str = f" [{', '.join(option_parts)}]"
+
         label = field.get("label", "")
         if label:
             field_line = (
                 f"{indent_str}{label} {field['type']} {field['name']} = "
-                f"{field['number']};"
+                f"{field['number']}{options_str};"
             )
         else:
             field_line = (
-                f"{indent_str}{field['type']} {field['name']} = {field['number']};"
+                f"{indent_str}{field['type']} {field['name']} = "
+                f"{field['number']}{options_str};"
             )
 
         lines.append(field_line)

@@ -2266,3 +2266,59 @@ def test_proto_schema_dump_with_nested_models(
     user_content = user_file.read_text()
     assert "message Address {" in user_content
     assert "Address address = 2;" in user_content
+
+
+# ============================================================================
+# Alias tests
+# ============================================================================
+
+
+def test_proto_alias_used_as_json_name(manager: ModelManager) -> None:
+    """Test that alias is used as json_name while Python name is proto field name."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        email_address: str = Field(alias="email")
+
+    schema = manager.get_proto_schema("User", "1.0.0")
+    assert "string email = 1;" in schema
+
+
+def test_proto_serialization_alias_used_as_json_name(manager: ModelManager) -> None:
+    """Test serialization_alias used as json_name while Python is proto field name."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        email_address: str = Field(serialization_alias="email")
+
+    schema = manager.get_proto_schema("User", "1.0.0")
+    assert 'string email_address = 1 [json_name = "email"];' in schema
+
+
+def test_proto_serialization_alias_preferred_over_alias(manager: ModelManager) -> None:
+    """Test that serialization_alias takes precedence over alias for json_name.
+
+    When both are provided, serialization_alias is used for json_name. The regular
+    alias is not preserved in ProtoBuf since proto only supports a single json_name per
+    field.
+    """
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        email_address: str = Field(serialization_alias="email", alias="emailAddress")
+
+    schema = manager.get_proto_schema("User", "1.0.0")
+    assert 'string emailAddress = 1 [json_name = "email"];' in schema
+    assert "email_address" not in schema
+
+
+def test_proto_no_json_name_when_no_alias(manager: ModelManager) -> None:
+    """Test that no json_name option is added when there's no alias."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        email: str
+
+    schema = manager.get_proto_schema("User", "1.0.0")
+    assert "string email = 1;" in schema
+    assert "json_name" not in schema
