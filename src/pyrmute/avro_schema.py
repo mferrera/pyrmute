@@ -394,7 +394,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
                 raise ValueError(
                     f"Unable to convert enum '{enum_class.__name__}' to Avro. "
                     "Every symbol must match the regular expression "
-                    "'[A-Za-z_][A-Za-z0-9_]*'. Got '{value}'"
+                    f"'[A-Za-z_][A-Za-z0-9_]*'. Got '{value}'"
                 )
             symbols.append(value)
 
