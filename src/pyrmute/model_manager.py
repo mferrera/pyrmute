@@ -1342,6 +1342,8 @@ class ModelManager:
         output_dir: str | Path,
         style: Literal["interface", "type", "zod"] = "interface",
         config: TypeScriptConfig | None = None,
+        organization: Literal["flat", "major_version", "model"] = "flat",
+        include_barrel_exports: bool = True,
     ) -> dict[str, dict[str, str]]:
         r"""Export all schemas as TypeScript schemas.
 
@@ -1353,49 +1355,82 @@ class ModelManager:
             output_dir: Directory path for output.
             style: Output style - 'interface' (default), 'type', or 'zod'.
             config: Optional configuration for schema generation.
+            organization: Directory structure for output files:
+                - 'flat': All files in output directory (Model.v1.0.0.ts)
+                - 'major_version': Organize by major version (v1/Model.v1.0.0.ts)
+                - 'model': Organize by model name (Model/1.0.0.ts)
+            include_barrel_exports: Whether to generate index.ts files for easier
+                imports.
 
         Returns:
             Dictionary mapping model names to versions to TypeScript schema code.
 
         Example:
             ```python
-            # Export all models as TypeScript interfaces
+            # Export all models as TypeScript interfaces (flat structure)
             manager.dump_typescript_schemas(
                 "frontend/src/types/",
                 style="interface"
             )
             # Creates files like:
-            # frontend/src/types/User_v1_0_0.ts
-            # frontend/src/types/User_v2_0_0.ts
-            # frontend/src/types/Order_v1_0_0.ts
+            # frontend/src/types/User.v1.0.0.ts
+            # frontend/src/types/User.v2.0.0.ts
+            # frontend/src/types/Order.v1.0.0.ts
+
+            # Export organized by major version (recommended)
+            manager.dump_typescript_schemas(
+                "frontend/src/types/",
+                style="interface",
+                organization="major_version"
+            )
+            # Creates:
+            # frontend/src/types/v1/User.v1.0.0.ts
+            # frontend/src/types/v1/index.ts
+            # frontend/src/types/v2/User.v2.0.0.ts
+            # frontend/src/types/v2/index.ts
+            # frontend/src/types/index.ts (re-exports latest)
+
+            # Export organized by model
+            manager.dump_typescript_schemas(
+                "frontend/src/types/",
+                organization="model"
+            )
+            # Creates:
+            # frontend/src/types/User/1.0.0.ts
+            # frontend/src/types/User/2.0.0.ts
+            # frontend/src/types/User/index.ts (re-exports latest)
+            # frontend/src/types/Order/1.0.0.ts
+            # frontend/src/types/Order/index.ts
+            # frontend/src/types/index.ts
 
             # Export as Zod schemas with validation
             manager.dump_typescript_schemas(
                 "frontend/src/schemas/",
-                style="zod"
+                style="zod",
+                organization="major_version"
             )
 
             # Export with custom configuration
             from pyrmute.typescript_types import TypeScriptConfig
 
             config = TypeScriptConfig(
-                use_optional_chaining=True,
-                generate_validators=True,
                 strict_null_checks=True,
-                date_format="iso",  # or "timestamp"
+                date_format="iso",   # or "timestamp"
                 enum_style="union",  # or "enum"
             )
             manager.dump_typescript_schemas(
                 "frontend/src/types/",
                 style="interface",
-                config=config
+                config=config,
+                organization="major_version"
             )
 
-            # Use in React application
-            # import { UserV1_0_0 } from '@/types/User_v1_0_0';
+            # Use in React application with barrel exports
+            # import { User } from '@/types/v1';   // Gets latest v1
+            # import { Order } from '@/types';     // Gets latest version
             #
             # interface UserCardProps {
-            #   user: UserV1_0_0;
+            #   user: User;
             # }
             #
             # export function UserCard({ user }: UserCardProps) {
@@ -1403,21 +1438,21 @@ class ModelManager:
             # }
 
             # Use Zod for API response validation
-            # import { UserV1_0_0Schema } from '@/schemas/User_v1_0_0';
+            # import { UserSchema } from '@/schemas/v1';
             #
             # async function fetchUser(id: string) {
             #   const response = await fetch(`/api/users/${id}`);
             #   const data = await response.json();
-            #   return UserV1_0_0Schema.parse(data); // Validates at runtime
+            #   return UserSchema.parse(data); // Validates at runtime
             # }
 
             # Use with tRPC for end-to-end type safety
-            # import { UserV1_0_0Schema } from '@/schemas/User_v1_0_0';
+            # import { UserSchema } from '@/schemas/v1';
             #
             # export const userRouter = router({
             #   getUser: publicProcedure
             #     .input(z.object({ id: z.string() }))
-            #     .output(UserV1_0_0Schema)
+            #     .output(UserSchema)
             #     .query(async ({ input }) => {
             #       return await db.user.findUnique({ where: { id: input.id } });
             #     }),
@@ -1427,11 +1462,13 @@ class ModelManager:
             # Add to package.json scripts:
             # {
             #   "scripts": {
-            #     "generate-types": "pyrmute export -f typescript -o src/types",
+            #     "generate-types": "python -m pyrmute export -f typescript -o src/types",
             #     "prebuild": "npm run generate-types"
             #   }
             # }
             ```
-        """
+        """  # noqa: E501
         exporter = TypeScriptExporter(self._registry, style=style, config=config)
-        return exporter.export_all_schemas(output_dir)
+        return exporter.export_all_schemas(
+            output_dir, organization, include_barrel_exports
+        )
