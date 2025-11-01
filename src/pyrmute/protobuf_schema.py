@@ -56,7 +56,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
         self._field_counter = 1
         self._tuple_counter = 0
         self._collected_nested_messages: list[ProtoMessage] = []
-        self._enum_schemas: list[ProtoEnum] = []
+        self._generated_enum_schemas: list[ProtoEnum] = []
 
     def _reset_state(self: Self) -> None:
         """Reset internal state before generating a new schema."""
@@ -65,7 +65,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
         self._field_counter = 1
         self._tuple_counter = 0
         self._collected_nested_messages = []
-        self._enum_schemas = []
+        self._generated_enum_schemas = []
 
     def _generate_proto_schema(
         self: Self,
@@ -503,7 +503,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
         if enum_name not in self._collected_enums:
             self._register_enum(enum_class)
             enum_def = self._generate_enum_schema(enum_class)
-            self._enum_schemas.append(enum_def)
+            self._generated_enum_schemas.append(enum_def)
 
         return TypeInfo(type_representation=enum_name, is_repeated=False)
 
@@ -636,7 +636,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
             package=self.package,
             main=message,
             auxiliary_messages=self._collected_nested_messages,
-            enums=self._enum_schemas,
+            enums=self._generated_enum_schemas,
             imports=sorted(self._required_imports),
         )
 

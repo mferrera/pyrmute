@@ -72,12 +72,12 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
         """
         super().__init__(include_docs=include_docs)
         self.namespace = namespace
-        self._enum_schemas: dict[str, CachedAvroEnumSchema] = {}
+        self._generated_enum_schemas: dict[str, CachedAvroEnumSchema] = {}
 
     def _reset_state(self) -> None:
         """Reset internal state before generating a new schema."""
         super()._reset_state()
-        self._enum_schemas = {}
+        self._generated_enum_schemas = {}
 
     def generate_schema(
         self: Self,
@@ -132,7 +132,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
         return AvroSchemaDocument(
             main=schema,
             namespace=full_namespace,
-            enums={k: v["schema"] for k, v in self._enum_schemas.items()},
+            enums={k: v["schema"] for k, v in self._generated_enum_schemas.items()},
         )
 
     def _generate_field_schema(
@@ -357,30 +357,13 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
 
         Returns:
             Avro enum schema.
-
-        Example:
-            ```python
-            from enum import Enum
-
-            class Status(str, Enum):
-                PENDING = "pending"
-                ACTIVE = "active"
-                COMPLETED = "completed"
-
-            # Converts to:
-            # {
-            #   "type": "enum",
-            #   "name": "Status",
-            #   "symbols": ["pending", "active", "completed"]
-            # }
-            ```
         """
         enum_name = enum_class.__name__
 
         self._register_enum(enum_class)
 
-        if enum_name in self._enum_schemas:
-            return self._enum_schemas[enum_name]["namespace_ref"]
+        if enum_name in self._generated_enum_schemas:
+            return self._generated_enum_schemas[enum_name]["namespace_ref"]
 
         symbols = []
         for member in enum_class:
@@ -403,7 +386,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
         }
 
         namespace_ref = f"{enum_namespace}.{enum_name}"
-        self._enum_schemas[enum_name] = {
+        self._generated_enum_schemas[enum_name] = {
             "schema": enum_schema,
             "namespace_ref": namespace_ref,
         }
