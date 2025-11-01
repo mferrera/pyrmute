@@ -72,13 +72,11 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
         """
         super().__init__(include_docs=include_docs)
         self.namespace = namespace
-        self._current_model = ("", "")
         self._enum_schemas: dict[str, CachedAvroEnumSchema] = {}
 
     def _reset_state(self) -> None:
         """Reset internal state before generating a new schema."""
         super()._reset_state()
-        self._current_model = ("", "")
         self._enum_schemas = {}
 
     def generate_schema(
@@ -103,7 +101,8 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
         self._reset_state()
 
         self._register_model_name(model.__name__, name)
-        self._current_model = (model.__name__, name)
+        self._current_model_class_name = model.__name__
+        self._current_model_schema_name = name
         self._types_seen.add(model.__name__)
 
         self._collect_nested_models(model)
@@ -546,28 +545,15 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
 
         Returns:
             Avro record schema or type name reference.
-
-        Example:
-            ```python
-            # First occurrence: full schema
-            # {
-            #   "type": "record",
-            #   "name": "Address",
-            #   "fields": [...]
-            # }
-
-            # Subsequent occurrences: just the name
-            # "Address"
-            ```
         """
         type_name = model.__name__
         self._register_nested_model(model)
 
         # If we've seen this type before, just reference it
         if type_name in self._types_seen:
-            if type_name == self._current_model[0]:
+            if type_name == self._current_model_class_name:
                 # Is recursive self-reference - use the versioned name
-                return self._get_model_schema_name(type_name)  # CHANGED
+                return self._get_model_schema_name(type_name)
             # Use the mapped name
             return self._get_model_schema_name(type_name)
 
