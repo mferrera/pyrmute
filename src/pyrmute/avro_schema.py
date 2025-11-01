@@ -437,12 +437,6 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
 
         Returns:
             List of Avro types (strings for primitives, dicts for complex types).
-
-        Example:
-            ```python
-            # str | int | None becomes ["null", "string", "int"]
-            # Optional[str] becomes ["null", "string"]
-            ```
         """
         avro_types: AvroUnion = []
 
@@ -453,16 +447,13 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
                 type_info = self._convert_type(arg)
                 avro_type = type_info.type_representation
                 if isinstance(avro_type, list):
-                    # Flatten nested unions
                     avro_types.extend(avro_type)
                 else:
                     avro_types.append(avro_type)
 
-        # Remove duplicates while preserving order
         seen: set[str] = set()
         unique_types: AvroUnion = []
         for t in avro_types:
-            # Convert to string for comparison
             t_str = str(t) if not isinstance(t, dict) else json.dumps(t, sort_keys=True)
             if t_str not in seen:
                 seen.add(t_str)
@@ -481,23 +472,12 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
 
         Returns:
             Avro array schema with union items.
-
-        Example:
-            ```python
-            # tuple[str, int, bool] becomes:
-            # {"type": "array", "items": ["string", "int", "boolean"]}
-
-            # tuple[float, float, float] becomes:
-            # {"type": "array", "items": "double"}
-            ```
         """
         element_types = TypeInspector.get_tuple_element_types(python_type)
 
         if not element_types:
-            empty_array: AvroArraySchema = {"type": "array", "items": "string"}
-            return empty_array
+            return {"type": "array", "items": "string"}
 
-        # Collect all unique types in the tuple
         item_types: list[str | AvroSchema] = []
         type_strs: set[str] = set()
 
@@ -505,7 +485,6 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
             type_info = self._convert_type(arg)
             avro_type = type_info.type_representation
             if isinstance(avro_type, list):
-                # Flatten unions
                 for t in avro_type:
                     t_str = (
                         str(t)
@@ -525,17 +504,13 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
                     type_strs.add(t_str)
                     item_types.append(avro_type)
 
-        # If all types are the same, use that type directly
         if len(item_types) == 1:
-            single_type_array: AvroArraySchema = {
+            return {
                 "type": "array",
                 "items": item_types[0],
             }
-            return single_type_array
 
-        # Otherwise use union
-        union_array: AvroArraySchema = {"type": "array", "items": item_types}
-        return union_array
+        return {"type": "array", "items": item_types}
 
     def _generate_nested_record_schema(
         self: Self, model: type[BaseModel]
@@ -554,12 +529,9 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
         type_name = model.__name__
         self._register_nested_model(model)
 
-        # If we've seen this type before, just reference it
         if type_name in self._types_seen:
             if type_name == self._current_model_class_name:
-                # Is recursive self-reference - use the versioned name
                 return self._get_model_schema_name(type_name)
-            # Use the mapped name
             return self._get_model_schema_name(type_name)
 
         self._types_seen.add(type_name)
@@ -591,7 +563,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
         """
         if value is None:
             return None
-        if isinstance(value, bool):  # Check bool before int (bool is subclass of int)
+        if isinstance(value, bool):
             return value
         if isinstance(value, (str, int, float)):
             return value
@@ -620,10 +592,8 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
         if isinstance(value, UUID):
             return str(value)
         if isinstance(value, Decimal):
-            # Decimal as bytes - this is complex, for now convert to float
             return float(value)
 
-        # For other types, convert to string
         return str(value)
 
 

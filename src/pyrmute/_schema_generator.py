@@ -398,24 +398,3 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
             Schema name to use, or the class name if no mapping exists.
         """
         return self._versioned_name_map.get(model_class_name, model_class_name)
-
-    def _build_versioned_name(
-        self: Self, base_name: str, version: str | ModelVersion | None
-    ) -> str:
-        """Build a versioned name from base name and version.
-
-        Default implementation creates names like "UserV1_0_0".  Subclasses can override
-        for different naming conventions.
-
-        Args:
-            base_name: Base model name.
-            version: Optional version string.
-
-        Returns:
-            Versioned name, or base name if no version.
-        """
-        if version is None:
-            return base_name
-
-        version_str = str(version).replace(".", "_")
-        return f"{base_name}V{version_str}"

@@ -82,11 +82,9 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
         """
         self._reset_state()
 
-        versioned_name = self._build_versioned_name(name, version)
-
-        self._register_model_name(model.__name__, versioned_name)
+        self._register_model_name(model.__name__, name)
         self._current_model_class_name = model.__name__
-        self._current_model_schema_name = versioned_name
+        self._current_model_schema_name = name
 
         self._collect_nested_models(model)
 
@@ -123,7 +121,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
                 )
                 auxiliary.append(nested_schema)
 
-        main_schema = self._generate_schema_for_model(model, versioned_name)
+        main_schema = self._generate_schema_for_model(model, name)
 
         return TypeScriptModule(
             main=main_schema,
