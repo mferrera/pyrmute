@@ -60,7 +60,6 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
         include_docs: bool = config.get("include_docs", True) if config else True
         super().__init__(include_docs=include_docs)
         self.style = style
-        self._current_model = ("", "")
         self.config = config or TypeScriptConfig()
 
     def generate_schema(
@@ -86,7 +85,8 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
         versioned_name = self._build_versioned_name(name, version)
 
         self._register_model_name(model.__name__, versioned_name)
-        self._current_model = (model.__name__, versioned_name)
+        self._current_model_class_name = model.__name__
+        self._current_model_schema_name = versioned_name
 
         self._collect_nested_models(model)
 

@@ -56,8 +56,6 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
         self._field_counter = 1
         self._tuple_counter = 0
         self._collected_nested_messages: list[ProtoMessage] = []
-        self._current_model_class = ""
-        self._current_model = ("", "")
         self._enum_schemas: list[ProtoEnum] = []
 
     def _reset_state(self: Self) -> None:
@@ -67,7 +65,6 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
         self._field_counter = 1
         self._tuple_counter = 0
         self._collected_nested_messages = []
-        self._current_model_class = ""
         self._enum_schemas = []
 
     def _generate_proto_schema(
@@ -81,7 +78,6 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
         self._register_model_name(model.__name__, name)
         self._current_model_class = model.__name__
 
-        self._current_model = (model.__name__, name)
         self._types_seen.add(model.__name__)
 
         self._collect_nested_models(model)
@@ -407,10 +403,10 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
     ) -> TypeInfo:
         """Convert heterogeneous tuple to nested protobuf message."""
         if field_name:
-            model_name = f"{self._current_model[1]}{field_name.title()}Tuple"
+            model_name = f"{self._current_model_schema_name}{field_name.title()}Tuple"
         else:
             self._tuple_counter += 1
-            model_name = f"{self._current_model[1]}Tuple{self._tuple_counter}"
+            model_name = f"{self._current_model_schema_name}Tuple{self._tuple_counter}"
 
         if model_name not in self._types_seen:
             self._types_seen.add(model_name)
@@ -616,7 +612,8 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
                 self._register_model_name(class_name, schema_name)
 
         self._register_model_name(model.__name__, name)
-        self._current_model = (model.__name__, name)
+        self._current_model_class_name = model.__name__
+        self._current_model_schema_name = name
         self._types_seen.add(model.__name__)
 
         self._collect_nested_models(model)

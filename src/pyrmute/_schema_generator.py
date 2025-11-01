@@ -84,6 +84,8 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
         self._collected_enums: dict[str, type[Enum]] = {}
         self._nested_models: dict[str, type[BaseModel]] = {}
         self._versioned_name_map: dict[str, str] = {}
+        self._current_model_class_name: str = ""
+        self._current_model_schema_name: str = ""
 
     @abstractmethod
     def generate_schema(
@@ -101,6 +103,8 @@ class SchemaGeneratorBase(ABC, Generic[SchemaType]):
         self._collected_enums = {}
         self._nested_models = {}
         self._versioned_name_map = {}
+        self._current_model_class_name = ""
+        self._current_model_schema_name = ""
 
     @abstractmethod
     def _convert_type(
