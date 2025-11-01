@@ -252,7 +252,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
             ):
                 has_optional_marker = False
 
-        field_schema.type_info.metadata["optional_marker"] = has_optional_marker
+        field_schema.type_info.optional_marker = has_optional_marker
 
         return field_schema
 
@@ -263,11 +263,7 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
         for field_name, field_info in model.model_fields.items():
             field_schema = self._generate_field_schema(field_name, field_info, model)
 
-            optional_marker = (
-                "?"
-                if field_schema.type_info.metadata.get("optional_marker", False)
-                else ""
-            )
+            optional_marker = "?" if field_schema.type_info.optional_marker else ""
 
             if field_schema.description:
                 lines.append(f"  /** {field_schema.description} */")
