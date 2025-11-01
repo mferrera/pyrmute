@@ -209,10 +209,10 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
         if python_type is None:
             return TypeInfo(type_representation="null")
 
-        if python_type is int:
-            if field_info:
+        if python_type in self._BASIC_TYPE_MAPPING:
+            if python_type is int and field_info:
                 return TypeInfo(type_representation=self._optimize_int_type(field_info))
-            return TypeInfo(type_representation="int")
+            return TypeInfo(type_representation=self._BASIC_TYPE_MAPPING[python_type])
 
         if python_type in self._LOGICAL_TYPE_MAPPING:
             return TypeInfo(
@@ -223,14 +223,11 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
             enum_result = self._convert_enum(python_type)
             return TypeInfo(type_representation=enum_result)
 
-        # Check for bare list or dict before checking origin
         if python_type is list:
-            arr_schema: AvroArraySchema = {"type": "array", "items": "string"}
-            return TypeInfo(type_representation=arr_schema)
+            return self._convert_bare_list()
 
         if python_type is dict:
-            m_schema: AvroMapSchema = {"type": "map", "values": "string"}
-            return TypeInfo(type_representation=m_schema)
+            return self._convert_bare_dict()
 
         origin = get_origin(python_type)
         if origin is not None:
@@ -241,36 +238,84 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
                 return TypeInfo(type_representation=union_result)
 
             if TypeInspector.is_list_like(origin):
-                item_type_info = (
-                    self._convert_type(args[0])
-                    if args
-                    else TypeInfo(type_representation="string")
-                )
-                item_type = item_type_info.type_representation
-                array_schema: AvroArraySchema = {"type": "array", "items": item_type}
-                return TypeInfo(type_representation=array_schema)
+                return self._convert_list_type(args)
 
             if TypeInspector.is_dict_like(origin, python_type):
-                value_type_info = (
-                    self._convert_type(args[1])
-                    if len(args) > 1
-                    else TypeInfo(type_representation="string")
-                )
-                value_type = value_type_info.type_representation
-                map_schema: AvroMapSchema = {"type": "map", "values": value_type}
-                return TypeInfo(type_representation=map_schema)
+                return self._convert_dict_type(args)
 
             if origin is tuple:
                 tuple_result = self._convert_tuple(python_type)
-                return TypeInfo(type_representation=tuple_result)
+                return TypeInfo(type_representation=tuple_result, is_repeated=True)
 
         if TypeInspector.is_base_model(python_type):
             record_result = self._generate_nested_record_schema(python_type)
             return TypeInfo(type_representation=record_result)
 
-        if python_type in self._BASIC_TYPE_MAPPING:
-            return TypeInfo(type_representation=self._BASIC_TYPE_MAPPING[python_type])
+        return self._convert_fallback_type(python_type)
 
+    def _convert_bare_list(self: Self) -> TypeInfo:
+        """Convert bare list type to Avro array.
+
+        Returns:
+            TypeInfo with array schema.
+        """
+        arr_schema: AvroArraySchema = {"type": "array", "items": "string"}
+        return TypeInfo(type_representation=arr_schema, is_repeated=True)
+
+    def _convert_bare_dict(self: Self) -> TypeInfo:
+        """Convert bare dict type to Avro map.
+
+        Returns:
+            TypeInfo with map schema.
+        """
+        map_schema: AvroMapSchema = {"type": "map", "values": "string"}
+        return TypeInfo(type_representation=map_schema)
+
+    def _convert_list_type(self: Self, args: tuple[Any, ...]) -> TypeInfo:
+        """Convert list[T] type to Avro array.
+
+        Args:
+            args: Generic type arguments.
+
+        Returns:
+            TypeInfo with array schema.
+        """
+        item_type_info = (
+            self._convert_type(args[0])
+            if args
+            else TypeInfo(type_representation="string")
+        )
+        item_type = item_type_info.type_representation
+        array_schema: AvroArraySchema = {"type": "array", "items": item_type}
+        return TypeInfo(type_representation=array_schema, is_repeated=True)
+
+    def _convert_dict_type(self: Self, args: tuple[Any, ...]) -> TypeInfo:
+        """Convert dict[K, V] type to Avro map.
+
+        Args:
+            args: Generic type arguments.
+
+        Returns:
+            TypeInfo with map schema.
+        """
+        value_type_info = (
+            self._convert_type(args[1])
+            if len(args) > 1
+            else TypeInfo(type_representation="string")
+        )
+        value_type = value_type_info.type_representation
+        map_schema: AvroMapSchema = {"type": "map", "values": value_type}
+        return TypeInfo(type_representation=map_schema)
+
+    def _convert_fallback_type(self: Self, python_type: Any) -> TypeInfo:
+        """Fallback type conversion based on string representation.
+
+        Args:
+            python_type: Python type that didn't match known patterns.
+
+        Returns:
+            TypeInfo with best-guess type.
+        """
         type_str = str(python_type).lower()
         if "str" in type_str:
             return TypeInfo(type_representation="string")
