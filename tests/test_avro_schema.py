@@ -117,6 +117,7 @@ def test_avro_schema_with_documentation(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("User", "1.0.0", namespace="com.test")
 
     assert schema["doc"] == "User account information."
+    print(schema)
 
     fields = {f["name"]: f for f in schema["fields"]}
     assert fields["name"]["doc"] == "User's full name"
