@@ -239,7 +239,7 @@ def build_composite_model(
         New model class with resolved nested types and proper annotations
 
     Example:
-    ```python
+        ```python
         class UserStructure(BaseModel):
             name: str
             address: Address
@@ -251,7 +251,7 @@ def build_composite_model(
             module="myapp.models"
         )
         # Result: User_v2_0_0 with address: AddressV2
-    ```
+        ```
     """
     # Actually a dict[str, tuple[str, FieldInfo]]
     fields: dict[str, Any] = {}
@@ -507,15 +507,6 @@ def generate_model_stub(
 
     Returns:
         Python stub code as a string
-
-    Example:
-    ```python
-        stub = generate_model_stub(UserV1, "User", ModelVersion(1, 0, 0), ...)
-        # Returns:
-        # class UserV1_0_0(BaseModel):
-        #     name: str
-        #     address: AddressV1_0_0
-    ```
     """
     lines = []
 
@@ -563,15 +554,6 @@ def generate_stub_file_content(
 
     Returns:
         Complete stub file content as a string
-
-    Example:
-    ```python
-        models = [
-            ("User", ModelVersion(1, 0, 0), UserV1),
-            ("User", ModelVersion(2, 0, 0), UserV2),
-        ]
-        content = generate_stub_file_content(models, registry.get_model_info, "myapp")
-    ```
     """
     lines = []
 
@@ -631,12 +613,6 @@ def collect_nested_model_dependencies(
 
     Returns:
         Set of (model_name, version) tuples for all nested dependencies
-
-    Example:
-        ```python
-        deps = collect_nested_model_dependencies(UserV1, registry.get_model_info)
-        # Returns: {("Address", ModelVersion(1, 0, 0)), ("City", ModelVersion(1, 0, 0))}
-        ```
     """
     if seen is None:
         seen = set()
