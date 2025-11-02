@@ -416,6 +416,53 @@ class LoggingHook(MigrationHook):
 manager.add_hook(LoggingHook())
 ```
 
+### Composite Versioning
+
+Version nested models independently without cascading changes.
+
+```python
+# Traditional approach. Requires versioning every parent
+@manager.model("Address", "2.0.0")
+class AddressV2(BaseModel):
+    street: str
+    postal_code: str  # Added field
+
+@manager.model("User", "2.0.0")  # Must create new version
+class UserV2(BaseModel):
+    name: str
+    address: AddressV2  # Just to use new Address
+
+# Composite approach. Only version what changed
+@manager.composite("Address", "2.0.0")
+class AddressV2(BaseModel):
+    street: str
+    postal_code: str
+
+@manager.composite("User", "2.0.0")
+class UserV2(BaseModel):
+    name: str
+    address: AddressV2  # Auto-detects Address:2.0.0
+```
+
+#### Deep Nesting Made Easy
+
+Auto-detection works transitively. Register models bottom-up and parent
+models automatically detect all nested dependencies:
+
+```python
+@manager.composite("Person", "1.0.0")
+class PersonV1(BaseModel):
+    name: str
+
+@manager.composite("Task", "1.0.0")
+class TaskV1(BaseModel):
+    assignee: PersonV1  # Detected: Person:1.0.0
+
+@manager.composite("Project", "1.0.0")
+class ProjectV1(BaseModel):
+    task: TaskV1  # Detected: Task:1.0.0 AND Person:1.0.0
+```
+
 ## Command-Line Interface
 
 pyrmute includes a CLI for working with models outside of Python:

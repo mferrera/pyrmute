@@ -370,6 +370,247 @@ def export(  # noqa: PLR0913
 
 
 @app.command()
+def stubs(  # noqa: PLR0915, PLR0912, PLR0913, C901
+    output: Annotated[
+        Path,
+        typer.Option(
+            ...,
+            "--output",
+            "-o",
+            help="Output directory for stub files",
+        ),
+    ],
+    package_name: Annotated[
+        str | None,
+        typer.Option(
+            ...,
+            "--package",
+            "-p",
+            help="Package name (inferred from output dir if not provided)",
+        ),
+    ] = None,
+    models: Annotated[
+        str | None,
+        typer.Option(
+            ...,
+            "--models",
+            help=(
+                "Comma-separated list of models (format: Model:version). "
+                "If not provided, exports all models."
+            ),
+        ),
+    ] = None,
+    include_nested: Annotated[
+        bool,
+        typer.Option(
+            ...,
+            "--nested/--no-nested",
+            help="Include nested model dependencies",
+        ),
+    ] = True,
+    by_module: Annotated[
+        bool,
+        typer.Option(
+            ...,
+            "--by-module",
+            help="Organize stubs by module (requires --module-map)",
+        ),
+    ] = False,
+    module_map: Annotated[
+        str | None,
+        typer.Option(
+            ...,
+            "--module-map",
+            help="JSON file mapping module names to model lists (for --by-module)",
+        ),
+    ] = None,
+    manager: ManagerOption = "default",
+    config: ConfigOption = None,
+) -> None:
+    """Generate .pyi type stub files for composite models.
+
+    Type stubs provide full IDE support and type checking for dynamically
+    created composite models. Include the generated stubs in your package
+    distribution.
+
+    Examples:
+        # Generate stubs for all models
+        pyrmute stubs -o src/myapp --package myapp
+
+        # Generate stubs for specific models
+        pyrmute stubs -o src/myapp --package myapp --models "User:1.0.0,User:2.0.0"
+
+        # Generate without nested dependencies
+        pyrmute stubs -o src/myapp --package myapp --no-nested
+
+        # Organize by module
+        pyrmute stubs -o src/myapp --package myapp --by-module --module-map modules.json
+
+    Module Map Format (JSON):
+        {
+            "user": [["User", "1.0.0"], ["User", "2.0.0"]],
+            "order": [["Order", "1.0.0"]]
+        }
+    """
+    try:
+        mgr = load_manager(manager, config)
+        output.mkdir(parents=True, exist_ok=True)
+
+        model_list = None
+        if models:
+            model_list = []
+            for model_spec in models.split(","):
+                model_spec_stripped = model_spec.strip()
+                if ":" not in model_spec_stripped:
+                    print_error(
+                        f"Invalid model spec '{model_spec_stripped}'. "
+                        f"Expected format 'ModelName:version'"
+                    )
+                    raise typer.Exit(1)
+                model_name, version = model_spec_stripped.split(":", 1)
+                model_list.append((model_name.strip(), version.strip()))
+
+        if by_module:
+            if not module_map:
+                print_error("--module-map is required when using --by-module")
+                raise typer.Exit(1)
+
+            try:
+                with open(module_map) as f:
+                    organization = json.load(f)
+            except FileNotFoundError as e:
+                print_error(f"Module map file not found: {module_map}")
+                raise typer.Exit(1) from e
+            except json.JSONDecodeError as e:
+                print_error(f"Invalid JSON in module map: {e}")
+                raise typer.Exit(1) from e
+
+            organization = {
+                module: [tuple(m) for m in model_list]
+                for module, model_list in organization.items()
+            }
+
+            if package_name is None:
+                package_name = output.name
+
+            mgr.export_type_stubs_by_module(output, package_name, organization)
+
+            console.print(
+                f"[green]✓[/green] Generated type stubs by module in {output}/"
+            )
+        else:
+            if package_name is None:
+                package_name = output.name
+
+            mgr.export_type_stubs(
+                output,
+                package_name=package_name,
+                models=model_list,
+                include_nested=include_nested,
+            )
+
+            console.print(f"[green]✓[/green] Generated type stubs in {output}/")
+
+        stub_file = output / "__init__.pyi"
+        py_typed = output / "py.typed"
+
+        if stub_file.exists():
+            console.print(f"[dim]  • {stub_file.relative_to(output.parent)}[/dim]")
+        if py_typed.exists():
+            console.print(f"[dim]  • {py_typed.relative_to(output.parent)}[/dim]")
+
+        console.print("\n[bold]Next steps:[/bold]")
+        console.print("1. Add to your pyproject.toml:")
+        console.print("   [dim][tool.setuptools.package-data][/dim]")
+        console.print(f'   [dim]{package_name} = ["py.typed", "*.pyi"][/dim]')
+        console.print("\n2. Include in your build process (optional):")
+        console.print("   [dim]# In your build script or CI/CD[/dim]")
+        console.print(
+            f"   [dim]pyrmute stubs -o src/{package_name} "
+            f"--package {package_name}[/dim]"
+        )
+
+        print_success("Type stub generation complete", manager)
+
+    except ConfigError as e:
+        print_error(str(e))
+        raise typer.Exit(1) from e
+    except typer.Exit:
+        raise
+    except Exception as e:
+        print_error(f"Stub generation error: {e}")
+        raise typer.Exit(1) from e
+
+
+@app.command()
+def create_module_map(
+    output: Annotated[
+        Path,
+        typer.Option(
+            ...,
+            "--output",
+            "-o",
+            help="Output file for module map (JSON)",
+        ),
+    ] = Path("module_map.json"),
+    manager: ManagerOption = "default",
+    config: ConfigOption = None,
+) -> None:
+    """Create a template module map for organizing type stubs.
+
+    This generates a JSON file that you can edit to organize your models
+    into separate stub files by module.
+
+    Example:
+        pyrmute create-module-map -o modules.json
+        # Edit modules.json to organize models
+        pyrmute stubs -o src/myapp --by-module --module-map modules.json
+    """
+    try:
+        mgr = load_manager(manager, config)
+        models = mgr.list_models()
+
+        if not models:
+            print_error("No models registered")
+            raise typer.Exit(1)
+
+        organization = {}
+        for model_name in sorted(models):
+            versions = mgr.list_versions(model_name)
+            module_key = model_name.lower()
+            organization[module_key] = [
+                [model_name, str(version)] for version in versions
+            ]
+
+        with open(output, "w") as f:
+            json.dump(organization, f, indent=2)
+
+        console.print(f"[green]✓[/green] Created module map: {output}")
+        console.print("\n[bold]Module map structure:[/bold]")
+
+        for module, model_list in organization.items():
+            console.print(f"  [cyan]{module}[/cyan]:")
+            for model_name, version in model_list:
+                console.print(f"    • {model_name} v{version}")
+
+        console.print("\n[dim]Edit this file to customize module organization[/dim]")
+        console.print(
+            "[dim]Then use: pyrmute stubs --by-module --module-map "
+            + str(output)
+            + "[/dim]"
+        )
+
+    except ConfigError as e:
+        print_error(str(e))
+        raise typer.Exit(1) from e
+    except typer.Exit:
+        raise
+    except Exception as e:
+        print_error(f"Module map creation error: {e}")
+        raise typer.Exit(1) from e
+
+
+@app.command()
 def init(
     project_dir: Annotated[
         Path,

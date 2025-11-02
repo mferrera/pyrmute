@@ -5,11 +5,50 @@ from pathlib import Path
 from textwrap import dedent
 from unittest.mock import patch
 
+import pytest
+from pytest import MonkeyPatch
 from typer.testing import CliRunner
 
 from pyrmute.cli.main import app
 
 runner = CliRunner()
+
+
+@pytest.fixture
+def test_project(tmp_path: Path, monkeypatch: MonkeyPatch, worker_id: str) -> Path:
+    """Create a test project with models."""
+    models_file = tmp_path / f"models_{worker_id}.py"
+    models_file.write_text("""
+from pydantic import BaseModel
+from pyrmute import ModelManager
+
+manager = ModelManager()
+
+@manager.composite("Address", "1.0.0")
+class AddressV1(BaseModel):
+    street: str
+    city: str
+
+@manager.composite("User", "1.0.0")
+class UserV1(BaseModel):
+    name: str
+    address: AddressV1
+
+@manager.composite("User", "2.0.0")
+class UserV2(BaseModel):
+    name: str
+    email: str
+    address: AddressV1
+""")
+
+    config_file = tmp_path / "pyrmute.toml"
+    config_file.write_text(f"""
+[pyrmute]
+manager = "models_{worker_id}:manager"
+""")
+    monkeypatch.chdir(tmp_path)
+
+    return tmp_path
 
 
 def test_validate_success(cli_project: Path, sample_data: Path) -> None:
@@ -833,3 +872,218 @@ def test_error_formatting(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "Error:" in result.stdout
+
+
+def test_stubs_basic(test_project: Path) -> None:
+    """Test basic stub generation."""
+    output_dir = test_project / "stubs"
+
+    result = runner.invoke(
+        app,
+        [
+            "stubs",
+            "-o",
+            str(output_dir),
+            "--package",
+            "testapp",
+            "--config",
+            str(test_project / "pyrmute.toml"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Generated type stubs" in result.stdout
+    assert (output_dir / "__init__.pyi").exists()
+    assert (output_dir / "py.typed").exists()
+
+    content = (output_dir / "__init__.pyi").read_text()
+    assert "class AddressV1_0_0(BaseModel):" in content
+    assert "class UserV1_0_0(BaseModel):" in content
+    assert "class UserV2_0_0(BaseModel):" in content
+
+
+def test_stubs_specific_models(test_project: Path) -> None:
+    """Test stub generation for specific models."""
+    output_dir = test_project / "stubs"
+
+    result = runner.invoke(
+        app,
+        [
+            "stubs",
+            "-o",
+            str(output_dir),
+            "--package",
+            "testapp",
+            "--models",
+            "User:1.0.0,User:2.0.0",
+            "--config",
+            str(test_project / "pyrmute.toml"),
+        ],
+    )
+
+    assert result.exit_code == 0
+
+    content = (output_dir / "__init__.pyi").read_text()
+    assert "class UserV1_0_0(BaseModel):" in content
+    assert "class UserV2_0_0(BaseModel):" in content
+    assert "class AddressV1_0_0(BaseModel):" in content
+
+
+def test_stubs_no_nested(test_project: Path) -> None:
+    """Test stub generation without nested dependencies."""
+    output_dir = test_project / "stubs"
+
+    result = runner.invoke(
+        app,
+        [
+            "stubs",
+            "-o",
+            str(output_dir),
+            "--package",
+            "testapp",
+            "--models",
+            "User:1.0.0",
+            "--no-nested",
+            "--config",
+            str(test_project / "pyrmute.toml"),
+        ],
+    )
+
+    assert result.exit_code == 0
+
+    content = (output_dir / "__init__.pyi").read_text()
+    assert "class UserV1_0_0(BaseModel):" in content
+    assert "class AddressV1_0_0(BaseModel):" not in content
+
+
+def test_stubs_by_module(test_project: Path) -> None:
+    """Test stub generation organized by module."""
+    output_dir = test_project / "stubs"
+
+    module_map = test_project / "modules.json"
+    module_map.write_text(
+        json.dumps(
+            {
+                "user": [["User", "1.0.0"], ["User", "2.0.0"]],
+                "address": [["Address", "1.0.0"]],
+            }
+        )
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "stubs",
+            "-o",
+            str(output_dir),
+            "--package",
+            "testapp",
+            "--by-module",
+            "--module-map",
+            str(module_map),
+            "--config",
+            str(test_project / "pyrmute.toml"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (output_dir / "user.pyi").exists()
+    assert (output_dir / "address.pyi").exists()
+    assert (output_dir / "__init__.pyi").exists()
+
+    init_content = (output_dir / "__init__.pyi").read_text()
+    assert "from .user import *" in init_content
+    assert "from .address import *" in init_content
+
+
+def test_create_module_map(test_project: Path) -> None:
+    """Test module map creation."""
+    output_file = test_project / "modules.json"
+
+    result = runner.invoke(
+        app,
+        [
+            "create-module-map",
+            "-o",
+            str(output_file),
+            "--config",
+            str(test_project / "pyrmute.toml"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert output_file.exists()
+
+    with open(output_file) as f:
+        module_map = json.load(f)
+
+    assert "address" in module_map
+    assert "user" in module_map
+    assert ["Address", "1.0.0"] in module_map["address"]
+    assert ["User", "1.0.0"] in module_map["user"]
+    assert ["User", "2.0.0"] in module_map["user"]
+
+
+def test_stubs_invalid_model_spec(test_project: Path) -> None:
+    """Test error handling for invalid model specification."""
+    output_dir = test_project / "stubs"
+
+    result = runner.invoke(
+        app,
+        [
+            "stubs",
+            "-o",
+            str(output_dir),
+            "--package",
+            "testapp",
+            "--models",
+            "InvalidFormat",  # Missing version
+            "--config",
+            str(test_project / "pyrmute.toml"),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Invalid model spec" in result.stdout
+
+
+def test_stubs_by_module_without_map(test_project: Path) -> None:
+    """Test error when using --by-module without --module-map."""
+    output_dir = test_project / "stubs"
+
+    result = runner.invoke(
+        app,
+        [
+            "stubs",
+            "-o",
+            str(output_dir),
+            "--package",
+            "testapp",
+            "--by-module",
+            "--config",
+            str(test_project / "pyrmute.toml"),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "--module-map is required" in result.stdout
+
+
+def test_stubs_infers_package_name(test_project: Path) -> None:
+    """Test that package name is inferred from output directory."""
+    output_dir = test_project / "mypackage"
+
+    result = runner.invoke(
+        app,
+        [
+            "stubs",
+            "-o",
+            str(output_dir),
+            "--config",
+            str(test_project / "pyrmute.toml"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    content = (output_dir / "__init__.pyi").read_text()
+    assert "Type stubs for mypackage" in content
