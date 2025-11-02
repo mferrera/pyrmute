@@ -1733,7 +1733,7 @@ class ModelManager:
                 tuples
 
         Example:
-        ```python
+            ```python
             manager.export_type_stubs_by_module(
                 "src/myapp/models/",
                 "myapp.models",
@@ -1746,7 +1746,7 @@ class ModelManager:
             # src/myapp/models/user.pyi
             # src/myapp/models/order.pyi
             # src/myapp/models/__init__.pyi (with re-exports)
-        ```
+            ```
         """
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)

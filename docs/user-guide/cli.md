@@ -775,6 +775,21 @@ pyrmute validate -d data.json -s User -v 2.0.0 --config dev.toml
 pyrmute validate -d data.json -s User -v 2.0.0 --config prod.toml
 ```
 
+### Generating Type Stubs
+
+```bash
+# Generate stubs for all models
+pyrmute stubs -o src/myapp --package myapp
+
+# Generate for specific models
+pyrmute stubs -o src/myapp --package myapp --models "User:1.0.0,User:2.0.0"
+
+# Organize by module
+pyrmute create-module-map -o modules.json
+# Edit modules.json to organize models
+pyrmute stubs -o src/myapp --by-module --module-map modules.json
+```
+
 ## Error Handling
 
 ### Configuration Errors
