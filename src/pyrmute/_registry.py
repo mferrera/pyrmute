@@ -28,10 +28,6 @@ class Registry:
         _migrations: Dictionary storing migration functions between versions.
         _model_metadata: Dictionary mapping model classes to (name, version).
         _ref_enabled: Dictionary tracking which models have enable_ref=True.
-        _backward_compatible_enabled: Set of model versions that are backward compatible
-            (don't require migrations).
-        _nested_version_pins: Dictionary mapping model names and versions to their
-            nested model version pins.
     """
 
     def __init__(self: Self) -> None:
@@ -43,9 +39,6 @@ class Registry:
         self._backward_compatible_enabled: dict[ModelName, set[ModelVersion]] = (
             defaultdict(set)
         )
-        self._nested_version_pins: dict[
-            ModelName, dict[ModelVersion, dict[str, tuple[ModelName, ModelVersion]]]
-        ] = defaultdict(dict)
 
     def register(
         self: Self,
@@ -184,44 +177,3 @@ class Registry:
         """
         ver = ModelVersion.parse(version) if isinstance(version, str) else version
         return ver in self._ref_enabled.get(name, set())
-
-    def set_nested_pins(
-        self: Self,
-        name: ModelName,
-        version: ModelVersion,
-        pins: dict[str, tuple[ModelName, ModelVersion]],
-    ) -> None:
-        """Store nested version pins for a model version.
-
-        Args:
-            name: Parent model name
-            version: Parent model version
-            pins: Map of field paths to (model_name, version) tuples
-        """
-        self._nested_version_pins[name][version] = pins
-
-    def get_nested_pins(
-        self: Self, name: ModelName, version: ModelVersion
-    ) -> dict[str, tuple[ModelName, ModelVersion]]:
-        """Get nested version pins for a model version.
-
-        Args:
-            name: Parent model name
-            version: Parent model version
-
-        Returns:
-            Map of field paths to (model_name, version) tuples
-        """
-        return self._nested_version_pins[name].get(version, {})
-
-    def has_nested_pins(self: Self, name: ModelName, version: ModelVersion) -> bool:
-        """Check if a model version has nested pins defined.
-
-        Args:
-            name: Model name
-            version: Model version
-
-        Returns:
-            True if this version has composite versioning
-        """
-        return version in self._nested_version_pins.get(name, {})
