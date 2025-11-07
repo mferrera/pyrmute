@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from pydantic.json_schema import GenerateJsonSchema
 
 from ._migration_manager import MigrationManager
+from ._model_utils import is_root_model
 from ._registry import Registry
 from ._schema_manager import SchemaManager
 from .avro_schema import AvroExporter
@@ -374,6 +375,27 @@ class ModelManager:
         except (KeyError, ModelNotFoundError, MigrationError):
             return False
 
+    def _prepare_data_for_validation(
+        self: Self,
+        migrated_data: ModelData,
+        target_model: type[BaseModel],
+    ) -> Any:
+        """Prepare migrated data for Pydantic validation.
+
+        For RootModels, unwrap the 'root' key since Pydantic expects the raw value.
+        For regular BaseModels, use the data as-is.
+
+        Args:
+            migrated_data: The migrated data dictionary.
+            target_model: The target model class.
+
+        Returns:
+            Data prepared for validation (dict for BaseModel, unwrapped for RootModel).
+        """
+        if is_root_model(target_model):
+            return migrated_data.get("root")
+        return migrated_data
+
     def validate_data(
         self: Self,
         data: ModelData,
@@ -430,7 +452,8 @@ class ModelManager:
         """
         migrated_data = self.migrate_data(data, name, from_version, to_version)
         target_model = self.get(name, to_version)
-        return target_model.model_validate(migrated_data)
+        validation_data = self._prepare_data_for_validation(migrated_data, target_model)
+        return target_model.model_validate(validation_data)
 
     def migrate_as(
         self: Self,
@@ -465,7 +488,8 @@ class ModelManager:
             ```
         """
         migrated_data = self.migrate_data(data, name, from_version, to_version)
-        return target_type.model_validate(migrated_data)
+        validation_data = self._prepare_data_for_validation(migrated_data, target_type)
+        return target_type.model_validate(validation_data)
 
     def migrate_data(
         self: Self,

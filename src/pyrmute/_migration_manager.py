@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
+from ._model_utils import is_root_model
 from ._registry import Registry
 from .exceptions import MigrationError, ModelNotFoundError
 from .migration_hooks import MigrationHook
@@ -317,8 +318,11 @@ class MigrationManager:
     ) -> ModelData:
         """Automatically migrate data when no explicit migration exists.
 
-        This method handles nested Pydantic models recursively, migrating them to their
-        corresponding versions. Handles field aliases by building a lookup map.
+        This method handles both regular BaseModels and RootModels:
+
+        - For RootModels: migrates the 'root' field value
+        - For BaseModels: handles nested Pydantic models recursively, migrating them to
+          their corresponding versions. Handles field aliases by building a lookup map.
 
         Args:
             data: Data dictionary to migrate.
@@ -332,6 +336,76 @@ class MigrationManager:
         from_model = self.registry.get_model(name, from_ver)
         to_model = self.registry.get_model(name, to_ver)
 
+        from_is_root = is_root_model(from_model)
+        to_is_root = is_root_model(to_model)
+
+        if from_is_root and to_is_root:
+            return self._auto_migrate_root_models(data, from_model, to_model)
+
+        if from_is_root or to_is_root:
+            raise MigrationError(
+                name,
+                str(from_ver),
+                str(to_ver),
+                "Cannot auto-migrate between RootModel and BaseModel. Define an "
+                "explicit migration function.",
+            )
+
+        return self._auto_migrate_base_models(data, from_model, to_model)
+
+    def _auto_migrate_root_models(
+        self: Self,
+        data: ModelData,
+        from_model: type[BaseModel],
+        to_model: type[BaseModel],
+    ) -> ModelData:
+        """Auto-migrate between two RootModels.
+
+        For RootModels, the data is {"root": value}. We migrate the root field's value,
+        which may contain nested models.
+
+        Args:
+            data: Data dictionary with 'root' key.
+            from_model: Source RootModel class.
+            to_model: Target RootModel class.
+
+        Returns:
+            Migrated data dictionary with 'root' key.
+        """
+        if "root" not in data:
+            raise MigrationError(
+                "RootModel",
+                "unknown",
+                "unknown",
+                "RootModel data must contain 'root' key",
+            )
+
+        from_root_field = from_model.model_fields["root"]
+        to_root_field = to_model.model_fields["root"]
+
+        root_value = data["root"]
+        migrated_value = self._migrate_field_value(
+            root_value, from_root_field, to_root_field
+        )
+
+        return {"root": migrated_value}
+
+    def _auto_migrate_base_models(
+        self: Self,
+        data: ModelData,
+        from_model: type[BaseModel],
+        to_model: type[BaseModel],
+    ) -> ModelData:
+        """Auto-migrate between two regular BaseModels.
+
+        Args:
+            data: Data dictionary to migrate.
+            from_model: Source BaseModel class.
+            to_model: Target BaseModel class.
+
+        Returns:
+            Migrated data dictionary.
+        """
         from_fields = from_model.model_fields
         to_fields = to_model.model_fields
 

@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from typing import Annotated, Any, Literal, Union, get_origin
 
 import pytest
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, RootModel
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
@@ -230,6 +230,62 @@ def test_migration_fails_if_no_transient_path(
         assert "no path" in str(e)
 
 
+def test_auto_migrate_between_root_models(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test auto-migration between two RootModels."""
+    data: ModelData = {"root": ["alice", "bob", "charlie"]}
+    result = populated_migration_manager.migrate(data, "UserList", "1.0.0", "2.0.0")
+    assert "root" in result
+    assert result["root"] == ["alice", "bob", "charlie"]
+
+
+def test_explicit_migration_between_root_models(
+    populated_migration_manager: MigrationManager,
+) -> None:
+    """Test explicit migration between two RootModels."""
+
+    @populated_migration_manager.register_migration("UserList", "1.0.0", "2.0.0")
+    def migrate(data: dict[str, Any]) -> dict[str, Any]:
+        names = data["root"]
+        return {"root": [{"name": name} for name in names]}
+
+    data: ModelData = {"root": ["alice", "bob"]}
+    result = populated_migration_manager.migrate(data, "UserList", "1.0.0", "2.0.0")
+    assert result == {"root": [{"name": "alice"}, {"name": "bob"}]}
+
+
+def test_cannot_auto_migrate_between_root_and_base_model(manager: ModelManager) -> None:
+    """Test that auto-migration fails between RootModel and BaseModel."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(RootModel[dict[str, str]]):
+        pass
+
+    data: ModelData = {"name": "alice"}
+
+    with pytest.raises(
+        MigrationError, match="auto-migrate between RootModel and BaseModel"
+    ):
+        manager.migrate(data, "User", "1.0.0", "2.0.0")
+
+
+def test_get_schema_for_root_model(manager: ModelManager) -> None:
+    """Test schema generation for RootModel."""
+
+    @manager.model("StringList", "1.0.0")
+    class StringListV1(RootModel[list[str]]):
+        pass
+
+    schema = manager.get_schema("StringList", "1.0.0")
+    assert schema is not None
+    assert "type" in schema or "items" in schema or "$ref" in schema
+
+
 # Auto-migration tests
 def test_backward_compatible_adds_default_fields(
     populated_migration_manager: MigrationManager,
@@ -423,6 +479,41 @@ def test_migrate_dict_values(populated_migration_manager: MigrationManager) -> N
     }
     result = populated_migration_manager.migrate(data, "User", "1.0.0", "2.0.0")
     assert result["metadata"] == {"key1": "value1", "key2": "value2"}
+
+
+def test_migrate_root_model_with_nested_models(manager: ModelManager) -> None:
+    """Test migrating RootModel with nested versioned models."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    @manager.model("User", "2.0.0", backward_compatible=True)
+    class UserV2(BaseModel):
+        name: str
+        email: str = "unknown@example.com"
+
+    @manager.model("UserList", "1.0.0")
+    class UserListV1(RootModel[list[UserV1]]):
+        pass
+
+    @manager.model("UserList", "2.0.0", backward_compatible=True)
+    class UserListV2(RootModel[list[UserV2]]):
+        pass
+
+    data: ModelData = {
+        "root": [
+            {"name": "Alice"},
+            {"name": "Bob"},
+        ]
+    }
+
+    result = manager.migrate(data, "UserList", "1.0.0", "2.0.0")
+
+    assert result.model_dump() == [  # type: ignore[comparison-overlap]
+        {"name": "Alice", "email": "unknown@example.com"},
+        {"name": "Bob", "email": "unknown@example.com"},
+    ]
 
 
 # Migration path tests
