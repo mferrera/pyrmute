@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 
 from pyrmute import ModelData, ModelManager
 from pyrmute._migration_manager import MigrationManager
@@ -51,6 +51,14 @@ class UserV4(BaseModel):
     email: str
     age: int = 0
     aliases: list[str] = Field(default_factory=list)
+
+
+class UserListV1(RootModel[list[UserV1]]):
+    """UserListV1 root model."""
+
+
+class UserListV2(RootModel[list[dict[str, UserV2]]]):
+    """UserListV2 root model."""
 
 
 @pytest.fixture
@@ -152,6 +160,8 @@ def populated_migration_manager(
     registry.register("User", "2.0.0")(user_v2)
     registry.register("User", "3.0.0", backward_compatible=True)(user_v3)
     registry.register("User", "4.0.0", backward_compatible=True)(user_v4)
+    registry.register("UserList", "1.0.0")(UserListV1)
+    registry.register("UserList", "2.0.0", backward_compatible=True)(UserListV2)
     return MigrationManager(registry)
 
 
@@ -170,4 +180,6 @@ def populated_schema_manager(
     """Create a schema manager with registered models."""
     registry.register("User", "1.0.0")(user_v1)
     registry.register("User", "2.0.0")(user_v2)
+    registry.register("UserList", "1.0.0")(UserListV1)
+    registry.register("UserList", "2.0.0", backward_compatible=True)(UserListV2)
     return SchemaManager(registry)

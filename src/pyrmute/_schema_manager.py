@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import GenerateJsonSchema
 
+from ._model_utils import get_root_annotation, is_root_model
 from ._registry import Registry
 from .exceptions import ModelNotFoundError
 from .model_version import ModelVersion
@@ -489,6 +490,12 @@ class SchemaManager:
 
         nested: list[NestedModelInfo] = []
 
+        if is_root_model(model):
+            root_annotation = get_root_annotation(model)
+            nested_from_root = self._extract_nested_from_annotation(root_annotation)
+            nested.extend(nested_from_root)
+            return nested
+
         for field_info in model.model_fields.values():
             model_type = self._get_model_type_from_field(field_info)
             if not model_type:
@@ -504,6 +511,38 @@ class SchemaManager:
 
             if nested_model_info not in nested:
                 nested.append(nested_model_info)
+
+        return nested
+
+    def _extract_nested_from_annotation(
+        self: Self, annotation: Any
+    ) -> list[NestedModelInfo]:
+        """Extract nested models from a type annotation (for RootModel support).
+
+        Args:
+            annotation: The type annotation to inspect.
+
+        Returns:
+            List of NestedModelInfo found in the annotation.
+        """
+        nested: list[NestedModelInfo] = []
+
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            model_info = self.registry.get_model_info(annotation)
+            if model_info:
+                name, version = model_info
+                nested_model_info = NestedModelInfo(name=name, version=version)
+                if nested_model_info not in nested:
+                    nested.append(nested_model_info)
+            return nested
+
+        origin = get_origin(annotation)
+        if origin is not None:
+            args = get_args(annotation)
+            for arg in args:
+                if arg is type(None):
+                    continue
+                nested.extend(self._extract_nested_from_annotation(arg))
 
         return nested
 

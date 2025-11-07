@@ -629,6 +629,16 @@ def test_get_nested_models_no_nesting(
     assert nested == []
 
 
+def test_get_nested_root_models_nesting(
+    populated_schema_manager: SchemaManager,
+) -> None:
+    """Test getting nested models in root models."""
+    nested = populated_schema_manager.get_nested_models("UserList", "1.0.0")
+    assert len(nested) == 1
+    assert nested[0].name == "User"
+    assert str(nested[0].version) == "1.0.0"
+
+
 def test_get_nested_models_with_nesting(
     registry: Registry,
 ) -> None:
