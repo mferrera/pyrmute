@@ -8,8 +8,17 @@ from typing import Annotated, Any, Generic, Literal, TypeVar
 from uuid import UUID
 
 import pytest
-from pydantic import BaseModel, ConfigDict, Field, computed_field, conint, constr
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    RootModel,
+    computed_field,
+    conint,
+    constr,
+)
 
+from pyrmute import ModelManager
 from pyrmute._registry import Registry
 from pyrmute.typescript_schema import (
     TypeScriptConfig,
@@ -3230,3 +3239,60 @@ def test_typescript_interface_nested_with_all_features(
             main_block = True
         elif "[key: string]: any;" in line:
             assert metadata_block or main_block
+
+
+def test_typescript_schema_for_root_model(manager: ModelManager) -> None:
+    """Test TypeScript schema generation for RootModel."""
+
+    @manager.model("StringList", "1.0.0")
+    class StringListV1(RootModel[list[str]]):
+        """A list of strings."""
+
+    exporter = TypeScriptExporter(manager._registry, style="interface")
+    ts_str = exporter.export_schema("StringList", "1.0.0")
+
+    assert ts_str is not None
+    assert "export type StringList" in ts_str
+    assert "string[]" in ts_str
+
+
+def test_typescript_zod_schema_for_root_model(manager: ModelManager) -> None:
+    """Test TypeScript Zod schema for RootModel."""
+
+    @manager.model("StringList", "1.0.0")
+    class StringListV1(RootModel[list[str]]):
+        """A list of strings."""
+
+    exporter = TypeScriptExporter(manager._registry, style="zod")
+    ts_str = exporter.export_schema("StringList", "1.0.0")
+
+    assert ts_str is not None
+    assert "StringListSchema" in ts_str
+    assert "z.array(z.string())" in ts_str
+
+
+def test_typescript_root_model_with_union(manager: ModelManager) -> None:
+    """Test TypeScript schema for RootModel with discriminated union."""
+
+    @manager.model("ModelA", "1.0.0")
+    class ModelA(BaseModel):
+        type_field: Literal["a"] = "a"
+        value_a: str
+
+    @manager.model("ModelB", "1.0.0")
+    class ModelB(BaseModel):
+        type_field: Literal["b"] = "b"
+        value_b: int
+
+    @manager.model("TestUnion", "1.0.0")
+    class TestUnion(
+        RootModel[Annotated[ModelA | ModelB, Field(discriminator="type_field")]]
+    ):
+        pass
+
+    exporter = TypeScriptExporter(manager._registry, style="interface")
+    ts_str = exporter.export_schema("TestUnion", "1.0.0")
+
+    assert ts_str is not None
+    assert "export type TestUnion" in ts_str
+    assert "ModelA | ModelB" in ts_str or ("ModelA" in ts_str and "ModelB" in ts_str)
