@@ -9,8 +9,8 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
-from ._model_utils import is_root_model
 from ._registry import Registry
+from ._type_inspector import TypeInspector
 from .exceptions import MigrationError, ModelNotFoundError
 from .migration_hooks import MigrationHook
 from .model_version import ModelVersion
@@ -336,8 +336,8 @@ class MigrationManager:
         from_model = self.registry.get_model(name, from_ver)
         to_model = self.registry.get_model(name, to_ver)
 
-        from_is_root = is_root_model(from_model)
-        to_is_root = is_root_model(to_model)
+        from_is_root = TypeInspector.is_root_model(from_model)
+        to_is_root = TypeInspector.is_root_model(to_model)
 
         if from_is_root and to_is_root:
             return self._auto_migrate_root_models(data, from_model, to_model)

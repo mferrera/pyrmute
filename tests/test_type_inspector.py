@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Any, Union, get_origin
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 
 from pyrmute._type_inspector import TypeInspector
 
@@ -525,3 +525,39 @@ def test_is_variable_length_tuple_with_bare_ellipsis() -> None:
     """Test that is_variable_length_tuple only matches tuple[T, ...] pattern."""
     annotation = tuple[str, int]
     assert TypeInspector.is_variable_length_tuple(annotation) is False
+
+
+def test_is_root_model() -> None:
+    """Tests that is_root_model correctly detects."""
+
+    class A(BaseModel):
+        val: int
+
+    class B(RootModel[list[int]]):
+        root: list[int]
+
+    class C:
+        pass
+
+    assert TypeInspector.is_root_model(A) is False
+    assert TypeInspector.is_root_model(B) is True
+    assert TypeInspector.is_root_model(C) is False  # type: ignore[arg-type]
+
+
+def test_get_root_annotation_not_rootmodel() -> None:
+    """Tests getting a RootModel annotation from a not-RootModel."""
+
+    class A(BaseModel):
+        val: int
+
+    with pytest.raises(ValueError, match="not a RootModel"):
+        TypeInspector.get_root_annotation(A)
+
+
+def test_get_root_annotation_rootmodel() -> None:
+    """Tests getting a RootModel annotation from a not-RootModel."""
+
+    class B(RootModel[list[int]]):
+        root: list[int]
+
+    assert TypeInspector.get_root_annotation(B) == list[int]
