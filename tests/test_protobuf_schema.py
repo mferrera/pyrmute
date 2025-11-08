@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, NewType, Optional
 from uuid import UUID
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 
 from pyrmute import ModelManager, ModelVersion
 from pyrmute._registry import Registry
@@ -897,9 +897,7 @@ def test_proto_file_with_imports() -> None:
     assert "google/protobuf/timestamp.proto" in proto_string
 
 
-# ============================================================================
-# CONSTRAINT COMBINATION EDGE CASES
-# ============================================================================
+# Constraint combination edge cases
 
 
 def test_integer_with_gt_constraint() -> None:
@@ -966,9 +964,7 @@ def test_integer_with_multiple_of_constraint() -> None:
     assert positive_even_field["type"] == "uint64"
 
 
-# ============================================================================
-# FIELD NUMBERING EDGE CASES
-# ============================================================================
+# Field numbering edge cases
 
 
 def test_large_model_field_numbering() -> None:
@@ -1042,9 +1038,7 @@ def test_field_counter_reset_between_models() -> None:
     assert field2_num == 1
 
 
-# ============================================================================
-# TYPE INFERENCE AMBIGUITIES
-# ============================================================================
+# Type inference ambiguities
 
 
 def test_any_type_annotation() -> None:
@@ -1099,9 +1093,7 @@ def test_union_with_none_only() -> None:
     assert len(message["fields"]) == 1
 
 
-# ============================================================================
-# UNION/ONEOF EDGE CASES
-# ============================================================================
+# Union/oneof edge cases
 
 
 def test_union_with_duplicate_types() -> None:
@@ -1188,9 +1180,7 @@ def test_oneof_variant_names_use_registry_names(manager: ModelManager) -> None:
     assert "payment_bankpaymentv1" not in proto_content.lower()
 
 
-# ============================================================================
-# NAME COLLISION RISKS
-# ============================================================================
+# Name collision risks
 
 
 def test_field_named_value_value() -> None:
@@ -1251,9 +1241,7 @@ def test_nested_message_same_name_as_parent() -> None:
     assert data_field["type"] == "Data"
 
 
-# ============================================================================
-# DICT/MAP EDGE CASES
-# ============================================================================
+# dict/map edge cases
 
 
 def test_dict_with_int_keys() -> None:
@@ -1297,9 +1285,7 @@ def test_nested_maps() -> None:
     assert "map<string, map<string, string>>" in field["type"]
 
 
-# ============================================================================
-# DEEPLY NESTED STRUCTURES
-# ============================================================================
+# Deeply nested structures
 
 
 def test_deep_nesting_10_levels() -> None:
@@ -1375,9 +1361,7 @@ def test_cycle_through_lists() -> None:
     assert children["label"] == "repeated"
 
 
-# ============================================================================
-# COMMENT/DOCUMENTATION EDGE CASES
-# ============================================================================
+# Comment/documentation edge cases
 
 
 def test_very_long_comment() -> None:
@@ -1444,9 +1428,7 @@ def test_empty_docstring_vs_none() -> None:
     assert msg_none["name"] == "Model2"
 
 
-# ============================================================================
-# ENUM EDGE CASES
-# ============================================================================
+# Enum edge cases
 
 
 def test_enum_with_non_sequential_values() -> None:
@@ -1505,9 +1487,7 @@ def test_string_enum_with_special_chars() -> None:
     assert field is not None
 
 
-# ============================================================================
-# IMPORT HANDLING
-# ============================================================================
+# Import handling
 
 
 def test_multiple_timestamp_fields() -> None:
@@ -1573,9 +1553,7 @@ def test_integer_constraints_collected_fully() -> None:
     assert field4["type"] == "uint64", "Should be uint64 just over boundary"
 
 
-# ============================================================================
-# PROTO SYNTAX VALIDATION EDGE CASES
-# ============================================================================
+# Proto syntax edge cases
 
 
 def test_field_number_uniqueness_across_oneofs() -> None:
@@ -2268,9 +2246,7 @@ def test_proto_schema_dump_with_nested_models(
     assert "Address address = 2;" in user_content
 
 
-# ============================================================================
 # Alias tests
-# ============================================================================
 
 
 def test_proto_alias_used_as_json_name(manager: ModelManager) -> None:
@@ -2322,3 +2298,39 @@ def test_proto_no_json_name_when_no_alias(manager: ModelManager) -> None:
     schema = manager.get_proto_schema("User", "1.0.0")
     assert "string email = 1;" in schema
     assert "json_name" not in schema
+
+
+def test_proto_schema_for_root_model(manager: ModelManager) -> None:
+    """Test Protocol Buffer schema generation for RootModel."""
+
+    @manager.model("StringList", "1.0.0")
+    class StringListV1(RootModel[list[str]]):
+        """A list of strings."""
+
+    exporter = ProtoExporter(manager._registry, package="com.test")
+    proto_str = exporter.export_schema("StringList", "1.0.0")
+
+    assert proto_str is not None
+    assert "message StringList" in proto_str
+    assert "repeated string root" in proto_str
+
+
+def test_proto_schema_root_model_with_nested_models(manager: ModelManager) -> None:
+    """Test Protocol Buffer schema for RootModel with nested models."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        age: int
+
+    @manager.model("UserList", "1.0.0")
+    class UserListV1(RootModel[list[UserV1]]):
+        """A list of users."""
+
+    exporter = ProtoExporter(manager._registry, package="com.test")
+    proto_str = exporter.export_schema("UserList", "1.0.0")
+
+    assert proto_str is not None
+    assert "message UserList" in proto_str
+    assert "repeated User root" in proto_str or "repeated UserV1 root" in proto_str
+    assert "message User" in proto_str or "message UserV1" in proto_str

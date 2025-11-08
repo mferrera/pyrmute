@@ -9,7 +9,7 @@ from typing import Any, Optional, Union
 
 import pytest
 from hypothesis import assume, given, settings, strategies as st
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, Field, RootModel, create_model
 
 from pyrmute.protobuf_schema import ProtoSchemaGenerator
 
@@ -127,6 +127,22 @@ def complex_model(draw: Any, max_depth: int = 3, current_depth: int = 0) -> Any:
         model_name,
         **dict.fromkeys(fields, (str, ...)),
     )  # type: ignore[call-overload]
+
+
+@st.composite
+def root_model_type(draw: Any) -> Any:
+    """Generate types suitable for RootModel wrapping."""
+    return draw(
+        st.one_of(
+            st.just(list[str]),
+            st.just(list[int]),
+            st.just(dict[str, str]),
+            st.just(dict[str, int]),
+            st.lists(simple_types(), min_size=1, max_size=3).map(
+                lambda types: list[tuple(types)]  # type: ignore
+            ),
+        )
+    )
 
 
 @given(
@@ -499,3 +515,102 @@ def test_complex_generated_proto_compiles_with_protoc(model: Any) -> None:
             f"STDERR: {result.stderr}\n"
             f"Proto:\n{proto_content}"
         )
+
+
+@given(root_type=root_model_type())
+@settings(max_examples=50, deadline=None)
+def test_root_model_always_generates_valid_proto(root_type: Any) -> None:
+    """Property: RootModels should always generate valid proto schemas."""
+
+    class TestRootModel(RootModel[root_type]):  # type: ignore
+        pass
+
+    generator = ProtoSchemaGenerator()
+    message = generator._generate_root_model_schema(
+        TestRootModel, "TestRootModel", "1.0.0"
+    )
+
+    assert len(message["fields"]) == 1
+    assert message["fields"][0]["name"] == "root"
+    assert isinstance(message["fields"][0]["type"], str)
+    assert message["fields"][0]["number"] == 1
+
+
+@given(
+    field_count=st.integers(min_value=1, max_value=5),
+)
+@settings(max_examples=30, deadline=None)
+def test_root_model_with_nested_basemodel(field_count: int) -> None:
+    """Property: RootModels wrapping lists of BaseModels should handle nesting."""
+    fields = {f"field{i}": (str, ...) for i in range(field_count)}
+    NestedModel = create_model("NestedModel", **fields)  # type: ignore
+
+    class TestRootModel(RootModel[list[NestedModel]]):  # type: ignore
+        pass
+
+    generator = ProtoSchemaGenerator()
+    message = generator._generate_root_model_schema(
+        TestRootModel, "TestRootModel", "1.0.0"
+    )
+
+    assert len(message["fields"]) == 1
+    root_field = message["fields"][0]
+    assert root_field["name"] == "root"
+    assert root_field.get("label") == "repeated"
+    assert "NestedModel" in root_field["type"]
+
+
+@pytest.mark.integration
+@given(root_type=st.sampled_from([list[str], dict[str, int], list[int]]))
+@settings(max_examples=10, deadline=None)
+def test_root_model_proto_compiles(root_type: Any) -> None:
+    """Integration: RootModel protos should compile with protoc."""
+    if not shutil.which("protoc"):
+        pytest.skip("protoc not installed")
+
+    class TestRootModel(RootModel[root_type]):  # type: ignore
+        """Test root model."""
+
+    generator = ProtoSchemaGenerator(package="test.rootmodel")
+    proto_file = generator.generate_schema(TestRootModel, "TestRootModel", "1.0.0")
+    proto_content = generator.proto_file_to_string(proto_file)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        proto_path = Path(tmpdir) / "rootmodel.proto"
+        proto_path.write_text(proto_content)
+
+        result = subprocess.run(
+            [
+                "protoc",
+                f"--proto_path={tmpdir}",
+                f"--python_out={tmpdir}",
+                "rootmodel.proto",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 0, (
+            f"protoc failed for RootModel:\n"
+            f"STDOUT: {result.stdout}\n"
+            f"STDERR: {result.stderr}\n"
+            f"Proto:\n{proto_content}"
+        )
+
+
+def test_invariant_root_model_has_single_field() -> None:
+    """Invariant: RootModel protos should always have exactly one field named 'root'."""
+
+    class StringList(RootModel[list[str]]):
+        pass
+
+    class IntDict(RootModel[dict[str, int]]):
+        pass
+
+    generator = ProtoSchemaGenerator()
+
+    for model, name in [(StringList, "StringList"), (IntDict, "IntDict")]:
+        message = generator._generate_root_model_schema(model, name, "1.0.0")  # type: ignore
+        assert len(message["fields"]) == 1, f"{name} should have exactly one field"
+        assert message["fields"][0]["name"] == "root", f"{name} field must be 'root'"
