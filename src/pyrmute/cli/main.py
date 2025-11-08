@@ -99,7 +99,6 @@ def validate(
     except typer.Exit:
         raise
     except Exception as e:
-        print(e)
         print_error(f"Validation error: {e}")
         raise typer.Exit(1) from e
 
