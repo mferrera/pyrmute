@@ -6,7 +6,16 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from typing import Any, Generic, Literal, Self, TypedDict, get_args, get_origin
+from typing import (
+    Annotated,
+    Any,
+    Generic,
+    Literal,
+    Self,
+    TypedDict,
+    get_args,
+    get_origin,
+)
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -86,6 +95,9 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
         self._current_model_class_name = model.__name__
         self._current_model_schema_name = name
 
+        if TypeInspector.is_root_model(model):
+            return self._generate_root_model_schema(model, name)
+
         self._collect_nested_models(model)
 
         for nested_name in self._nested_models:
@@ -129,6 +141,150 @@ class TypeScriptSchemaGenerator(SchemaGeneratorBase[TypeScriptModule]):
             enums=enums,
             imports=imports,
         )
+
+    def _generate_root_model_schema(  # noqa: PLR0912, C901
+        self: Self,
+        model: type[BaseModel],
+        name: str,
+    ) -> TypeScriptModule:
+        """Generate TypeScript schema for a RootModel.
+
+        For RootModels, we generate a type alias to the root type directly.
+
+        Args:
+            model: RootModel class.
+            name: Schema name.
+
+        Returns:
+            TypeScript module.
+        """
+        root_annotation = TypeInspector.get_root_annotation(model)
+
+        actual_type = root_annotation
+        origin = get_origin(root_annotation)
+        if origin is Annotated:
+            args = get_args(root_annotation)
+            if args:
+                actual_type = args[0]
+
+        self._collect_enums_from_type(actual_type)
+
+        if TypeInspector.is_base_model(actual_type):
+            self._collect_nested_models(model)
+        else:
+            union_origin = get_origin(actual_type)
+            if TypeInspector.is_union_type(union_origin):
+                union_args = get_args(actual_type)
+                for arg in union_args:
+                    if arg is not type(None) and TypeInspector.is_base_model(arg):
+                        temp_nested = TypeInspector.collect_nested_models(
+                            arg, self._types_seen
+                        )
+                        self._nested_models.update(temp_nested)
+                        self._register_nested_model(arg)
+
+        for nested_name in list(self._nested_models.keys()):
+            if nested_name != model.__name__:
+                self._register_model_name(nested_name, nested_name)
+
+        if self.config.get("enum_style", "union") == "enum":
+            for nested_model in self._nested_models.values():
+                self._collect_all_enums(nested_model)
+
+        imports: list[str] = []
+        if self.style == "zod":
+            imports.append("import { z } from 'zod';")
+
+        enums: list[str] = []
+        if self._collected_enums:
+            if self.style == "zod":
+                enum_declarations = [
+                    self._generate_zod_enum_declaration(enum_class)
+                    for enum_class in self._collected_enums.values()
+                ]
+            else:
+                enum_declarations = [
+                    self._generate_enum_declaration(enum_class)
+                    for enum_class in self._collected_enums.values()
+                ]
+            enums.extend(enum_declarations)
+
+        auxiliary: list[str] = []
+        for nested_name, nested_model in list(self._nested_models.items()):
+            if nested_name != model.__name__:
+                nested_schema = self._generate_schema_for_model(
+                    nested_model, nested_name
+                )
+                auxiliary.append(nested_schema)
+
+        if self.style == "zod":
+            main_schema = self._generate_root_model_zod_schema(model, name, actual_type)
+        else:
+            main_schema = self._generate_root_model_type_schema(
+                model, name, actual_type
+            )
+
+        return TypeScriptModule(
+            main=main_schema,
+            auxiliary=auxiliary,
+            enums=enums,
+            imports=imports,
+        )
+
+    def _generate_root_model_type_schema(
+        self: Self,
+        model: type[BaseModel],
+        name: str,
+        actual_type: Any,
+    ) -> str:
+        """Generate TypeScript interface or type alias for RootModel.
+
+        Args:
+            model: RootModel class.
+            name: Schema name.
+            actual_type: Unwrapped root type.
+
+        Returns:
+            TypeScript schema code.
+        """
+        type_info = self._convert_type(actual_type, None)
+        ts_type = type_info.type_representation
+
+        lines: list[str] = []
+
+        if model.__doc__:
+            doc_lines = model.__doc__.strip().split("\n")
+            lines.append("/**")
+            lines.extend(f" * {doc_line}" for doc_line in doc_lines)
+            lines.append(" */")
+
+        lines.append(f"export type {name} = {ts_type};")
+        return "\n".join(lines)
+
+    def _generate_root_model_zod_schema(
+        self: Self,
+        model: type[BaseModel],
+        name: str,
+        actual_type: Any,
+    ) -> str:
+        """Generate Zod schema for RootModel.
+
+        Args:
+            model: RootModel class.
+            name: Schema name.
+            actual_type: Unwrapped root type.
+
+        Returns:
+            Zod schema code.
+        """
+        validator = self._convert_zod(actual_type, None)
+        schema_name = f"{name}Schema"
+
+        lines = [
+            f"export const {schema_name} = {validator};",
+            f"export type {name} = z.infer<typeof {schema_name}>;",
+        ]
+        return "\n".join(lines)
 
     def _collect_all_enums(self: Self, model: type[BaseModel]) -> None:
         """Pre-traverse model to collect all enums.
