@@ -13,9 +13,9 @@ import avro  # type: ignore[import-untyped]
 import avro.schema  # type: ignore[import-untyped]
 import fastavro
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
 
-from pyrmute import ModelManager
+from pyrmute import AvroExporter, ModelManager
 
 # ruff: noqa: PLR2004
 
@@ -587,3 +587,138 @@ def test_avro_schema_many_models_export_performance(
 
     assert duration < 1.0  # Should complete in reasonable time
     assert len(list(output_dir.glob("*.avsc"))) == 50
+
+
+def test_avro_schema_kafka_integration_example(manager: ModelManager) -> None:
+    """Test complete example suitable for Kafka schema registry."""
+
+    class EventType(str, Enum):
+        USER_CREATED = "user_created"
+        USER_UPDATED = "user_updated"
+        USER_DELETED = "user_deleted"
+
+    @manager.model("UserEvent", "1.0.0")
+    class UserEventV1(BaseModel):
+        """User lifecycle event for Kafka topic."""
+
+        event_id: UUID = Field(description="Unique event identifier")
+        event_type: EventType = Field(description="Type of user event")
+        timestamp: datetime = Field(description="When the event occurred")
+        user_id: str = Field(description="User identifier")
+        user_name: str = Field(description="User full name")
+        email: str | None = Field(default=None, description="User email address")
+        metadata: dict[str, str] = Field(
+            default_factory=dict, description="Additional event metadata"
+        )
+
+    schema = manager.get_avro_schema("UserEvent", "1.0.0", namespace="com.myapp.events")
+
+    assert schema["type"] == "record"
+    assert schema["name"] == "UserEvent"
+    assert schema["namespace"] == "com.myapp.events"
+    assert schema["doc"] == "User lifecycle event for Kafka topic."
+
+    fields = {f["name"]: f for f in schema["fields"]}
+
+    assert fields["event_id"]["type"] == {"type": "string", "logicalType": "uuid"}
+    assert fields["timestamp"]["type"] == {
+        "type": "long",
+        "logicalType": "timestamp-micros",
+    }
+
+    event_type = fields["event_type"]["type"]
+    assert event_type["type"] == "enum"  # type: ignore
+    assert "user_created" in event_type["symbols"]  # type: ignore
+
+    assert fields["email"]["type"] == ["null", "string"]
+    assert fields["email"]["default"] is None
+
+    for field_name in ["event_id", "event_type", "timestamp", "user_id", "user_name"]:
+        assert "doc" in fields[field_name]
+
+
+def test_avro_schema_full_workflow(manager: ModelManager, tmp_path: Path) -> None:
+    """Test complete workflow: define models, generate schemas, save to files."""
+
+    class Priority(str, Enum):
+        LOW = "low"
+        MEDIUM = "medium"
+        HIGH = "high"
+
+    @manager.model("Task", "1.0.0")
+    class TaskV1(BaseModel):
+        """Task tracking model."""
+
+        task_id: UUID
+        title: str
+        description: str | None = None
+        priority: Priority = Priority.MEDIUM
+        created_at: datetime
+        due_date: date | None = None
+        tags: list[str] = Field(default_factory=list)
+
+    @manager.model("Task", "2.0.0")
+    class TaskV2(BaseModel):
+        """Task tracking model with assignee."""
+
+        task_id: UUID
+        title: str
+        description: str | None = None
+        priority: Priority = Priority.MEDIUM
+        created_at: datetime
+        due_date: date | None = None
+        tags: list[str] = Field(default_factory=list)
+        assignee: str | None = None
+
+    output_dir = tmp_path / "kafka_schemas"
+    schemas = manager.dump_avro_schemas(
+        output_dir, namespace="com.taskapp", indent=2, versioned_namespace=True
+    )
+
+    assert "Task" in schemas
+    assert "1.0.0" in schemas["Task"]
+    assert "2.0.0" in schemas["Task"]
+
+    v1_file = output_dir / "Task_v1_0_0.avsc"
+    v2_file = output_dir / "Task_v2_0_0.avsc"
+    assert v1_file.exists()
+    assert v2_file.exists()
+
+    v1_schema = json.loads(v1_file.read_text())
+    v2_schema = json.loads(v2_file.read_text())
+
+    v1_fields = {f["name"] for f in v1_schema["fields"]}
+    v2_fields = {f["name"] for f in v2_schema["fields"]}
+
+    assert "assignee" not in v1_fields
+    assert "assignee" in v2_fields
+
+    for schema in [v1_schema, v2_schema]:
+        assert schema["type"] == "record"
+        assert schema["name"] == "Task"
+        assert "v1_0_0" in schema["namespace"] or "v2_0_0" in schema["namespace"]
+
+
+def test_avro_export_all_with_root_models(
+    tmp_path: Path, manager: ModelManager
+) -> None:
+    """Test exporting all schemas including RootModels."""
+
+    @manager.model("StringList", "1.0.0")
+    class StringListV1(RootModel[list[str]]):
+        pass
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    exporter = AvroExporter(manager._registry, namespace="com.test")
+    schemas = exporter.export_all_schemas(tmp_path / "avro")
+
+    assert "StringList" in schemas
+    assert "User" in schemas
+    assert "1.0.0" in schemas["StringList"]
+    assert "1.0.0" in schemas["User"]
+
+    assert (tmp_path / "avro" / "StringList_v1_0_0.avsc").exists()
+    assert (tmp_path / "avro" / "User_v1_0_0.avsc").exists()

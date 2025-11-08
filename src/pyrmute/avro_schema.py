@@ -7,12 +7,13 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from typing import Any, Final, Self, get_args, get_origin
+from typing import Any, Final, Self, cast, get_args, get_origin
 from uuid import UUID
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
+from ._model_utils import get_root_annotation, is_root_model
 from ._registry import Registry
 from ._schema_documents import AvroSchemaDocument
 from ._schema_generator import FieldSchema, SchemaGeneratorBase, TypeInfo
@@ -26,6 +27,7 @@ from .avro_types import (
     AvroMapSchema,
     AvroRecordSchema,
     AvroSchema,
+    AvroType,
     AvroUnion,
     CachedAvroEnumSchema,
 )
@@ -96,7 +98,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
             registry_name_map: Optional mapping of class names to registry names.
 
         Returns:
-            Avro record schema.
+            Avro schema document.
         """
         self._reset_state()
 
@@ -105,15 +107,18 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
         self._current_model_schema_name = name
         self._types_seen.add(model.__name__)
 
-        self._collect_nested_models(model)
-        for nested_class_name in self._nested_models:
-            if nested_class_name != model.__name__:
-                self._register_model_name(nested_class_name, nested_class_name)
-
         full_namespace = self.namespace
         if version:
             version_str = str(version).replace(".", "_")
             full_namespace = f"{self.namespace}.v{version_str}"
+
+        if is_root_model(model):
+            return self._generate_root_model_schema(model, name, full_namespace)
+
+        self._collect_nested_models(model)
+        for nested_class_name in self._nested_models:
+            if nested_class_name != model.__name__:
+                self._register_model_name(nested_class_name, nested_class_name)
 
         schema: AvroRecordSchema = {
             "type": "record",
@@ -132,6 +137,86 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
         return AvroSchemaDocument(
             main=schema,
             namespace=full_namespace,
+            enums={k: v["schema"] for k, v in self._generated_enum_schemas.items()},
+        )
+
+    def _generate_root_model_schema(
+        self: Self,
+        model: type[BaseModel],
+        name: str,
+        namespace: str,
+    ) -> AvroSchemaDocument:
+        """Generate Avro schema for a RootModel.
+
+        For RootModels, we generate a schema for the root type directly rather than
+        creating a record with a 'root' field.
+
+        Args:
+            model: RootModel class.
+            name: Schema name.
+            namespace: Avro namespace.
+
+        Returns:
+            Avro schema document.
+        """
+        root_annotation = get_root_annotation(model)
+
+        if TypeInspector.is_base_model(root_annotation):
+            self._collect_nested_models(model)
+            for nested_class_name in self._nested_models:
+                if nested_class_name != model.__name__:
+                    self._register_model_name(nested_class_name, nested_class_name)
+
+        type_info = self._convert_type(root_annotation)
+        root_type = type_info.type_representation
+
+        if isinstance(root_type, dict) and root_type.get("type") in ("array", "map"):
+            # For array and map types, we need to wrap them in a record
+            # because Avro requires top-level schemas to be named types
+            schema: AvroRecordSchema = {
+                "type": "record",
+                "name": name,
+                "namespace": namespace,
+                "fields": [
+                    {
+                        "name": "root",
+                        "type": cast("AvroType", root_type),
+                    }
+                ],
+            }
+
+            if self.include_docs and model.__doc__:
+                schema["doc"] = model.__doc__.strip()
+
+            main_schema: AvroRecordSchema = schema
+        elif isinstance(root_type, dict) and root_type.get("type") == "record":
+            main_schema = root_type.copy()  # type: ignore
+            main_schema["name"] = name
+            main_schema["namespace"] = namespace
+
+            if self.include_docs and model.__doc__ and "doc" not in main_schema:
+                main_schema["doc"] = model.__doc__.strip()
+        else:
+            schema = {
+                "type": "record",
+                "name": name,
+                "namespace": namespace,
+                "fields": [
+                    {
+                        "name": "root",
+                        "type": root_type,
+                    }
+                ],
+            }
+
+            if self.include_docs and model.__doc__:
+                schema["doc"] = model.__doc__.strip()
+
+            main_schema = schema
+
+        return AvroSchemaDocument(
+            main=main_schema,
+            namespace=namespace,
             enums={k: v["schema"] for k, v in self._generated_enum_schemas.items()},
         )
 

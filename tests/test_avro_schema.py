@@ -9,7 +9,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 import pytest
-from pydantic import AnyHttpUrl, BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field, RootModel
 
 from pyrmute import ModelManager, ModelNotFoundError
 from pyrmute.avro_schema import AvroExporter, AvroSchemaGenerator
@@ -24,9 +24,7 @@ def avro_generator() -> AvroSchemaGenerator:
     return AvroSchemaGenerator(namespace="com.test")
 
 
-# ============================================================================
 # Basic Type Tests
-# ============================================================================
 
 
 def test_avro_schema_basic_types(manager: ModelManager) -> None:
@@ -98,9 +96,7 @@ def test_avro_schema_with_defaults(manager: ModelManager) -> None:
     assert fields["name"]["default"] == "default"
 
 
-# ============================================================================
 # Documentation Tests
-# ============================================================================
 
 
 def test_avro_schema_with_documentation(manager: ModelManager) -> None:
@@ -143,9 +139,7 @@ def test_avro_schema_without_documentation(manager: ModelManager) -> None:
     assert "doc" not in fields["name"]
 
 
-# ============================================================================
 # Logical Type Tests
-# ============================================================================
 
 
 def test_avro_schema_datetime_logical_type(manager: ModelManager) -> None:
@@ -219,9 +213,7 @@ def test_avro_schema_optional_datetime(manager: ModelManager) -> None:
     assert fields["timestamp"]["default"] is None
 
 
-# ============================================================================
 # Enum Tests
-# ============================================================================
 
 
 def test_avro_schema_enum_type(manager: ModelManager) -> None:
@@ -265,7 +257,6 @@ def test_avro_schema_optional_enum(manager: ModelManager) -> None:
     assert isinstance(priority_type, list)
     assert "null" in priority_type
 
-    # Find the enum in the union
     enum_type = next(
         t for t in priority_type if isinstance(t, dict) and t.get("type") == "enum"
     )
@@ -291,9 +282,7 @@ def test_avro_schema_enum_with_default(manager: ModelManager) -> None:
     assert fields["status"]["default"] == "draft"
 
 
-# ============================================================================
 # Collection Type Tests
-# ============================================================================
 
 
 def test_avro_schema_list_type(manager: ModelManager) -> None:
@@ -345,7 +334,6 @@ def test_avro_schema_list_of_optional_items(manager: ModelManager) -> None:
     array_schema = fields["values"]["type"]
 
     assert array_schema["type"] == "array"
-    # Items should be union with null
     assert isinstance(array_schema["items"], list)
     assert "null" in array_schema["items"]
     assert "string" in array_schema["items"]
@@ -363,14 +351,11 @@ def test_avro_schema_default_factory(manager: ModelManager) -> None:
 
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Default factory should produce the default value
     assert fields["tags"]["default"] == []
     assert fields["metadata"]["default"] == {}
 
 
-# ============================================================================
 # Tuple Tests
-# ============================================================================
 
 
 def test_avro_schema_tuple_type(manager: ModelManager) -> None:
@@ -384,10 +369,8 @@ def test_avro_schema_tuple_type(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Coordinates", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Tuple of same types becomes array of that type
     assert fields["point"]["type"] == {"type": "array", "items": "double"}
 
-    # Tuple of mixed types becomes array of union
     mixed_type = fields["mixed"]["type"]
     assert mixed_type["type"] == "array"
     assert isinstance(mixed_type["items"], list)
@@ -406,13 +389,10 @@ def test_avro_schema_empty_tuple(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Empty", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Empty tuple becomes array of string
     assert fields["empty"]["type"] == {"type": "array", "items": "string"}
 
 
-# ============================================================================
 # Union Type Tests
-# ============================================================================
 
 
 def test_avro_schema_union_types(manager: ModelManager) -> None:
@@ -427,12 +407,10 @@ def test_avro_schema_union_types(manager: ModelManager) -> None:
 
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Non-optional union
     assert isinstance(fields["value"]["type"], list)
     assert "string" in fields["value"]["type"]
     assert "int" in fields["value"]["type"]
 
-    # Optional union
     assert isinstance(fields["optional_value"]["type"], list)
     assert "null" in fields["optional_value"]["type"]
     assert "string" in fields["optional_value"]["type"]
@@ -455,9 +433,7 @@ def test_avro_schema_union_with_logical_types(manager: ModelManager) -> None:
     assert {"type": "string", "logicalType": "uuid"} in id_type
 
 
-# ============================================================================
 # Nested Model Tests
-# ============================================================================
 
 
 def test_avro_schema_nested_model(manager: ModelManager) -> None:
@@ -536,7 +512,6 @@ def test_avro_schema_recursive_reference(manager: ModelManager) -> None:
     children_type = fields["children"]["type"]
 
     assert children_type["type"] == "array"
-    # Should be a string reference to Node, not a full nested definition
     assert children_type["items"] == "Node"
 
 
@@ -557,20 +532,13 @@ def test_avro_schema_multiple_references_same_type(manager: ModelManager) -> Non
     schema = manager.get_avro_schema("Company", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # First occurrence should have full schema
     hq_type = fields["headquarters"]["type"]
     assert isinstance(hq_type, dict)
     assert hq_type["type"] == "record"
     assert hq_type["name"] == "AddressV1"
 
-    # Second occurrence should just be a reference
     billing_type = fields["billing_address"]["type"]
     assert billing_type == "AddressV1"
-
-
-# ============================================================================
-# Complex Real-World Tests
-# ============================================================================
 
 
 def test_avro_schema_complex_example(manager: ModelManager) -> None:
@@ -602,28 +570,22 @@ def test_avro_schema_complex_example(manager: ModelManager) -> None:
 
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Check required fields
     assert fields["order_id"]["type"] == "string"
     assert fields["customer_name"]["type"] == "string"
     assert fields["total"]["type"] == "double"
 
-    # Check collections
     assert fields["items"]["type"] == {"type": "array", "items": "string"}
     assert fields["quantities"]["type"] == {"type": "array", "items": "int"}
     assert fields["metadata"]["type"] == {"type": "map", "values": "string"}
 
-    # Check optional field
     assert fields["discount"]["type"] == ["null", "double"]
     assert fields["discount"]["default"] is None
 
-    # Check fields with defaults
     assert fields["status"]["default"] == "pending"
     assert fields["is_paid"]["default"] is False
 
 
-# ============================================================================
 # Version and Namespace Tests
-# ============================================================================
 
 
 def test_avro_schema_version_in_namespace(manager: ModelManager) -> None:
@@ -684,9 +646,7 @@ def test_avro_schema_multiple_versions_different_schemas(manager: ModelManager) 
     assert schema_v2["namespace"] == "com.test"
 
 
-# ============================================================================
 # Alias tests
-# ============================================================================
 
 
 def test_avro_alias_used_over_python_name(manager: ModelManager) -> None:
@@ -740,9 +700,7 @@ def test_avro_serialization_alias_used_over_alias(manager: ModelManager) -> None
     }
 
 
-# ============================================================================
 # File Export Tests
-# ============================================================================
 
 
 def test_dump_avro_schemas_creates_files(manager: ModelManager, tmp_path: Path) -> None:
@@ -764,19 +722,16 @@ def test_dump_avro_schemas_creates_files(manager: ModelManager, tmp_path: Path) 
     output_dir = tmp_path / "avro_schemas"
     schemas = manager.dump_avro_schemas(output_dir, namespace="com.test")
 
-    # Check return value structure
     assert "User" in schemas
     assert "Order" in schemas
     assert "1.0.0" in schemas["User"]
     assert "2.0.0" in schemas["User"]
     assert "1.0.0" in schemas["Order"]
 
-    # Check files were created
     assert (output_dir / "User_v1_0_0.avsc").exists()
     assert (output_dir / "User_v2_0_0.avsc").exists()
     assert (output_dir / "Order_v1_0_0.avsc").exists()
 
-    # Check file content
     user_v1_content = json.loads((output_dir / "User_v1_0_0.avsc").read_text())
     assert user_v1_content["name"] == "User"
     assert user_v1_content["namespace"] == "com.test"
@@ -794,10 +749,8 @@ def test_dump_avro_schemas_custom_indent(manager: ModelManager, tmp_path: Path) 
 
     content = (output_dir / "User_v1_0_0.avsc").read_text()
 
-    # Check that indentation is present (4 spaces)
     assert "    " in content
 
-    # Verify it's valid JSON
     schema = json.loads(content)
     assert schema["name"] == "User"
 
@@ -835,15 +788,12 @@ def test_avro_exporter_export_single_schema(
     output_path = tmp_path / "user.avsc"
     schema = exporter.export_schema("User", "1.0.0", output_path)
 
-    # Check return value
     assert schema["name"] == "User"
     assert schema["namespace"] == "com.app"
     assert len(schema["fields"]) == 2
 
-    # Check file was created
     assert output_path.exists()
 
-    # Check file content
     file_schema = json.loads(output_path.read_text())
     assert file_schema == schema
 
@@ -862,9 +812,7 @@ def test_avro_exporter_export_without_file(manager: ModelManager) -> None:
     assert schema["namespace"] == "com.app"
 
 
-# ============================================================================
 # Edge Cases
-# ============================================================================
 
 
 def test_avro_schema_empty_model(manager: ModelManager) -> None:
@@ -908,13 +856,11 @@ def test_avro_schema_nested_collections(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Complex", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # List of lists
     matrix_type = fields["matrix"]["type"]
     assert matrix_type["type"] == "array"
     assert matrix_type["items"]["type"] == "array"
     assert matrix_type["items"]["items"] == "int"
 
-    # Map with list values
     nested_map_type = fields["nested_map"]["type"]
     assert nested_map_type["type"] == "map"
     assert nested_map_type["values"]["type"] == "array"
@@ -929,8 +875,6 @@ def test_avro_schema_model_without_docstring(manager: ModelManager) -> None:
         name: str
 
     schema = manager.get_avro_schema("Simple", "1.0.0", namespace="com.test")
-
-    # Should not have doc field if no docstring
     assert "doc" not in schema
 
 
@@ -945,15 +889,11 @@ def test_avro_schema_field_without_description(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("User", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # name has no description
     assert "doc" not in fields["name"]
-    # age has description
     assert fields["age"]["doc"] == "User age"
 
 
-# ============================================================================
 # Integer Optimization Tests
-# ============================================================================
 
 
 def test_avro_schema_int_without_constraints(manager: ModelManager) -> None:
@@ -966,8 +906,7 @@ def test_avro_schema_int_without_constraints(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Data", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Without constraints, should use long for safety
-    assert fields["count"]["type"] == "int"  # Default in basic mapping
+    assert fields["count"]["type"] == "int"
 
 
 def test_avro_schema_int_with_constraints_fits_32bit(manager: ModelManager) -> None:
@@ -983,9 +922,7 @@ def test_avro_schema_int_with_constraints_fits_32bit(manager: ModelManager) -> N
     assert fields["small_number"]["type"] == "int"
 
 
-# ============================================================================
 # Default Value Conversion Tests
-# ============================================================================
 
 
 def test_avro_schema_enum_default_value(manager: ModelManager) -> None:
@@ -1004,7 +941,6 @@ def test_avro_schema_enum_default_value(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Item", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Enum default should be converted to string value
     assert fields["color"]["default"] == "red"
 
 
@@ -1019,7 +955,6 @@ def test_avro_schema_datetime_default_value(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Event", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Should have a default (produced by factory)
     assert "default" in fields["timestamp"]
     assert isinstance(fields["timestamp"]["default"], int)
 
@@ -1036,7 +971,6 @@ def test_avro_schema_uuid_default_value(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Resource", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # UUID should be converted to string
     assert fields["id"]["default"] == str(default_uuid)
 
 
@@ -1050,13 +984,10 @@ def test_avro_schema_bytes_default_value(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Data", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Bytes should be converted to string
     assert fields["content"]["default"] == "hello"
 
 
-# ============================================================================
 # Union Edge Cases
-# ============================================================================
 
 
 def test_avro_schema_union_duplicate_removal(manager: ModelManager) -> None:
@@ -1064,16 +995,13 @@ def test_avro_schema_union_duplicate_removal(manager: ModelManager) -> None:
 
     @manager.model("Data", "1.0.0")
     class DataV1(BaseModel):
-        # This creates a union that might have duplicates after processing
         value: str | int | str  # Duplicate str
 
     schema = manager.get_avro_schema("Data", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
     value_type = fields["value"]["type"]
-    # Should only have unique types
     assert isinstance(value_type, list)
-    # Count occurrences of string
     string_count = sum(1 for t in value_type if t == "string")
     assert string_count == 1
 
@@ -1083,7 +1011,6 @@ def test_avro_schema_nested_union_flattening(manager: ModelManager) -> None:
 
     @manager.model("Data", "1.0.0")
     class DataV1(BaseModel):
-        # Union of union should flatten
         value: str | int | None
 
     schema = manager.get_avro_schema("Data", "1.0.0", namespace="com.test")
@@ -1097,9 +1024,7 @@ def test_avro_schema_nested_union_flattening(manager: ModelManager) -> None:
     assert "int" in value_type
 
 
-# ============================================================================
 # List and Array Edge Cases
-# ============================================================================
 
 
 def test_avro_schema_empty_list_annotation(manager: ModelManager) -> None:
@@ -1112,7 +1037,6 @@ def test_avro_schema_empty_list_annotation(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Data", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # List without parameter should default to string items
     assert fields["items"]["type"] == {"type": "array", "items": "string"}
 
 
@@ -1164,9 +1088,7 @@ def test_avro_schema_list_of_nested_models(manager: ModelManager) -> None:
     assert items_type["name"] == "ItemV1"
 
 
-# ============================================================================
 # Map/Dict Edge Cases
-# ============================================================================
 
 
 def test_avro_schema_empty_dict_annotation(manager: ModelManager) -> None:
@@ -1179,7 +1101,6 @@ def test_avro_schema_empty_dict_annotation(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Data", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Dict without parameters should default to string values
     assert fields["metadata"]["type"] == {"type": "map", "values": "string"}
 
 
@@ -1208,131 +1129,6 @@ def test_avro_schema_dict_of_nested_models(manager: ModelManager) -> None:
     assert values_type["name"] == "AddressV1"
 
 
-# ============================================================================
-# Integration Tests
-# ============================================================================
-
-
-def test_avro_schema_kafka_integration_example(manager: ModelManager) -> None:
-    """Test complete example suitable for Kafka schema registry."""
-
-    class EventType(str, Enum):
-        USER_CREATED = "user_created"
-        USER_UPDATED = "user_updated"
-        USER_DELETED = "user_deleted"
-
-    @manager.model("UserEvent", "1.0.0")
-    class UserEventV1(BaseModel):
-        """User lifecycle event for Kafka topic."""
-
-        event_id: UUID = Field(description="Unique event identifier")
-        event_type: EventType = Field(description="Type of user event")
-        timestamp: datetime = Field(description="When the event occurred")
-        user_id: str = Field(description="User identifier")
-        user_name: str = Field(description="User full name")
-        email: str | None = Field(default=None, description="User email address")
-        metadata: dict[str, str] = Field(
-            default_factory=dict, description="Additional event metadata"
-        )
-
-    schema = manager.get_avro_schema("UserEvent", "1.0.0", namespace="com.myapp.events")
-
-    # Verify it's a complete, valid Avro schema
-    assert schema["type"] == "record"
-    assert schema["name"] == "UserEvent"
-    assert schema["namespace"] == "com.myapp.events"
-    assert schema["doc"] == "User lifecycle event for Kafka topic."
-
-    fields = {f["name"]: f for f in schema["fields"]}
-
-    # Verify logical types
-    assert fields["event_id"]["type"] == {"type": "string", "logicalType": "uuid"}
-    assert fields["timestamp"]["type"] == {
-        "type": "long",
-        "logicalType": "timestamp-micros",
-    }
-
-    # Verify enum
-    event_type = fields["event_type"]["type"]
-    assert event_type["type"] == "enum"
-    assert "user_created" in event_type["symbols"]
-
-    # Verify optional field
-    assert fields["email"]["type"] == ["null", "string"]
-    assert fields["email"]["default"] is None
-
-    # Verify all fields have documentation
-    for field_name in ["event_id", "event_type", "timestamp", "user_id", "user_name"]:
-        assert "doc" in fields[field_name]
-
-
-def test_avro_schema_full_workflow(manager: ModelManager, tmp_path: Path) -> None:
-    """Test complete workflow: define models, generate schemas, save to files."""
-
-    class Priority(str, Enum):
-        LOW = "low"
-        MEDIUM = "medium"
-        HIGH = "high"
-
-    @manager.model("Task", "1.0.0")
-    class TaskV1(BaseModel):
-        """Task tracking model."""
-
-        task_id: UUID
-        title: str
-        description: str | None = None
-        priority: Priority = Priority.MEDIUM
-        created_at: datetime
-        due_date: date | None = None
-        tags: list[str] = Field(default_factory=list)
-
-    @manager.model("Task", "2.0.0")
-    class TaskV2(BaseModel):
-        """Task tracking model with assignee."""
-
-        task_id: UUID
-        title: str
-        description: str | None = None
-        priority: Priority = Priority.MEDIUM
-        created_at: datetime
-        due_date: date | None = None
-        tags: list[str] = Field(default_factory=list)
-        assignee: str | None = None
-
-    # Export all schemas
-    output_dir = tmp_path / "kafka_schemas"
-    schemas = manager.dump_avro_schemas(
-        output_dir, namespace="com.taskapp", indent=2, versioned_namespace=True
-    )
-
-    # Verify both versions exported
-    assert "Task" in schemas
-    assert "1.0.0" in schemas["Task"]
-    assert "2.0.0" in schemas["Task"]
-
-    # Verify files created
-    v1_file = output_dir / "Task_v1_0_0.avsc"
-    v2_file = output_dir / "Task_v2_0_0.avsc"
-    assert v1_file.exists()
-    assert v2_file.exists()
-
-    # Verify schemas are different
-    v1_schema = json.loads(v1_file.read_text())
-    v2_schema = json.loads(v2_file.read_text())
-
-    v1_fields = {f["name"] for f in v1_schema["fields"]}
-    v2_fields = {f["name"] for f in v2_schema["fields"]}
-
-    assert "assignee" not in v1_fields
-    assert "assignee" in v2_fields
-
-    # Verify both are valid Avro schemas
-    for schema in [v1_schema, v2_schema]:
-        assert schema["type"] == "record"
-        assert schema["name"] == "Task"
-        assert "v1_0_0" in schema["namespace"] or "v2_0_0" in schema["namespace"]
-
-
 def test_avro_schema_backwards_compatible_evolution(manager: ModelManager) -> None:
     """Test that schema evolution maintains backward compatibility patterns."""
 
@@ -1347,8 +1143,8 @@ def test_avro_schema_backwards_compatible_evolution(manager: ModelManager) -> No
         user_id: str
         name: str
         email: str
-        phone: str | None = None  # New optional field
-        created_at: datetime | None = None  # New optional field
+        phone: str | None = None
+        created_at: datetime | None = None
 
     schema_v1 = manager.get_avro_schema("User", "1.0.0", namespace="com.app")
     schema_v2 = manager.get_avro_schema("User", "2.0.0", namespace="com.app")
@@ -1356,18 +1152,11 @@ def test_avro_schema_backwards_compatible_evolution(manager: ModelManager) -> No
     fields_v1 = {f["name"] for f in schema_v1["fields"]}
     fields_v2 = {f["name"] for f in schema_v2["fields"]}
 
-    # V2 is a superset of V1
     assert fields_v1.issubset(fields_v2)
 
-    # New fields in V2 are optional with defaults
     v2_field_dict = {f["name"]: f for f in schema_v2["fields"]}
     assert v2_field_dict["phone"]["default"] is None
     assert v2_field_dict["created_at"]["default"] is None
-
-
-# ============================================================================
-# Error Handling Tests
-# ============================================================================
 
 
 def test_avro_schema_model_not_found(manager: ModelManager) -> None:
@@ -1387,9 +1176,7 @@ def test_avro_schema_version_not_found(manager: ModelManager) -> None:
         manager.get_avro_schema("User", "2.0.0", namespace="com.test")
 
 
-# ============================================================================
 # Performance and Scale Tests
-# ============================================================================
 
 
 def test_avro_schema_deeply_nested_models(manager: ModelManager) -> None:
@@ -1413,11 +1200,9 @@ def test_avro_schema_deeply_nested_models(manager: ModelManager) -> None:
 
     schema = manager.get_avro_schema("Root", "1.0.0", namespace="com.test")
 
-    # Should handle deep nesting
     assert schema["type"] == "record"
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Verify deep nesting structure
     deep_type = fields["deep"]["type"]
     assert deep_type["type"] == "record"
     assert deep_type["name"] == "Level1V1"
@@ -1442,21 +1227,17 @@ def test_avro_exporter_multiple_models(manager: ModelManager, tmp_path: Path) ->
     output_dir = tmp_path / "schemas"
     schemas = manager.dump_avro_schemas(output_dir, namespace="com.store")
 
-    # All models should be exported
     assert len(schemas) == 3
     assert "User" in schemas
     assert "Product" in schemas
     assert "Order" in schemas
 
-    # All files should exist
     assert (output_dir / "User_v1_0_0.avsc").exists()
     assert (output_dir / "Product_v1_0_0.avsc").exists()
     assert (output_dir / "Order_v1_0_0.avsc").exists()
 
 
-# ============================================================================
 # JSON Schema Comparison Tests
-# ============================================================================
 
 
 def test_avro_schema_differs_from_json_schema(manager: ModelManager) -> None:
@@ -1470,22 +1251,17 @@ def test_avro_schema_differs_from_json_schema(manager: ModelManager) -> None:
     avro_schema = manager.get_avro_schema("User", "1.0.0", namespace="com.test")
     json_schema = manager.get_schema("User", "1.0.0")
 
-    # Different formats
     assert avro_schema["type"] == "record"
     assert json_schema["type"] == "object"
 
-    # Avro uses fields array, JSON Schema uses properties dict
     assert "fields" in avro_schema
     assert "properties" in json_schema
 
-    # Avro has namespace, JSON Schema doesn't
     assert "namespace" in avro_schema
     assert "namespace" not in json_schema
 
 
-# ============================================================================
 # Default Factory Edge Cases
-# ============================================================================
 
 
 def test_avro_schema_default_factory_raises_exception(manager: ModelManager) -> None:
@@ -1501,7 +1277,6 @@ def test_avro_schema_default_factory_raises_exception(manager: ModelManager) -> 
     schema = manager.get_avro_schema("Config", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Should not have a default when factory fails
     assert "default" not in fields["tags"]
 
 
@@ -1517,8 +1292,6 @@ def test_avro_schema_optional_with_failing_factory(manager: ModelManager) -> Non
 
     schema = manager.get_avro_schema("Data", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
-
-    # Optional field should default to None when factory fails
     assert fields["metadata"]["default"] is None
     assert fields["metadata"]["type"][0] == "null"  # type: ignore[literal-required]
 
@@ -1535,14 +1308,10 @@ def test_avro_schema_non_optional_with_failing_factory(manager: ModelManager) ->
 
     schema = manager.get_avro_schema("Numbers", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
-
-    # Non-optional field should not have default when factory fails
     assert "default" not in fields["values"]
 
 
-# ============================================================================
 # Integer Constraint Optimization Tests
-# ============================================================================
 
 
 def test_avro_schema_int_with_ge_constraint(manager: ModelManager) -> None:
@@ -1605,7 +1374,6 @@ def test_avro_schema_int_exceeds_32bit_range(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("BigNumber", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Exceeds 32-bit, should use long
     assert fields["large_value"]["type"] == "long"
 
 
@@ -1619,7 +1387,6 @@ def test_avro_schema_int_negative_range_exceeds_32bit(manager: ModelManager) -> 
     schema = manager.get_avro_schema("NegativeRange", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Exceeds 32-bit on negative side, should use long
     assert fields["value"]["type"] == "long"
 
 
@@ -1639,14 +1406,10 @@ def test_avro_schema_int_without_metadata(manager: ModelManager) -> None:
 
     schema = manager.get_avro_schema("Simple", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
-
-    # No constraints means default to int from basic mapping
     assert fields["count"]["type"] == "int"
 
 
-# ============================================================================
 # Default Value Conversion Edge Cases
-# ============================================================================
 
 
 def test_avro_schema_pydantic_model_default(manager: ModelManager) -> None:
@@ -1667,7 +1430,6 @@ def test_avro_schema_pydantic_model_default(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("User", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # BaseModel should be converted to dict via model_dump
     assert isinstance(fields["address"]["default"], dict)
     assert fields["address"]["default"]["street"] == "123 Main St"
     assert fields["address"]["default"]["city"] == "Anytown"
@@ -1685,7 +1447,6 @@ def test_avro_schema_date_default_conversion(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Event", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Should be days since epoch
     epoch = date(1970, 1, 1)
     expected_days = (test_date - epoch).days
     assert fields["event_date"]["default"] == expected_days
@@ -1703,7 +1464,6 @@ def test_avro_schema_time_default_conversion(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Schedule", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Should be microseconds since midnight
     expected_micros = (
         test_time.hour * 3600 + test_time.minute * 60 + test_time.second
     ) * 1_000_000 + test_time.microsecond
@@ -1721,7 +1481,6 @@ def test_avro_schema_decimal_default_conversion(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Price", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Decimal should be converted to float
     assert fields["amount"]["default"] == 123.45
     assert isinstance(fields["amount"]["default"], float)
 
@@ -1737,7 +1496,6 @@ def test_avro_schema_bytes_with_decode_error(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Binary", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Should handle decode errors with ignore
     assert isinstance(fields["data"]["default"], str)
 
 
@@ -1751,7 +1509,6 @@ def test_avro_schema_nested_list_default(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Matrix", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Nested lists should be preserved
     assert fields["grid"]["default"] == [[1, 2], [3, 4]]
 
 
@@ -1767,7 +1524,6 @@ def test_avro_schema_nested_dict_default(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Config", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # Nested dicts should be preserved
     assert fields["settings"]["default"] == {"db": {"port": 5432, "timeout": 30}}
 
 
@@ -1779,10 +1535,7 @@ def test_avro_schema_unknown_type_default(manager: ModelManager) -> None:
         def __str__(self) -> str:
             return "custom_value"
 
-    # Convert unknown type
     result = generator._convert_default_value(CustomClass())
-
-    # Should fall back to string conversion
     assert result == "custom_value"
 
 
@@ -1800,9 +1553,7 @@ def test_avro_schema_nested_anyhttpurl_with_value(manager: ModelManager) -> None
     json.dumps(manager.get_avro_schema("Outer", "1.0.0"))
 
 
-# ============================================================================
 # Type Annotation Edge Cases
-# ============================================================================
 
 
 def test_avro_schema_none_type_annotation(manager: ModelManager) -> None:
@@ -1844,7 +1595,6 @@ def test_avro_schema_union_with_complex_types(manager: ModelManager) -> None:
     data_type = fields["data"]["type"]
     assert isinstance(data_type, list)
 
-    # Should contain array and map schemas
     has_array = any(isinstance(t, dict) and t.get("type") == "array" for t in data_type)
     has_map = any(isinstance(t, dict) and t.get("type") == "map" for t in data_type)
 
@@ -1864,9 +1614,7 @@ def test_avro_schema_string_type_hints(manager: ModelManager) -> None:
     assert type_info.type_representation == "string"
 
 
-# ============================================================================
 # Nested Model Reference Tests
-# ============================================================================
 
 
 def test_avro_schema_circular_reference_prevention(manager: ModelManager) -> None:
@@ -1910,17 +1658,14 @@ def test_avro_schema_shared_nested_model_multiple_fields(
     schema = manager.get_avro_schema("Article", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # First occurrence should have full schema
     primary_tag_type = fields["primary_tag"]["type"]
     assert isinstance(primary_tag_type, dict)
     assert primary_tag_type["type"] == "record"
     assert primary_tag_type["name"] == "TagV1"
 
-    # Second occurrence should be reference
     secondary_tag_type = fields["secondary_tag"]["type"]
     assert secondary_tag_type == "TagV1"
 
-    # Array should also use reference
     all_tags_type = fields["all_tags"]["type"]
     assert all_tags_type["items"] == "TagV1"
 
@@ -1941,9 +1686,7 @@ def test_avro_schema_deeply_nested_same_type(manager: ModelManager) -> None:
     assert subcat_type["items"] == "Category"
 
 
-# ============================================================================
 # Tuple Edge Cases
-# ============================================================================
 
 
 def test_avro_schema_tuple_with_duplicate_types(manager: ModelManager) -> None:
@@ -1956,7 +1699,6 @@ def test_avro_schema_tuple_with_duplicate_types(manager: ModelManager) -> None:
     schema = manager.get_avro_schema("Data", "1.0.0", namespace="com.test")
     fields = {f["name"]: f for f in schema["fields"]}
 
-    # All same type should collapse to single type
     coords_type = fields["coords"]["type"]
     assert coords_type == {"type": "array", "items": "double"}
 
@@ -1982,9 +1724,7 @@ def test_avro_schema_tuple_with_optional_elements(manager: ModelManager) -> None
     assert "boolean" in items
 
 
-# ============================================================================
 # Enum Edge Cases
-# ============================================================================
 
 
 def test_avro_schema_int_enum(manager: ModelManager) -> None:
@@ -2027,9 +1767,7 @@ def test_avro_schema_enum_in_nested_union(manager: ModelManager) -> None:
     assert has_int
 
 
-# ============================================================================
 # Union Type Detection Tests
-# ============================================================================
 
 
 def test_avro_schema_python_310_union_syntax(manager: ModelManager) -> None:
@@ -2068,9 +1806,7 @@ def test_avro_schema_complex_nested_union_flattening(manager: ModelManager) -> N
     assert "boolean" in value_type
 
 
-# ============================================================================
 # Export and File Operations
-# ============================================================================
 
 
 def test_avro_exporter_creates_parent_directories(
@@ -2082,13 +1818,11 @@ def test_avro_exporter_creates_parent_directories(
     class UserV1(BaseModel):
         name: str
 
-    # Use nested path that doesn't exist
     output_path = tmp_path / "deeply" / "nested" / "path" / "user.avsc"
 
     exporter = AvroExporter(manager._registry, namespace="com.app")
     exporter.export_schema("User", "1.0.0", output_path)
 
-    # Should create all parent directories and file
     assert output_path.exists()
     assert output_path.parent.exists()
 
@@ -2108,11 +1842,6 @@ def test_avro_schema_model_with_no_fields_no_docstring(
     assert schema["name"] == "Empty"
     assert schema["fields"] == []
     assert "doc" not in schema
-
-
-# ============================================================================
-# Integration and Real-World Scenarios
-# ============================================================================
 
 
 def test_avro_schema_kafka_event_with_all_features(manager: ModelManager) -> None:
@@ -2178,7 +1907,6 @@ def test_avro_schema_evolution_compatibility(manager: ModelManager) -> None:
         id: str
         name: str
         price: float
-        # New optional fields for forward compatibility
         description: str | None = None
         category: str | None = None
         in_stock: bool = True
@@ -2194,3 +1922,70 @@ def test_avro_schema_evolution_compatibility(manager: ModelManager) -> None:
     assert v2_fields["description"]["default"] is None
     assert v2_fields["category"]["default"] is None
     assert v2_fields["in_stock"]["default"] is True
+
+
+def test_avro_schema_for_root_model(manager: ModelManager) -> None:
+    """Test Avro schema generation for RootModel."""
+
+    @manager.model("StringList", "1.0.0")
+    class StringListV1(RootModel[list[str]]):
+        """A list of strings."""
+
+    exporter = AvroExporter(manager._registry, namespace="com.test")
+    schema = exporter.export_schema("StringList", "1.0.0")
+
+    assert schema is not None
+    assert schema["type"] == "record"
+    assert schema["name"] == "StringList"
+    assert "fields" in schema
+
+
+def test_avro_schema_root_model_with_nested_models(manager: ModelManager) -> None:
+    """Test Avro schema for RootModel containing nested models."""
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+        age: int
+
+    @manager.model("UserList", "1.0.0")
+    class UserListV1(RootModel[list[UserV1]]):
+        """A list of users."""
+
+    exporter = AvroExporter(manager._registry, namespace="com.test")
+    schema = exporter.export_schema("UserList", "1.0.0")
+
+    assert schema is not None
+    assert schema["type"] == "record"
+    assert schema["name"] == "UserList"
+
+    assert len(schema["fields"]) == 1
+    root_field = schema["fields"][0]
+    assert root_field["name"] == "root"
+    assert root_field["type"]["type"] == "array"
+
+
+def test_avro_export_all_with_root_models(
+    tmp_path: Path, manager: ModelManager
+) -> None:
+    """Test exporting all schemas including RootModels."""
+    manager = ModelManager()
+
+    @manager.model("StringList", "1.0.0")
+    class StringListV1(RootModel[list[str]]):
+        pass
+
+    @manager.model("User", "1.0.0")
+    class UserV1(BaseModel):
+        name: str
+
+    exporter = AvroExporter(manager._registry, namespace="com.test")
+    schemas = exporter.export_all_schemas(tmp_path / "avro")
+
+    assert "StringList" in schemas
+    assert "User" in schemas
+    assert "1.0.0" in schemas["StringList"]
+    assert "1.0.0" in schemas["User"]
+
+    assert (tmp_path / "avro" / "StringList_v1_0_0.avsc").exists()
+    assert (tmp_path / "avro" / "User_v1_0_0.avsc").exists()
