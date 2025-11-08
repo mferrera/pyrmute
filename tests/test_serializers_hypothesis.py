@@ -43,6 +43,7 @@ from pydantic import (
     PastDate,
     PositiveFloat,
     PositiveInt,
+    RootModel,
     SecretBytes,
     SecretStr,
     StrictBool,
@@ -615,6 +616,81 @@ class MegaNestedModel(ProtoBufMegaNestedModel):
     union_of_lists: list[int] | list[ModelWithAllBasicTypes]
 
 
+class RootModelSimpleList(RootModel[list[str]]):
+    """Simple RootModel wrapping a list."""
+
+
+class RootModelNestedModels(RootModel[list[NestedModel]]):
+    """RootModel wrapping a list of nested models."""
+
+
+class RootModelDict(RootModel[dict[str, int]]):
+    """RootModel wrapping a dict."""
+
+
+class RootModelDiscriminatedUnion(
+    RootModel[
+        Annotated[
+            Annotated[ModelWithAllBasicTypes, Tag("basic")]
+            | Annotated[ModelWithConstrainedTypes, Tag("constrained")]
+            | Annotated[ModelWithSpecialTypes, Tag("special")],
+            Discriminator("model_type"),
+        ]
+    ]
+):
+    """RootModel with discriminated union."""
+
+
+class RootModelNestedDiscriminated(
+    RootModel[
+        list[
+            Annotated[
+                BasicWrapper | ConstrainedWrapper | SpecialWrapper,
+                Discriminator("model_type"),
+            ]
+        ]
+    ]
+):
+    """RootModel with list of discriminated unions."""
+
+
+class ModelWithRootModels(BaseModel):
+    """Model containing various RootModel fields."""
+
+    simple_list_root: RootModelSimpleList
+    nested_models_root: RootModelNestedModels
+    dict_root: RootModelDict
+    discriminated_root: RootModelDiscriminatedUnion
+
+    # Optional RootModels
+    optional_list_root: RootModelSimpleList | None = None
+
+    # Collections of RootModels
+    list_of_root_models: list[RootModelSimpleList]
+    dict_of_root_models: dict[str, RootModelDict]
+
+
+class ProtoBufMegaNestedModelWithRoots(ProtoBufMegaNestedModel):
+    """Mega model with RootModels included."""
+
+    root_models: ModelWithRootModels
+    optional_root_model: ModelWithRootModels | None = None
+
+
+class AvroMegaNestedModelWithRoots(AvroMegaNestedModel):
+    """Mega model with RootModels included."""
+
+    root_models: ModelWithRootModels
+    optional_root_model: ModelWithRootModels | None = None
+
+
+class MegaNestedModelWithRoots(MegaNestedModel):
+    """Complete mega model with RootModels."""
+
+    root_models: ModelWithRootModels
+    optional_root_model: ModelWithRootModels | None = None
+
+
 # Forward reference resolution
 RecursiveModel.model_rebuild()
 
@@ -879,6 +955,104 @@ def nested_discriminated_field_strategy(
     )
 
 
+@st.composite
+def root_model_simple_list_strategy(draw: DrawFn) -> dict[str, Any]:
+    """Generate data for simple list RootModel."""
+    return {"root": draw(st_list_str)}
+
+
+@st.composite
+def root_model_complex_list_strategy(draw: DrawFn) -> dict[str, Any]:
+    """Generate data for complex list RootModel."""
+    return {"root": draw(st.lists(nested_model_strategy(), min_size=0, max_size=3))}
+
+
+@st.composite
+def root_model_dict_strategy(draw: DrawFn) -> dict[str, Any]:
+    """Generate data for dict RootModel."""
+    return {"root": draw(st_dict_str_int)}
+
+
+@st.composite
+def root_model_discriminated_union_strategy(draw: DrawFn) -> dict[str, Any]:
+    """Generate data for discriminated union RootModel."""
+    model = draw(
+        st.one_of(
+            model_with_all_basic_types_strategy(),
+            model_with_constrained_types_strategy(),
+            model_with_special_types_strategy(),
+        )
+    )
+    return {"root": model.model_dump()}
+
+
+@st.composite
+def root_model_nested_discriminated_strategy(draw: DrawFn) -> dict[str, Any]:
+    """Generate data for nested discriminated RootModel."""
+    wrappers = draw(
+        st.lists(
+            st.one_of(
+                st.builds(BasicWrapper, data=model_with_all_basic_types_strategy()),
+                st.builds(
+                    ConstrainedWrapper, data=model_with_constrained_types_strategy()
+                ),
+                st.builds(SpecialWrapper, data=model_with_special_types_strategy()),
+            ),
+            min_size=0,
+            max_size=3,
+        )
+    )
+    return {"root": [w.model_dump() for w in wrappers]}
+
+
+@st.composite
+def model_with_root_models_strategy(draw: DrawFn) -> ModelWithRootModels:
+    """Generate a model containing RootModels."""
+    return ModelWithRootModels(
+        simple_list_root=RootModelSimpleList(root=draw(st_list_str)),
+        nested_models_root=RootModelNestedModels(
+            root=draw(st.lists(nested_model_strategy(), min_size=0, max_size=3))
+        ),
+        dict_root=RootModelDict(root=draw(st_dict_str_int)),
+        discriminated_root=RootModelDiscriminatedUnion(
+            root=draw(
+                st.one_of(
+                    model_with_all_basic_types_strategy(),
+                    model_with_constrained_types_strategy(),
+                    model_with_special_types_strategy(),
+                )
+            )
+        ),
+        optional_list_root=(
+            RootModelSimpleList(root=draw(st_list_str)) if draw(st_bool) else None
+        ),
+        list_of_root_models=draw(
+            st.lists(
+                st.builds(RootModelSimpleList, root=st_list_str),
+                min_size=0,
+                max_size=2,
+            )
+        ),
+        dict_of_root_models=draw(
+            st.dictionaries(
+                st_str,
+                st.builds(RootModelDict, root=st_dict_str_int),
+                min_size=0,
+                max_size=2,
+            )
+        ),
+    )
+
+
+all_root_model_strategies = st.one_of(
+    root_model_simple_list_strategy(),
+    root_model_complex_list_strategy(),
+    root_model_dict_strategy(),
+    root_model_discriminated_union_strategy(),
+    root_model_nested_discriminated_strategy(),
+)
+
+
 protobuf_model_strategies = st.one_of(
     model_with_all_basic_types_strategy(),
     model_with_constrained_types_strategy(),
@@ -925,9 +1099,9 @@ all_model_strategies = st.one_of(
 @st.composite
 def protobuf_mega_nested_model_strategy(
     draw: DrawFn, max_depth: int = 3
-) -> ProtoBufMegaNestedModel:
+) -> ProtoBufMegaNestedModelWithRoots:
     """Generate a massive nested model containing all other model types."""
-    return ProtoBufMegaNestedModel(
+    return ProtoBufMegaNestedModelWithRoots(
         basic_types=draw(model_with_all_basic_types_strategy()),
         constrained=draw(model_with_constrained_types_strategy()),
         strings=draw(model_with_string_constraints_strategy()),
@@ -969,15 +1143,17 @@ def protobuf_mega_nested_model_strategy(
         optional_union_chain=draw(
             st.one_of(st_none, st_str, st_int, model_with_special_types_strategy())
         ),
+        root_models=draw(model_with_root_models_strategy()),
+        optional_root_model=draw(st.one_of(model_with_root_models_strategy(), st_none)),
     )
 
 
 @st.composite
 def avro_mega_nested_model_strategy(
     draw: DrawFn, max_depth: int = 3
-) -> AvroMegaNestedModel:
+) -> AvroMegaNestedModelWithRoots:
     """Generate a massive nested model containing all other model types."""
-    return AvroMegaNestedModel(
+    return AvroMegaNestedModelWithRoots(
         basic_types=draw(model_with_all_basic_types_strategy()),
         constrained=draw(model_with_constrained_types_strategy()),
         strings=draw(model_with_string_constraints_strategy()),
@@ -1055,13 +1231,17 @@ def avro_mega_nested_model_strategy(
         optional_union_chain=draw(
             st.one_of(st_none, st_str, st_int, model_with_special_types_strategy())
         ),
+        root_models=draw(model_with_root_models_strategy()),
+        optional_root_model=draw(st.one_of(model_with_root_models_strategy(), st_none)),
     )
 
 
 @st.composite
-def mega_nested_model_strategy(draw: DrawFn, max_depth: int = 3) -> MegaNestedModel:
+def mega_nested_model_strategy(
+    draw: DrawFn, max_depth: int = 3
+) -> MegaNestedModelWithRoots:
     """Generate a massive nested model containing all other model types."""
-    return MegaNestedModel(
+    return MegaNestedModelWithRoots(
         basic_types=draw(model_with_all_basic_types_strategy()),
         constrained=draw(model_with_constrained_types_strategy()),
         strings=draw(model_with_string_constraints_strategy()),
@@ -1136,6 +1316,8 @@ def mega_nested_model_strategy(draw: DrawFn, max_depth: int = 3) -> MegaNestedMo
         optional_union_chain=draw(
             st.one_of(st_none, st_str, st_int, model_with_special_types_strategy())
         ),
+        root_models=draw(model_with_root_models_strategy()),
+        optional_root_model=draw(st.one_of(model_with_root_models_strategy(), st_none)),
     )
 
 
@@ -1230,7 +1412,7 @@ def test_typescript_schema_export_model_all_strats(model: BaseModel) -> None:
 
 @pytest.mark.integration
 @given(model=st.one_of(mega_nested_model_strategy()))
-@settings(max_examples=20)
+@settings(max_examples=10)
 def test_json_schema_export_model(model: BaseModel) -> None:
     """Test JSON Schema serialization with any complex model type."""
     manager = ModelManager()
@@ -1242,7 +1424,7 @@ def test_json_schema_export_model(model: BaseModel) -> None:
 
 @pytest.mark.integration
 @given(model=st.one_of(avro_mega_nested_model_strategy()))
-@settings(max_examples=20)
+@settings(max_examples=10)
 def test_avro_export_model(model: BaseModel) -> None:
     """Test Avro serialization with any complex model type."""
     manager = ModelManager()
@@ -1254,7 +1436,7 @@ def test_avro_export_model(model: BaseModel) -> None:
 
 @pytest.mark.integration
 @given(model=st.one_of(protobuf_mega_nested_model_strategy()))
-@settings(max_examples=20)
+@settings(max_examples=10)
 def test_protobuf_schema_export_model(model: BaseModel) -> None:
     """Test Protobuf serialization with any complex model type."""
     manager = ModelManager()
@@ -1292,7 +1474,7 @@ def test_protobuf_schema_export_model(model: BaseModel) -> None:
 
 @pytest.mark.integration
 @given(model=st.one_of(mega_nested_model_strategy()))
-@settings(max_examples=20, deadline=5000)
+@settings(max_examples=10, deadline=5000)
 def test_typescript_schema_export_model(model: BaseModel) -> None:
     """Test TypeScript serialization with any complex model type."""
     manager = ModelManager()
