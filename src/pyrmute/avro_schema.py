@@ -7,7 +7,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from typing import Any, Final, Self, cast, get_args, get_origin
+from typing import Annotated, Any, Final, Self, cast, get_args, get_origin
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -140,7 +140,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
             enums={k: v["schema"] for k, v in self._generated_enum_schemas.items()},
         )
 
-    def _generate_root_model_schema(
+    def _generate_root_model_schema(  # noqa: C901
         self: Self,
         model: type[BaseModel],
         name: str,
@@ -161,13 +161,20 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
         """
         root_annotation = get_root_annotation(model)
 
-        if TypeInspector.is_base_model(root_annotation):
+        actual_type = root_annotation
+        origin = get_origin(root_annotation)
+        if origin is Annotated:
+            args = get_args(root_annotation)
+            if args:
+                actual_type = args[0]
+
+        if TypeInspector.is_base_model(actual_type):
             self._collect_nested_models(model)
             for nested_class_name in self._nested_models:
                 if nested_class_name != model.__name__:
                     self._register_model_name(nested_class_name, nested_class_name)
 
-        type_info = self._convert_type(root_annotation)
+        type_info = self._convert_type(actual_type)
         root_type = type_info.type_representation
 
         if isinstance(root_type, dict) and root_type.get("type") in ("array", "map"):
@@ -204,7 +211,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
                 "fields": [
                     {
                         "name": "root",
-                        "type": root_type,
+                        "type": cast("AvroType", root_type),
                     }
                 ],
             }
