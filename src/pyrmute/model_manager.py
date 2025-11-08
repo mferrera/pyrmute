@@ -9,9 +9,9 @@ from pydantic import BaseModel
 from pydantic.json_schema import GenerateJsonSchema
 
 from ._migration_manager import MigrationManager
-from ._model_utils import is_root_model
 from ._registry import Registry
 from ._schema_manager import SchemaManager
+from ._type_inspector import TypeInspector
 from .avro_schema import AvroExporter
 from .avro_types import AvroRecordSchema
 from .exceptions import MigrationError, ModelNotFoundError
@@ -392,7 +392,7 @@ class ModelManager:
         Returns:
             Data prepared for validation (dict for BaseModel, unwrapped for RootModel).
         """
-        if is_root_model(target_model):
+        if TypeInspector.is_root_model(target_model):
             return migrated_data.get("root")
         return migrated_data
 

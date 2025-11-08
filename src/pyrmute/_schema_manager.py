@@ -9,8 +9,8 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from pydantic.json_schema import GenerateJsonSchema
 
-from ._model_utils import get_root_annotation, is_root_model
 from ._registry import Registry
+from ._type_inspector import TypeInspector
 from .exceptions import ModelNotFoundError
 from .model_version import ModelVersion
 from .schema_config import SchemaConfig
@@ -490,8 +490,8 @@ class SchemaManager:
 
         nested: list[NestedModelInfo] = []
 
-        if is_root_model(model):
-            root_annotation = get_root_annotation(model)
+        if TypeInspector.is_root_model(model):
+            root_annotation = TypeInspector.get_root_annotation(model)
             nested_from_root = self._extract_nested_from_annotation(root_annotation)
             nested.extend(nested_from_root)
             return nested

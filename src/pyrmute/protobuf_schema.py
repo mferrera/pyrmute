@@ -12,7 +12,6 @@ from pydantic import BaseModel, create_model
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
-from ._model_utils import get_root_annotation, is_root_model
 from ._protobuf_types import ProtoEnum, ProtoField, ProtoMessage, ProtoOneOf
 from ._registry import Registry
 from ._schema_documents import ProtoSchemaDocument
@@ -639,7 +638,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
         self._current_model_schema_name = name
         self._types_seen.add(model.__name__)
 
-        if is_root_model(model):
+        if TypeInspector.is_root_model(model):
             message = self._generate_root_model_schema(model, name, version or "1.0.0")
         else:
             self._collect_nested_models(model)
@@ -685,7 +684,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
         Returns:
             Protocol Buffer message definition.
         """
-        root_annotation = get_root_annotation(model)
+        root_annotation = TypeInspector.get_root_annotation(model)
         root_field_info = model.model_fields["root"]
 
         actual_type = root_annotation
