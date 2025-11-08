@@ -5,12 +5,14 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from typing import Any, Self, get_args, get_origin
+from typing import Annotated, Any, Self, get_args, get_origin
 from uuid import UUID
 
 from pydantic import BaseModel, create_model
 from pydantic.fields import FieldInfo
+from pydantic_core import PydanticUndefined
 
+from ._model_utils import get_root_annotation, is_root_model
 from ._protobuf_types import ProtoEnum, ProtoField, ProtoMessage, ProtoOneOf
 from ._registry import Registry
 from ._schema_documents import ProtoSchemaDocument
@@ -489,7 +491,7 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
             nested_msg = self._generate_nested_message(python_type, proto_name)
             self._collected_nested_messages.append(nested_msg)
 
-        if model_name == self._current_model_class:
+        if model_name == self._current_model_class_name:
             return TypeInfo(self._get_model_schema_name(model_name), False)
 
         return TypeInfo(type_representation=proto_name, is_repeated=False)
@@ -637,16 +639,19 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
         self._current_model_schema_name = name
         self._types_seen.add(model.__name__)
 
-        self._collect_nested_models(model)
+        if is_root_model(model):
+            message = self._generate_root_model_schema(model, name, version or "1.0.0")
+        else:
+            self._collect_nested_models(model)
 
-        for nested_name in self._nested_models:
-            if (
-                nested_name != model.__name__
-                and nested_name not in self._versioned_name_map
-            ):
-                self._register_model_name(nested_name, nested_name)
+            for nested_name in self._nested_models:
+                if (
+                    nested_name != model.__name__
+                    and nested_name not in self._versioned_name_map
+                ):
+                    self._register_model_name(nested_name, nested_name)
 
-        message = self._generate_proto_schema(model, name, version or "1.0.0")
+            message = self._generate_proto_schema(model, name, version or "1.0.0")
 
         all_messages = []
         all_messages.extend(self._collected_nested_messages)
@@ -660,6 +665,91 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
             enums=self._generated_enum_schemas,
             imports=sorted(self._required_imports),
         )
+
+    def _generate_root_model_schema(  # noqa: PLR0912, C901
+        self: Self,
+        model: type[BaseModel],
+        name: str,
+        version: str | ModelVersion,
+    ) -> ProtoMessage:
+        """Generate Protocol Buffer schema for a RootModel.
+
+        For RootModels, we create a message with a single 'root' field that contains
+        the actual type. For discriminated unions, we create a oneof.
+
+        Args:
+            model: RootModel class.
+            name: Schema name.
+            version: Model version.
+
+        Returns:
+            Protocol Buffer message definition.
+        """
+        root_annotation = get_root_annotation(model)
+        root_field_info = model.model_fields["root"]
+
+        actual_type = root_annotation
+        discriminator = None
+        origin = get_origin(root_annotation)
+        if origin is Annotated:
+            args = get_args(root_annotation)
+            if args:
+                actual_type = args[0]
+                for metadata in args[1:]:
+                    if isinstance(metadata, FieldInfo) and metadata.discriminator:
+                        discriminator = metadata.discriminator
+
+        if TypeInspector.is_base_model(actual_type):
+            self._collect_nested_models(model)
+            for nested_name in self._nested_models:
+                if (
+                    nested_name != model.__name__
+                    and nested_name not in self._versioned_name_map
+                ):
+                    self._register_model_name(nested_name, nested_name)
+
+        message: ProtoMessage = {
+            "name": name,
+            "fields": [],
+            "nested_messages": [],
+            "nested_enums": [],
+            "field_order": [],
+        }
+
+        if self.include_docs and model.__doc__:
+            message["comment"] = model.__doc__.strip()
+
+        self._field_counter = 1
+
+        if TypeInspector.is_union_requiring_oneof(actual_type):
+            synthetic_field = FieldInfo(
+                annotation=actual_type,
+                default=PydanticUndefined,
+            )
+            if discriminator:
+                synthetic_field.discriminator = discriminator
+
+            oneof_fields = self._generate_oneof_fields("root", synthetic_field, model)
+            message["fields"].extend(oneof_fields["fields"])
+            if oneof_fields["oneof"]:
+                message["oneofs"] = [oneof_fields["oneof"]]
+                message["field_order"].append((oneof_fields["oneof"]["name"], "oneof"))
+        else:
+            type_info = self._convert_type(actual_type, root_field_info, "root")
+
+            root_field: ProtoField = {
+                "name": "root",
+                "type": type_info.type_representation,
+                "number": 1,
+            }
+
+            if type_info.is_repeated:
+                root_field["label"] = "repeated"
+
+            message["fields"].append(root_field)
+            message["field_order"].append(("root", "field"))
+
+        return message
 
     def proto_file_to_string(self: Self, document: ProtoSchemaDocument) -> str:
         """Convert ProtoSchemaDocument definition to .proto file string.
