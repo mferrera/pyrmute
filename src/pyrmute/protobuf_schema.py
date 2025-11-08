@@ -700,12 +700,24 @@ class ProtoSchemaGenerator(SchemaGeneratorBase[ProtoSchemaDocument]):
 
         if TypeInspector.is_base_model(actual_type):
             self._collect_nested_models(model)
-            for nested_name in self._nested_models:
-                if (
-                    nested_name != model.__name__
-                    and nested_name not in self._versioned_name_map
-                ):
-                    self._register_model_name(nested_name, nested_name)
+        else:
+            union_origin = get_origin(actual_type)
+            if TypeInspector.is_union_type(union_origin):
+                union_args = get_args(actual_type)
+                for arg in union_args:
+                    if arg is not type(None) and TypeInspector.is_base_model(arg):
+                        temp_nested = TypeInspector.collect_nested_models(
+                            arg, self._types_seen
+                        )
+                        self._nested_models.update(temp_nested)
+                        self._register_nested_model(arg)
+
+        for nested_name in list(self._nested_models.keys()):
+            if (
+                nested_name != model.__name__
+                and nested_name not in self._versioned_name_map
+            ):
+                self._register_model_name(nested_name, nested_name)
 
         message: ProtoMessage = {
             "name": name,
