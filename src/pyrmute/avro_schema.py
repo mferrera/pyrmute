@@ -139,7 +139,7 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
             enums={k: v["schema"] for k, v in self._generated_enum_schemas.items()},
         )
 
-    def _generate_root_model_schema(  # noqa: C901
+    def _generate_root_model_schema(  # noqa: C901, PLR0912
         self: Self,
         model: type[BaseModel],
         name: str,
@@ -169,9 +169,21 @@ class AvroSchemaGenerator(SchemaGeneratorBase[AvroSchemaDocument]):
 
         if TypeInspector.is_base_model(actual_type):
             self._collect_nested_models(model)
-            for nested_class_name in self._nested_models:
-                if nested_class_name != model.__name__:
-                    self._register_model_name(nested_class_name, nested_class_name)
+        else:
+            union_origin = get_origin(actual_type)
+            if TypeInspector.is_union_type(union_origin):
+                union_args = get_args(actual_type)
+                for arg in union_args:
+                    if arg is not type(None) and TypeInspector.is_base_model(arg):
+                        temp_nested = TypeInspector.collect_nested_models(
+                            arg, self._types_seen
+                        )
+                        self._nested_models.update(temp_nested)
+                        self._register_nested_model(arg)
+
+        for nested_class_name in list(self._nested_models.keys()):
+            if nested_class_name != model.__name__:
+                self._register_model_name(nested_class_name, nested_class_name)
 
         type_info = self._convert_type(actual_type)
         root_type = type_info.type_representation
